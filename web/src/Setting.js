@@ -33,6 +33,7 @@ const {Option} = Select;
 export const ServerUrl = "";
 
 export const StaticBaseUrl = Conf.StaticBaseUrl;
+export const DefaultEntryBackgroundUrl = "/dwall.jpg";
 
 export const MAX_PAGE_SIZE = 25;
 export const SEARCH_DEBOUNCE_MS = 300;
@@ -88,6 +89,17 @@ export function getLogo(themes) {
   } else {
     return `${StaticBaseUrl}/img/casdoor-logo_1185x256.png`;
   }
+}
+
+export function getEntryBackgroundUrl(application, mobile = false) {
+  const desktopBackgroundUrl = application?.formBackgroundUrl?.trim();
+  const mobileBackgroundUrl = application?.formBackgroundUrlMobile?.trim();
+
+  if (mobile) {
+    return mobileBackgroundUrl || desktopBackgroundUrl || DefaultEntryBackgroundUrl;
+  }
+
+  return desktopBackgroundUrl || DefaultEntryBackgroundUrl;
 }
 
 export const OtherProviderInfo = {
@@ -2019,7 +2031,7 @@ export function getUserCommonFields() {
 }
 
 export function getDefaultFooterContent() {
-  return `Powered by <a target="_blank" href="https://casdoor.org" rel="noreferrer"><img style="padding-bottom: 3px" height="20" alt="Casdoor" src="${StaticBaseUrl}/img/casdoor-logo_1185x256.png"/></a>`;
+  return "";
 }
 
 export function getEmptyFooterContent() {

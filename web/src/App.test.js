@@ -1,3 +1,5 @@
+/* eslint-env jest */
+
 // Copyright 2021 The Casdoor Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,12 +16,48 @@
 
 import React from "react";
 import {render} from "@testing-library/react";
-import App from "./App";
+import * as Setting from "./Setting";
+import {App} from "./App";
 
-// eslint-disable-next-line no-undef
-test("renders learn react link", () => {
-  const {getByText} = render(<App />);
-  const linkElement = getByText(/learn react/i);
-  // eslint-disable-next-line no-undef
-  expect(linkElement).toBeInTheDocument();
+function createApp(application = null) {
+  const app = new App({});
+  app.state = {
+    ...app.state,
+    account: null,
+    accessToken: null,
+    application: application,
+  };
+  return app;
+}
+
+afterEach(() => {
+  localStorage.clear();
+});
+
+test("does not render a default footer when no footer content is configured", () => {
+  const app = createApp();
+  const {container, queryByText} = render(app.renderFooter());
+
+  expect(queryByText(/Powered by Casdoor/i)).not.toBeInTheDocument();
+  expect(container.querySelector("#footer")).toBeNull();
+});
+
+test("renders the configured custom footer when present", () => {
+  const app = createApp();
+  const {container, getByText} = render(app.renderFooter(undefined, <span>Custom Footer</span>));
+
+  expect(getByText("Custom Footer")).toBeInTheDocument();
+  expect(container.querySelector("#footer")).toBeInTheDocument();
+});
+
+test("renders application footer html when provided", () => {
+  const app = createApp({footerHtml: "<span>Application Footer</span>"});
+  const {container, getByText} = render(app.renderFooter());
+
+  expect(getByText("Application Footer")).toBeInTheDocument();
+  expect(container.querySelector("#footer")).toBeInTheDocument();
+});
+
+test("returns an empty default footer template", () => {
+  expect(Setting.getDefaultFooterContent()).toBe("");
 });

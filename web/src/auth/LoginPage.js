@@ -43,10 +43,17 @@ import {CountryCodeSelect} from "../common/select/CountryCodeSelect";
 const FaceRecognitionCommonModal = lazy(() => import("../common/modal/FaceRecognitionCommonModal"));
 const FaceRecognitionModal = lazy(() => import("../common/modal/FaceRecognitionModal"));
 
+const methodSwitchContentDelayMs = 110;
+const methodSwitchTotalDurationMs = 320;
+
 class LoginPage extends React.Component {
   constructor(props) {
     super(props);
     this.captchaRef = React.createRef();
+    this.panelContentRef = React.createRef();
+    this.methodSwitchTimers = [];
+    this.panelHeightAnimationFrame = null;
+    this.panelHeightSecondAnimationFrame = null;
     const urlParams = new URLSearchParams(this.props.location?.search);
     this.state = {
       classes: props,
@@ -72,6 +79,11 @@ class LoginPage extends React.Component {
       userCode: props.userCode ?? (props.match?.params?.userCode ?? null),
       userCodeStatus: "",
       prefilledUsername: urlParams.get("username") || urlParams.get("login_hint"),
+      loginMethod: undefined,
+      displayedLoginMethod: undefined,
+      isMethodSwitching: false,
+      methodSwitchPhase: null,
+      panelHeight: null,
     };
 
     if (this.state.type === "cas" && props.match?.params.casApplicationName !== undefined) {
@@ -83,6 +95,7 @@ class LoginPage extends React.Component {
 
     this.form = React.createRef();
     this.refreshInlineCaptcha = this.refreshInlineCaptcha.bind(this);
+    this.handleMethodChange = this.handleMethodChange.bind(this);
   }
 
   refreshInlineCaptcha() {
@@ -104,10 +117,10 @@ class LoginPage extends React.Component {
   componentDidUpdate(prevProps, prevState, snapshot) {
     if (prevState.loginMethod === undefined && this.state.loginMethod === undefined) {
       const application = this.getApplicationObj();
-      this.setState({loginMethod: this.getDefaultLoginMethod(application)});
+      this.setLoginMethodImmediately(this.getDefaultLoginMethod(application));
     }
     if (prevProps.application !== this.props.application) {
-      this.setState({loginMethod: this.getDefaultLoginMethod(this.props.application)});
+      this.setLoginMethodImmediately(this.getDefaultLoginMethod(this.props.application));
     }
     if (this.props.account !== undefined) {
       if (prevProps.account === this.props.account && prevProps.application === this.props.application) {
@@ -138,6 +151,125 @@ class LoginPage extends React.Component {
         }
       }
     }
+  }
+
+  componentWillUnmount() {
+    this.clearMethodSwitchTimers();
+    this.cancelPanelHeightMeasurement();
+  }
+
+  clearMethodSwitchTimers() {
+    this.methodSwitchTimers.forEach((timerId) => window.clearTimeout(timerId));
+    this.methodSwitchTimers = [];
+  }
+
+  scheduleMethodSwitchTimer(callback, delay) {
+    const timerId = window.setTimeout(() => {
+      this.methodSwitchTimers = this.methodSwitchTimers.filter((item) => item !== timerId);
+      callback();
+    }, delay);
+    this.methodSwitchTimers.push(timerId);
+  }
+
+  cancelPanelHeightMeasurement() {
+    if (this.panelHeightAnimationFrame !== null) {
+      window.cancelAnimationFrame(this.panelHeightAnimationFrame);
+      this.panelHeightAnimationFrame = null;
+    }
+
+    if (this.panelHeightSecondAnimationFrame !== null) {
+      window.cancelAnimationFrame(this.panelHeightSecondAnimationFrame);
+      this.panelHeightSecondAnimationFrame = null;
+    }
+  }
+
+  getPanelContentHeight() {
+    const panelContent = this.panelContentRef.current;
+    if (!panelContent) {
+      return null;
+    }
+
+    return Math.ceil(panelContent.getBoundingClientRect().height);
+  }
+
+  updatePanelHeightAfterRender() {
+    this.cancelPanelHeightMeasurement();
+    this.panelHeightAnimationFrame = window.requestAnimationFrame(() => {
+      this.panelHeightAnimationFrame = null;
+      this.panelHeightSecondAnimationFrame = window.requestAnimationFrame(() => {
+        this.panelHeightSecondAnimationFrame = null;
+        const panelHeight = this.getPanelContentHeight();
+        if (panelHeight !== null) {
+          this.setState({panelHeight: panelHeight});
+        }
+      });
+    });
+  }
+
+  prefersReducedMotion() {
+    return typeof window !== "undefined"
+      && typeof window.matchMedia === "function"
+      && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  }
+
+  getDisplayedLoginMethod() {
+    return this.state.displayedLoginMethod ?? this.state.loginMethod;
+  }
+
+  setLoginMethodImmediately(loginMethod) {
+    this.clearMethodSwitchTimers();
+    this.cancelPanelHeightMeasurement();
+    this.setState({
+      loginMethod: loginMethod,
+      displayedLoginMethod: loginMethod,
+      isMethodSwitching: false,
+      methodSwitchPhase: null,
+      panelHeight: null,
+    });
+  }
+
+  handleMethodChange(nextLoginMethod) {
+    if (!nextLoginMethod) {
+      return;
+    }
+
+    const displayedLoginMethod = this.getDisplayedLoginMethod();
+    if (nextLoginMethod === this.state.loginMethod && !this.state.isMethodSwitching) {
+      return;
+    }
+
+    if (!displayedLoginMethod || this.prefersReducedMotion()) {
+      this.setLoginMethodImmediately(nextLoginMethod);
+      return;
+    }
+
+    const panelHeight = this.getPanelContentHeight();
+    this.clearMethodSwitchTimers();
+    this.cancelPanelHeightMeasurement();
+
+    this.setState({
+      loginMethod: nextLoginMethod,
+      isMethodSwitching: true,
+      methodSwitchPhase: "exit",
+      panelHeight: panelHeight ?? this.state.panelHeight,
+    }, () => {
+      this.scheduleMethodSwitchTimer(() => {
+        this.setState({
+          displayedLoginMethod: nextLoginMethod,
+          methodSwitchPhase: "enter",
+        }, () => {
+          this.updatePanelHeightAfterRender();
+        });
+      }, methodSwitchContentDelayMs);
+
+      this.scheduleMethodSwitchTimer(() => {
+        this.setState({
+          isMethodSwitching: false,
+          methodSwitchPhase: null,
+          panelHeight: null,
+        });
+      }, methodSwitchTotalDurationMs);
+    });
   }
 
   checkCaptchaStatus(values) {
@@ -246,15 +378,16 @@ class LoginPage extends React.Component {
   }
 
   getCurrentLoginMethod() {
-    if (this.state.loginMethod === "password") {
+    const loginMethod = this.getDisplayedLoginMethod();
+    if (loginMethod === "password") {
       return "Password";
-    } else if (this.state.loginMethod?.includes("verificationCode")) {
+    } else if (loginMethod?.includes("verificationCode")) {
       return "Verification code";
-    } else if (this.state.loginMethod === "webAuthn") {
+    } else if (loginMethod === "webAuthn") {
       return "WebAuthn";
-    } else if (this.state.loginMethod === "ldap") {
+    } else if (loginMethod === "ldap") {
       return "LDAP";
-    } else if (this.state.loginMethod === "faceId") {
+    } else if (loginMethod === "faceId") {
       return "Face ID";
     } else {
       return "Password";
@@ -265,7 +398,7 @@ class LoginPage extends React.Component {
     if (defaultPlaceholder) {
       return defaultPlaceholder;
     }
-    switch (this.state.loginMethod) {
+    switch (this.getDisplayedLoginMethod()) {
     case "verificationCode": return i18next.t("login:Email or phone");
     case "verificationCodeEmail": return i18next.t("general:Email");
     case "verificationCodePhone": return i18next.t("general:Phone");
@@ -393,8 +526,9 @@ class LoginPage extends React.Component {
   }
 
   onFinish(values) {
+    const loginMethod = this.getDisplayedLoginMethod();
     this.setState({loginLoading: true});
-    if (this.state.loginMethod === "webAuthn") {
+    if (loginMethod === "webAuthn") {
       let username = this.state.username;
       if (username === null || username === "") {
         username = values["username"];
@@ -403,7 +537,7 @@ class LoginPage extends React.Component {
       this.signInWithWebAuthn(username, values);
       return;
     }
-    if (this.state.loginMethod === "faceId") {
+    if (loginMethod === "faceId") {
       let username = this.state.username;
       if (username === null || username === "") {
         username = values["username"];
@@ -431,7 +565,7 @@ class LoginPage extends React.Component {
         });
       return;
     }
-    if (this.state.loginMethod === "password" || this.state.loginMethod === "ldap") {
+    if (loginMethod === "password" || loginMethod === "ldap") {
       const organization = this.getApplicationObj()?.organizationObj;
       const [passwordCipher, errorMessage] = Obfuscator.encryptByPasswordObfuscator(organization?.passwordObfuscatorType, organization?.passwordObfuscatorKey, values["password"]);
       if (errorMessage.length > 0) {
@@ -471,7 +605,8 @@ class LoginPage extends React.Component {
     values["language"] = this.state.userLang ?? "";
     const usedCaptcha = this.state.captchaValues !== undefined;
     const inlineCaptchaEnabled = Setting.isInlineCaptchaEnabled(this.getApplicationObj());
-    const shouldRefreshCaptcha = usedCaptcha && inlineCaptchaEnabled && !this.state.loginMethod?.includes("verificationCode");
+    const loginMethod = this.getDisplayedLoginMethod();
+    const shouldRefreshCaptcha = usedCaptcha && inlineCaptchaEnabled && !loginMethod?.includes("verificationCode");
     if (this.state.type === "cas") {
       // CAS
       const casParams = Util.getCasParameters();
@@ -639,6 +774,7 @@ class LoginPage extends React.Component {
   }
 
   renderFormItem(application, signinItem) {
+    const activeLoginMethod = this.getDisplayedLoginMethod();
     if (!signinItem.visible && signinItem.name !== "Forgot password?") {
       return null;
     }
@@ -695,11 +831,11 @@ class LoginPage extends React.Component {
       )
       ;
     } else if (signinItem.name === "Username") {
-      if (this.state.loginMethod === "wechat") {
-        return (<WeChatLoginPanel application={application} loginMethod={this.state.loginMethod} />);
+      if (activeLoginMethod === "wechat") {
+        return (<WeChatLoginPanel application={application} loginMethod={activeLoginMethod} />);
       }
 
-      if (this.state.loginMethod === "verificationCodePhone") {
+      if (activeLoginMethod === "verificationCodePhone") {
         return <Form.Item className="signin-phone" required={true}>
           <Input.Group compact>
             <Form.Item
@@ -763,9 +899,9 @@ class LoginPage extends React.Component {
             label={signinItem.label ? signinItem.label : null}
             rules={[
               {
-                required: this.state.loginMethod !== "webAuthn",
+                required: activeLoginMethod !== "webAuthn",
                 message: () => {
-                  switch (this.state.loginMethod) {
+                  switch (activeLoginMethod) {
                   case "verificationCodeEmail":
                     return i18next.t("login:Please input your Email!");
                   case "verificationCodePhone":
@@ -783,7 +919,7 @@ class LoginPage extends React.Component {
                     return Promise.resolve();
                   }
 
-                  if (this.state.loginMethod === "verificationCode") {
+                  if (activeLoginMethod === "verificationCode") {
                     if (!Setting.isValidEmail(value) && !Setting.isValidPhone(value)) {
                       this.setState({validEmailOrPhone: false});
                       return Promise.reject(i18next.t("login:The input is not valid Email or phone number!"));
@@ -794,7 +930,7 @@ class LoginPage extends React.Component {
                     } else {
                       this.setState({validEmail: false});
                     }
-                  } else if (this.state.loginMethod === "verificationCodeEmail") {
+                  } else if (activeLoginMethod === "verificationCodeEmail") {
                     if (!Setting.isValidEmail(value)) {
                       this.setState({validEmail: false});
                       this.setState({validEmailOrPhone: false});
@@ -802,7 +938,7 @@ class LoginPage extends React.Component {
                     } else {
                       this.setState({validEmail: true});
                     }
-                  } else if (this.state.loginMethod === "verificationCodePhone") {
+                  } else if (activeLoginMethod === "verificationCodePhone") {
                     if (!Setting.isValidPhone(value)) {
                       this.setState({validEmailOrPhone: false});
                       return Promise.reject(i18next.t("login:The input is not valid phone number!"));
@@ -863,7 +999,7 @@ class LoginPage extends React.Component {
     } else if (signinItem.name === "Agreement") {
       return AgreementModal.isAgreementRequired(application) ? AgreementModal.renderAgreementFormItem(application, true, {}, this) : null;
     } else if (signinItem.name === "Login button") {
-      if (this.state.loginMethod === "wechat") {
+      if (activeLoginMethod === "wechat") {
         return null;
       }
       return (
@@ -876,13 +1012,13 @@ class LoginPage extends React.Component {
             className="login-button"
           >
             {
-              this.state.loginMethod === "webAuthn" ? i18next.t("login:Sign in with WebAuthn") :
-                this.state.loginMethod === "faceId" ? i18next.t("login:Sign in with Face ID") :
+              activeLoginMethod === "webAuthn" ? i18next.t("login:Sign in with WebAuthn") :
+                activeLoginMethod === "faceId" ? i18next.t("login:Sign in with Face ID") :
                   signinItem.label ? signinItem.label : i18next.t("login:Sign In")
             }
           </Button>
           {
-            this.state.loginMethod === "faceId" ?
+            activeLoginMethod === "faceId" ?
               this.state.haveFaceIdProvider ? <Suspense fallback={null}><FaceRecognitionCommonModal visible={this.state.openFaceRecognitionModal} onOk={(FaceIdImage) => {
                 const values = this.state.values;
                 values["FaceIdImage"] = FaceIdImage;
@@ -1301,7 +1437,8 @@ class LoginPage extends React.Component {
 
   renderPasswordOrCodeInput(signinItem) {
     const application = this.getApplicationObj();
-    if (this.state.loginMethod === "password" || this.state.loginMethod === "ldap") {
+    const activeLoginMethod = this.getDisplayedLoginMethod();
+    if (activeLoginMethod === "password" || activeLoginMethod === "ldap") {
       return (
         <Col span={24}>
           <div>
@@ -1316,13 +1453,13 @@ class LoginPage extends React.Component {
                 prefix={<LockOutlined className="site-form-item-icon" />}
                 type="password"
                 placeholder={signinItem.placeholder ? signinItem.placeholder : i18next.t("general:Password")}
-                disabled={this.state.loginMethod === "password" ? !Setting.isPasswordEnabled(application) : !Setting.isLdapEnabled(application)}
+                disabled={activeLoginMethod === "password" ? !Setting.isPasswordEnabled(application) : !Setting.isLdapEnabled(application)}
               />
             </Form.Item>
           </div>
         </Col>
       );
-    } else if (this.state.loginMethod?.includes("verificationCode") && !this.hasVerificationCodeSigninItem(application)) {
+    } else if (activeLoginMethod?.includes("verificationCode") && !this.hasVerificationCodeSigninItem(application)) {
       return (
         <Col span={24}>
           <div className="login-password">
@@ -1350,7 +1487,7 @@ class LoginPage extends React.Component {
 
   renderCodeInput(signinItem) {
     const application = this.getApplicationObj();
-    if (this.hasVerificationCodeSigninItem(application) && this.state.loginMethod?.includes("verificationCode")) {
+    if (this.hasVerificationCodeSigninItem(application) && this.getDisplayedLoginMethod()?.includes("verificationCode")) {
       return (
         <Col span={24}>
           <Form.Item
@@ -1416,9 +1553,7 @@ class LoginPage extends React.Component {
     if (items.length > 1) {
       return (
         <div>
-          <Tabs className="signin-methods" items={items} size={"small"} activeKey={this.state.loginMethod} onChange={(key) => {
-            this.setState({loginMethod: key});
-          }} centered>
+          <Tabs className="signin-methods" items={items} size={"small"} activeKey={this.state.loginMethod ?? this.getDisplayedLoginMethod()} onChange={this.handleMethodChange} centered>
           </Tabs>
         </div>
       );
@@ -1559,6 +1694,17 @@ class LoginPage extends React.Component {
     }
 
     const wechatSigninMethods = application.signinMethods?.filter(method => method.name === "WeChat" && method.rule === "Login page");
+    const displayedLoginMethod = this.getDisplayedLoginMethod();
+    const loginPanelClasses = [
+      Setting.isDarkTheme(this.props.themeAlgorithm) ? "login-panel-dark" : "login-panel",
+      "login-panel-switch-root",
+      this.state.isMethodSwitching ? "login-panel-switching" : null,
+    ].filter(Boolean).join(" ");
+    const dynamicAreaClasses = [
+      "login-panel-dynamic-area",
+      this.state.methodSwitchPhase === "exit" ? "login-panel-method-exit" : null,
+      this.state.methodSwitchPhase === "enter" ? "login-panel-method-enter" : null,
+    ].filter(Boolean).join(" ");
 
     return (
       <React.Fragment>
@@ -1566,26 +1712,33 @@ class LoginPage extends React.Component {
         <div className="login-content" style={{margin: this.props.preview ?? this.parseOffset(application.formOffset)}}>
           {Setting.inIframe() || Setting.isMobile() ? null : <div dangerouslySetInnerHTML={{__html: application.formCss}} />}
           {Setting.inIframe() || !Setting.isMobile() ? null : <div dangerouslySetInnerHTML={{__html: application.formCssMobile}} />}
-          <div className={Setting.isDarkTheme(this.props.themeAlgorithm) ? "login-panel-dark" : "login-panel"}>
-            <div className="side-image" style={{display: application.formOffset !== 4 ? "none" : null}}>
-              <div dangerouslySetInnerHTML={{__html: application.formSideHtml}} />
-            </div>
-            <div className="login-form">
-              <div>
+          <div
+            className={loginPanelClasses}
+            style={this.state.panelHeight !== null ? {height: `${this.state.panelHeight}px`} : undefined}
+          >
+            <div ref={this.panelContentRef} className="login-panel-inner">
+              <div className="side-image" style={{display: application.formOffset !== 4 ? "none" : null}}>
+                <div dangerouslySetInnerHTML={{__html: application.formSideHtml}} />
+              </div>
+              <div className={dynamicAreaClasses}>
+                <div className="login-form">
+                  <div>
+                    {
+                      this.renderLoginPanel(application)
+                    }
+                  </div>
+                </div>
                 {
-                  this.renderLoginPanel(application)
+                  wechatSigninMethods?.length > 0 ? (<div style={{display: "flex", justifyContent: "center", alignItems: "center"}}>
+                    <div>
+                      <h3 style={{textAlign: "center", width: 320}}>{i18next.t("provider:Please use WeChat to scan the QR code and follow the official account for sign in")}</h3>
+                      <WeChatLoginPanel application={application} loginMethod={displayedLoginMethod} />
+                    </div>
+                  </div>
+                  ) : null
                 }
               </div>
             </div>
-            {
-              wechatSigninMethods?.length > 0 ? (<div style={{display: "flex", justifyContent: "center", alignItems: "center"}}>
-                <div>
-                  <h3 style={{textAlign: "center", width: 320}}>{i18next.t("provider:Please use WeChat to scan the QR code and follow the official account for sign in")}</h3>
-                  <WeChatLoginPanel application={application} loginMethod={this.state.loginMethod} />
-                </div>
-              </div>
-              ) : null
-            }
           </div>
         </div>
       </React.Fragment>

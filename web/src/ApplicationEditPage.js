@@ -66,15 +66,23 @@ const {Option} = Select;
 const template = `<style>
   .login-panel {
     padding: 40px 70px 0 70px;
-    border-radius: 10px;
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    border-radius: 22px;
     background-color: #ffffff;
-    box-shadow: 0 0 30px 20px rgba(0, 0, 0, 0.20);
+    box-shadow:
+      0 16px 38px rgba(15, 23, 42, 0.16),
+      0 4px 14px rgba(15, 23, 42, 0.10);
+    overflow: hidden;
   }
   .login-panel-dark {
     padding: 40px 70px 0 70px;
-    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-radius: 22px;
     background-color: #333333;
-    box-shadow: 0 0 30px 20px rgba(255, 255, 255, 0.20);
+    box-shadow:
+      0 18px 42px rgba(0, 0, 0, 0.34),
+      0 4px 12px rgba(0, 0, 0, 0.22);
+    overflow: hidden;
   }
   .forget-content {
     padding: 10px 100px 20px;
@@ -1591,6 +1599,7 @@ class ApplicationEditPage extends React.Component {
     }
     const signInUrl = `/login/oauth/authorize?client_id=${clientId}&response_type=code&redirect_uri=${redirectUri}&scope=read&state=casdoor`;
     const maskStyle = {position: "absolute", top: "0px", left: "0px", zIndex: 10, height: "97%", width: "100%", background: "rgba(0,0,0,0.4)"};
+    const previewBackgroundImage = `url(${Setting.getEntryBackgroundUrl(this.state.application, Setting.isMobile())})`;
     if (!Setting.isPasswordEnabled(this.state.application)) {
       signUpUrl = signInUrl.replace("/login/oauth/authorize", "/signup/oauth/authorize");
     }
@@ -1616,11 +1625,11 @@ class ApplicationEditPage extends React.Component {
             <div style={{position: "relative", width: previewWidth, border: "1px solid rgb(217,217,217)", boxShadow: "10px 10px 5px #888888", overflow: "auto"}}>
               {
                 Setting.isPasswordEnabled(this.state.application) ? (
-                  <div className="loginBackground" style={{backgroundImage: `url(${this.state.application?.formBackgroundUrl})`, overflow: "auto"}}>
+                  <div className="loginBackground" style={{backgroundImage: previewBackgroundImage, overflow: "auto"}}>
                     <SignupPage application={this.state.application} preview="auto" />
                   </div>
                 ) : (
-                  <div className="loginBackground" style={{backgroundImage: `url(${this.state.application?.formBackgroundUrl})`, overflow: "auto"}}>
+                  <div className="loginBackground" style={{backgroundImage: previewBackgroundImage, overflow: "auto"}}>
                     <LoginPage type={"login"} mode={"signup"} application={this.state.application} preview="auto" />
                   </div>
                 )
@@ -1646,7 +1655,7 @@ class ApplicationEditPage extends React.Component {
             },
           }}>
             <div style={{position: "relative", width: previewWidth, border: "1px solid rgb(217,217,217)", boxShadow: "10px 10px 5px #888888", overflow: "auto"}}>
-              <div className="loginBackground" style={{backgroundImage: `url(${this.state.application?.formBackgroundUrl})`, overflow: "auto"}}>
+              <div className="loginBackground" style={{backgroundImage: previewBackgroundImage, overflow: "auto"}}>
                 <LoginPage type={"login"} mode={"signin"} application={this.state.application} preview="auto" />
               </div>
               <div style={{overflow: "auto", ...maskStyle}} />
