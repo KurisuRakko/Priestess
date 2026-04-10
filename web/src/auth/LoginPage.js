@@ -40,6 +40,7 @@ import * as ProviderButton from "./ProviderButton";
 import {createFormAndSubmit, goToLink} from "../Setting";
 import WeChatLoginPanel from "./WeChatLoginPanel";
 import {CountryCodeSelect} from "../common/select/CountryCodeSelect";
+import "./LoginPage.less";
 const FaceRecognitionCommonModal = lazy(() => import("../common/modal/FaceRecognitionCommonModal"));
 const FaceRecognitionModal = lazy(() => import("../common/modal/FaceRecognitionModal"));
 
@@ -617,7 +618,7 @@ class LoginPage extends React.Component {
           let msg = "Logged in successfully. ";
           if (casParams.service === "") {
             // If service was not specified, Casdoor must display a message notifying the client that it has successfully initiated a single sign-on session.
-            msg += "Now you can visit apps protected by Casdoor.";
+            msg += "Now you can visit apps protected by Priestess.";
           }
           Setting.showMessage("success", msg);
 
@@ -1161,6 +1162,7 @@ class LoginPage extends React.Component {
 
       return (
         <Form
+          className="login-page-form-body"
           name="normal_login"
           initialValues={{
             organization: application.organization,
@@ -1172,7 +1174,10 @@ class LoginPage extends React.Component {
           onFinish={(values) => {
             this.onFinish(values);
           }}
-          style={{width: `${loginWidth}px`}}
+          style={{
+            width: Setting.isMobile() ? "min(100%, 420px)" : `${loginWidth}px`,
+            maxWidth: "100%",
+          }}
           size="large"
           ref={this.form}
         >
@@ -1697,11 +1702,13 @@ class LoginPage extends React.Component {
     const displayedLoginMethod = this.getDisplayedLoginMethod();
     const loginPanelClasses = [
       Setting.isDarkTheme(this.props.themeAlgorithm) ? "login-panel-dark" : "login-panel",
+      "auth-card-enter",
       "login-panel-switch-root",
       this.state.isMethodSwitching ? "login-panel-switching" : null,
     ].filter(Boolean).join(" ");
     const dynamicAreaClasses = [
       "login-panel-dynamic-area",
+      "login-page-dynamic",
       this.state.methodSwitchPhase === "exit" ? "login-panel-method-exit" : null,
       this.state.methodSwitchPhase === "enter" ? "login-panel-method-enter" : null,
     ].filter(Boolean).join(" ");
@@ -1709,28 +1716,28 @@ class LoginPage extends React.Component {
     return (
       <React.Fragment>
         <CustomGithubCorner />
-        <div className="login-content" style={{margin: this.props.preview ?? this.parseOffset(application.formOffset)}}>
+        <div className="login-content login-page-shell" style={{margin: this.props.preview ?? this.parseOffset(application.formOffset)}}>
           {Setting.inIframe() || Setting.isMobile() ? null : <div dangerouslySetInnerHTML={{__html: application.formCss}} />}
           {Setting.inIframe() || !Setting.isMobile() ? null : <div dangerouslySetInnerHTML={{__html: application.formCssMobile}} />}
           <div
-            className={loginPanelClasses}
+            className={`${loginPanelClasses} login-page-card`}
             style={this.state.panelHeight !== null ? {height: `${this.state.panelHeight}px`} : undefined}
           >
-            <div ref={this.panelContentRef} className="login-panel-inner">
+            <div ref={this.panelContentRef} className="login-panel-inner login-page-panel-inner">
               <div className="side-image" style={{display: application.formOffset !== 4 ? "none" : null}}>
                 <div dangerouslySetInnerHTML={{__html: application.formSideHtml}} />
               </div>
               <div className={dynamicAreaClasses}>
-                <div className="login-form">
-                  <div>
+                <div className="login-form login-page-form">
+                  <div className="login-page-form-content">
                     {
                       this.renderLoginPanel(application)
                     }
                   </div>
                 </div>
                 {
-                  wechatSigninMethods?.length > 0 ? (<div style={{display: "flex", justifyContent: "center", alignItems: "center"}}>
-                    <div>
+                  wechatSigninMethods?.length > 0 ? (<div className="login-page-wechat-panel" style={{display: "flex", justifyContent: "center", alignItems: "center"}}>
+                    <div className="login-page-wechat-panel-content">
                       <h3 style={{textAlign: "center", width: 320}}>{i18next.t("provider:Please use WeChat to scan the QR code and follow the official account for sign in")}</h3>
                       <WeChatLoginPanel application={application} loginMethod={displayedLoginMethod} />
                     </div>

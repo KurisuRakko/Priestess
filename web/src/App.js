@@ -19,7 +19,7 @@ import * as Setting from "./Setting";
 import {setOrgIsTourVisible, setTourLogo} from "./TourConfig";
 import {StyleProvider, legacyLogicalPropertiesTransformer} from "@ant-design/cssinjs";
 import {GithubOutlined, InfoCircleFilled, ShareAltOutlined} from "@ant-design/icons";
-import {Alert, Button, ConfigProvider, Drawer, FloatButton, Layout, Result, Tooltip} from "antd";
+import {Alert, Button, ConfigProvider, Drawer, FloatButton, Layout, Result, Spin, Tooltip} from "antd";
 import {Route, Switch, withRouter} from "react-router-dom";
 import CustomGithubCorner from "./common/CustomGithubCorner";
 import * as Conf from "./Conf";
@@ -546,6 +546,16 @@ class App extends Component {
     );
   }
 
+  renderManagementLoading() {
+    return (
+      <div className="global-loading-shell">
+        <div className="global-loading-card">
+          <Spin size="large" tip={i18next.t("login:Loading")} />
+        </div>
+      </div>
+    );
+  }
+
   isDoorPages() {
     return this.isEntryPages() ||
       window.location.pathname.startsWith("/callback") ||
@@ -655,7 +665,7 @@ class App extends Component {
         <FloatButton.BackTop />
         <CustomGithubCorner />
         {
-          <Suspense fallback={null}>
+          <Suspense fallback={this.renderManagementLoading()}>
             <Layout id="parent-area">
               <ManagementPage
                 account={this.state.account}
@@ -734,7 +744,7 @@ class App extends Component {
       <React.Fragment>
         {(this.state.account === undefined || this.state.account === null) ?
           <Helmet>
-            <link rel="icon" href={"https://cdn.casdoor.com/static/favicon.png"} />
+            <link rel="icon" href={"/branding/priestess-happy-avatar.png"} />
           </Helmet> :
           <Helmet>
             <title>{this.state.account.organization?.displayName}</title>

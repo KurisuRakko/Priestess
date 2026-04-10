@@ -1,3 +1,5 @@
+/* global cy, describe, expect, it */
+
 describe("Login test", () => {
   const selector = {
     username: "#input",
@@ -25,6 +27,57 @@ describe("Login test", () => {
     cy.get(selector.username).type("admin");
     cy.get(selector.password).type("123");
     cy.get(selector.loginButton).click();
+    cy.url().should("eq", "http://localhost:7001/");
+  });
+
+  it("ui Login mobile layout stays usable", () => {
+    cy.viewport(390, 844);
+    cy.visit("http://localhost:7001/login");
+
+    cy.get(".login-page-shell").should("be.visible");
+    cy.get(".login-page-card").should("be.visible").then(($card) => {
+      const rect = $card[0].getBoundingClientRect();
+      expect(rect.left).to.be.at.least(0);
+      expect(rect.right).to.be.at.most(390);
+    });
+
+    cy.document().then((doc) => {
+      expect(doc.documentElement.scrollWidth).to.be.at.most(doc.documentElement.clientWidth + 1);
+    });
+
+    cy.get(".login-page-form-body").should("be.visible");
+    cy.get(selector.username).should("be.visible");
+    cy.get(selector.password).should("be.visible");
+    cy.get(".login-button").should("be.visible").and("not.be.disabled");
+
+    cy.get("body").then(($body) => {
+      const forgetRow = $body.find(".login-forget-password");
+      if (forgetRow.length > 0) {
+        const rect = forgetRow[0].getBoundingClientRect();
+        expect(rect.height).to.be.greaterThan(0);
+        expect(rect.right).to.be.at.most(390);
+      }
+
+      const tabs = $body.find(".signin-methods .ant-tabs-tab");
+      if (tabs.length > 1) {
+        const initialHeight = $body.find(".login-page-card")[0].getBoundingClientRect().height;
+        cy.wrap(tabs.eq(1)).click();
+        cy.get(".login-page-card").should(($card) => {
+          const nextHeight = $card[0].getBoundingClientRect().height;
+          expect(nextHeight).to.be.greaterThan(0);
+          expect(Math.abs(nextHeight - initialHeight)).to.be.lessThan(500);
+        });
+      }
+
+      const providers = $body.find(".provider-img, .provider-big-img");
+      if (providers.length > 0) {
+        cy.wrap(providers.eq(0)).should("be.visible");
+      }
+    });
+
+    cy.get(selector.username).type("admin");
+    cy.get(selector.password).type("123");
+    cy.get(".login-button").click();
     cy.url().should("eq", "http://localhost:7001/");
   });
 
