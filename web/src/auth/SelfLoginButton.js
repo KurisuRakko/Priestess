@@ -13,35 +13,52 @@
 // limitations under the License.
 
 import React, {memo} from "react";
-import {createButton} from "react-social-login-buttons";
+import {ArrowRightOutlined} from "@ant-design/icons";
 
-class SelfLoginButton extends React.Component {
-  generateIcon() {
-    const avatar = this.props.account.avatar;
-    return () => {
-      return <img width={36} height={36} src={avatar} alt="Sign in with Google" />;
-    };
+function getAccountShowName(account) {
+  const name = account?.name ?? "";
+  const displayName = account?.displayName ?? "";
+  if (name !== "" && displayName !== "") {
+    return `${name} (${displayName})`;
   }
 
-  getAccountShowName() {
-    let {name, displayName} = this.props.account;
-    if (displayName !== "") {
-      name += " (" + displayName + ")";
-    }
-    return name;
-  }
+  return name || displayName;
+}
 
-  render() {
-    const config = {
-      icon: this.generateIcon(),
-      iconFormat: name => `fa fa-${name}`,
-      style: {background: "#ffffff", color: "#000000"},
-      activeStyle: {background: "#eff0ee"},
-    };
+function getAvatarFallbackText(account) {
+  const avatarName = (account?.displayName || account?.name || "?").trim();
+  return avatarName.charAt(0).toUpperCase();
+}
 
-    const SelfLoginButton = createButton(config);
-    return <SelfLoginButton text={this.getAccountShowName()} onClick={this.props.onClick} align={"center"} />;
-  }
+function SelfLoginButton({account, onClick}) {
+  const accountShowName = getAccountShowName(account);
+  const avatar = account?.avatar ?? "";
+
+  return (
+    <button type="button" className="self-login-button" onClick={onClick}>
+      <span className="self-login-button-avatar" aria-hidden="true">
+        {avatar ? (
+          <img
+            className="self-login-button-avatar-image"
+            width={40}
+            height={40}
+            src={avatar}
+            alt=""
+          />
+        ) : (
+          <span className="self-login-button-avatar-fallback">{getAvatarFallbackText(account)}</span>
+        )}
+      </span>
+      <span className="self-login-button-content">
+        <span className="self-login-button-name" title={accountShowName}>
+          {accountShowName}
+        </span>
+      </span>
+      <span className="self-login-button-arrow" aria-hidden="true">
+        <ArrowRightOutlined />
+      </span>
+    </button>
+  );
 }
 
 export default memo(SelfLoginButton);

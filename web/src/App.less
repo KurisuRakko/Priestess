@@ -240,27 +240,6 @@ body[theme="dark"] .global-loading-card {
   display: flex;
   align-items: stretch;
   flex: 1;
-  opacity: 1;
-  transform: translateY(0) scale(1);
-  transform-origin: center top;
-}
-
-.login-panel-method-exit {
-  opacity: 0;
-  transform: translateY(8px) scale(0.985);
-  transition:
-    opacity 90ms cubic-bezier(0.2, 0, 0, 1),
-    transform 90ms cubic-bezier(0.2, 0, 0, 1);
-  pointer-events: none;
-}
-
-.login-panel-method-enter {
-  opacity: 1;
-  transform: translateY(0) scale(1);
-  transition:
-    opacity 180ms cubic-bezier(0.2, 0, 0, 1) 110ms,
-    transform 180ms cubic-bezier(0.2, 0, 0, 1) 110ms;
-  pointer-events: none;
 }
 
 .login-content {
@@ -342,9 +321,7 @@ body[theme="dark"] .global-loading-card {
     transform: none !important;
   }
 
-  .login-panel-switch-root,
-  .login-panel-method-exit,
-  .login-panel-method-enter {
+  .login-panel-switch-root {
     transition: none !important;
     transform: none !important;
   }

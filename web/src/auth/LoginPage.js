@@ -44,7 +44,6 @@ import "./LoginPage.less";
 const FaceRecognitionCommonModal = lazy(() => import("../common/modal/FaceRecognitionCommonModal"));
 const FaceRecognitionModal = lazy(() => import("../common/modal/FaceRecognitionModal"));
 
-const methodSwitchContentDelayMs = 110;
 const methodSwitchTotalDurationMs = 320;
 
 class LoginPage extends React.Component {
@@ -83,7 +82,6 @@ class LoginPage extends React.Component {
       loginMethod: undefined,
       displayedLoginMethod: undefined,
       isMethodSwitching: false,
-      methodSwitchPhase: null,
       panelHeight: null,
     };
 
@@ -224,7 +222,6 @@ class LoginPage extends React.Component {
       loginMethod: loginMethod,
       displayedLoginMethod: loginMethod,
       isMethodSwitching: false,
-      methodSwitchPhase: null,
       panelHeight: null,
     });
   }
@@ -235,7 +232,7 @@ class LoginPage extends React.Component {
     }
 
     const displayedLoginMethod = this.getDisplayedLoginMethod();
-    if (nextLoginMethod === this.state.loginMethod && !this.state.isMethodSwitching) {
+    if (nextLoginMethod === displayedLoginMethod) {
       return;
     }
 
@@ -250,23 +247,15 @@ class LoginPage extends React.Component {
 
     this.setState({
       loginMethod: nextLoginMethod,
+      displayedLoginMethod: nextLoginMethod,
       isMethodSwitching: true,
-      methodSwitchPhase: "exit",
       panelHeight: panelHeight ?? this.state.panelHeight,
     }, () => {
-      this.scheduleMethodSwitchTimer(() => {
-        this.setState({
-          displayedLoginMethod: nextLoginMethod,
-          methodSwitchPhase: "enter",
-        }, () => {
-          this.updatePanelHeightAfterRender();
-        });
-      }, methodSwitchContentDelayMs);
+      this.updatePanelHeightAfterRender();
 
       this.scheduleMethodSwitchTimer(() => {
         this.setState({
           isMethodSwitching: false,
-          methodSwitchPhase: null,
           panelHeight: null,
         });
       }, methodSwitchTotalDurationMs);
@@ -1175,7 +1164,7 @@ class LoginPage extends React.Component {
             this.onFinish(values);
           }}
           style={{
-            width: Setting.isMobile() ? "min(100%, 420px)" : `${loginWidth}px`,
+            width: `${loginWidth}px`,
             maxWidth: "100%",
           }}
           size="large"
@@ -1329,21 +1318,16 @@ class LoginPage extends React.Component {
     }
 
     return (
-      <div>
-        <div style={{fontSize: 16, textAlign: "left"}}>
+      <div className="continue-with-section">
+        <div className="continue-with-label">
           {i18next.t("login:Continue with")}&nbsp;:
         </div>
-        <br />
-        <div onClick={() => {
+        <SelfLoginButton account={this.props.account} onClick={() => {
           const values = {};
           values["application"] = application.name;
           this.login(values);
-        }}>
-          <SelfLoginButton account={this.props.account} />
-        </div>
-        <br />
-        <br />
-        <div style={{fontSize: 16, textAlign: "left"}}>
+        }} />
+        <div className="continue-with-label continue-with-label-secondary">
           {i18next.t("login:Or sign in with another account")}&nbsp;:
         </div>
       </div>
@@ -1706,12 +1690,6 @@ class LoginPage extends React.Component {
       "login-panel-switch-root",
       this.state.isMethodSwitching ? "login-panel-switching" : null,
     ].filter(Boolean).join(" ");
-    const dynamicAreaClasses = [
-      "login-panel-dynamic-area",
-      "login-page-dynamic",
-      this.state.methodSwitchPhase === "exit" ? "login-panel-method-exit" : null,
-      this.state.methodSwitchPhase === "enter" ? "login-panel-method-enter" : null,
-    ].filter(Boolean).join(" ");
 
     return (
       <React.Fragment>
@@ -1727,7 +1705,7 @@ class LoginPage extends React.Component {
               <div className="side-image" style={{display: application.formOffset !== 4 ? "none" : null}}>
                 <div dangerouslySetInnerHTML={{__html: application.formSideHtml}} />
               </div>
-              <div className={dynamicAreaClasses}>
+              <div className="login-panel-dynamic-area login-page-dynamic">
                 <div className="login-form login-page-form">
                   <div className="login-page-form-content">
                     {
