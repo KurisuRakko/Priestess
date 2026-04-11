@@ -13,14 +13,11 @@
 // limitations under the License.
 
 import React, {memo} from "react";
-import {createButton} from "react-social-login-buttons";
 
 class SelfLoginButton extends React.Component {
-  generateIcon() {
-    const avatar = this.props.account.avatar;
-    return () => {
-      return <img width={36} height={36} src={avatar} alt="Sign in with Google" />;
-    };
+  constructor(props) {
+    super(props);
+    this.state = {avatarError: false};
   }
 
   getAccountShowName() {
@@ -31,16 +28,53 @@ class SelfLoginButton extends React.Component {
     return name;
   }
 
-  render() {
-    const config = {
-      icon: this.generateIcon(),
-      iconFormat: name => `fa fa-${name}`,
-      style: {background: "#ffffff", color: "#000000"},
-      activeStyle: {background: "#eff0ee"},
-    };
+  getAvatarSrc() {
+    const avatar = this.props.account?.avatar;
+    if (avatar) {
+      return avatar;
+    }
+    return this.props.fallbackAvatar || "";
+  }
 
-    const SelfLoginButton = createButton(config);
-    return <SelfLoginButton text={this.getAccountShowName()} onClick={this.props.onClick} align={"center"} />;
+  handleAvatarError = () => {
+    this.setState({avatarError: true});
+  };
+
+  render() {
+    const avatarSrc = this.getAvatarSrc();
+    const title = this.getAccountShowName();
+    const subtitle = this.props.subtitle || "";
+    const showImg = avatarSrc && !this.state.avatarError;
+    const initial = (this.props.account?.name || "?")[0].toUpperCase();
+
+    return (
+      <button
+        type="button"
+        className="self-login-card"
+        onClick={this.props.onClick}
+      >
+        <span className="self-login-card-avatar">
+          {showImg ? (
+            <img src={avatarSrc} alt="" onError={this.handleAvatarError} />
+          ) : (
+            <span className="self-login-card-avatar-fallback">
+              {initial}
+            </span>
+          )}
+        </span>
+        <span className="self-login-card-text">
+          <span className="self-login-card-title">{title}</span>
+          {subtitle && (
+            <span className="self-login-card-subtitle">{subtitle}</span>
+          )}
+        </span>
+        <span className="self-login-card-arrow">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M6 3l5 5-5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </span>
+      </button>
+    );
   }
 }
 

@@ -1328,22 +1328,30 @@ class LoginPage extends React.Component {
       return null;
     }
 
+    const subtitle = application?.organizationObj?.displayName
+      || application?.organization
+      || application?.displayName
+      || application?.name
+      || "";
+
+    const fallbackAvatar = application?.organizationObj?.favicon || "";
+
     return (
-      <div>
-        <div style={{fontSize: 16, textAlign: "left"}}>
+      <div className="signed-in-box">
+        <div className="signed-in-box-title">
           {i18next.t("login:Continue with")}&nbsp;:
         </div>
-        <br />
-        <div onClick={() => {
-          const values = {};
-          values["application"] = application.name;
-          this.login(values);
-        }}>
-          <SelfLoginButton account={this.props.account} />
-        </div>
-        <br />
-        <br />
-        <div style={{fontSize: 16, textAlign: "left"}}>
+        <SelfLoginButton
+          account={this.props.account}
+          subtitle={subtitle}
+          fallbackAvatar={fallbackAvatar}
+          onClick={() => {
+            const values = {};
+            values["application"] = application.name;
+            this.login(values);
+          }}
+        />
+        <div className="signed-in-box-divider">
           {i18next.t("login:Or sign in with another account")}&nbsp;:
         </div>
       </div>
