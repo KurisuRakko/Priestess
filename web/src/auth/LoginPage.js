@@ -1298,6 +1298,42 @@ class LoginPage extends React.Component {
     }
   }
 
+  shouldRenderSignedInBox(application = this.getApplicationObj()) {
+    if (!this.props.account || !application) {
+      return false;
+    }
+
+    return this.props.account.owner === application.organization
+      && !this.props.requiredEnableMfa
+      && !(this.state.userCode && this.state.userCodeStatus === "success");
+  }
+
+  shouldRenderBackButton() {
+    return this.state.orgChoiceMode === "None" || this.props.preview === "auto";
+  }
+
+  hasFloatingHeaderActions(application = this.getApplicationObj()) {
+    if (!application?.signinItems) {
+      return false;
+    }
+
+    return application.signinItems.some((signinItem) => {
+      if (!signinItem.visible) {
+        return false;
+      }
+
+      if (signinItem.name === "Languages") {
+        return (application.organizationObj?.languages?.length ?? 0) > 1;
+      }
+
+      if (signinItem.name === "Back button") {
+        return this.shouldRenderBackButton();
+      }
+
+      return false;
+    });
+  }
+
   renderSignedInBox() {
     if (this.props.account === undefined || this.props.account === null) {
       this.sendSilentSigninData("user-not-logged-in");
@@ -1305,15 +1341,7 @@ class LoginPage extends React.Component {
     }
 
     const application = this.getApplicationObj();
-    if (this.props.account.owner !== application?.organization) {
-      return null;
-    }
-
-    if (this.props.requiredEnableMfa) {
-      return null;
-    }
-
-    if (this.state.userCode && this.state.userCodeStatus === "success") {
+    if (!this.shouldRenderSignedInBox(application)) {
       return null;
     }
 
@@ -1635,7 +1663,7 @@ class LoginPage extends React.Component {
   }
 
   renderBackButton() {
-    if (this.state.orgChoiceMode === "None" || this.props.preview === "auto") {
+    if (this.shouldRenderBackButton()) {
       return (
         <Button className="back-inner-button" type="text" size="large" icon={<ArrowLeftOutlined />}
           onClick={() => history.back()}>
@@ -1684,6 +1712,10 @@ class LoginPage extends React.Component {
 
     const wechatSigninMethods = application.signinMethods?.filter(method => method.name === "WeChat" && method.rule === "Login page");
     const displayedLoginMethod = this.getDisplayedLoginMethod();
+    const formContentClasses = [
+      "login-page-form-content",
+      this.shouldRenderSignedInBox(application) && this.hasFloatingHeaderActions(application) ? "login-page-form-content-with-floating-actions" : null,
+    ].filter(Boolean).join(" ");
     const loginPanelClasses = [
       Setting.isDarkTheme(this.props.themeAlgorithm) ? "login-panel-dark" : "login-panel",
       "auth-card-enter",
@@ -1707,7 +1739,7 @@ class LoginPage extends React.Component {
               </div>
               <div className="login-panel-dynamic-area login-page-dynamic">
                 <div className="login-form login-page-form">
-                  <div className="login-page-form-content">
+                  <div className={formContentClasses}>
                     {
                       this.renderLoginPanel(application)
                     }

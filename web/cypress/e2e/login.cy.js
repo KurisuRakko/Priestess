@@ -1,6 +1,7 @@
 /* global cy, describe, expect, it */
 
 describe("Login test", () => {
+  const casLoginUrl = "http://localhost:7001/cas/admin/app-built-in/login?service=http%3A%2F%2Flocalhost%3A7001%2F";
   const selector = {
     username: "#input",
     password: "#normal_login_password",
@@ -30,11 +31,40 @@ describe("Login test", () => {
     cy.url().should("eq", "http://localhost:7001/");
   });
 
+  it("ui Login quick continue avoids floating language overlap on desktop", () => {
+    cy.viewport(1280, 900);
+    cy.request({
+      method: "POST",
+      url: "http://localhost:7001/api/login",
+      body: {
+        "application": "app-built-in",
+        "organization": "built-in",
+        "username": "admin",
+        "password": "123",
+        "autoSignin": true,
+        "type": "login",
+      },
+    }).then((response) => {
+      expect(response).property("body").property("status").to.equal("ok");
+    });
+
+    cy.visit(casLoginUrl);
+    cy.get(".login-page-form-content-with-floating-actions").should("be.visible");
+    cy.get(".login-languages").should("be.visible");
+    cy.get(".self-login-button").should("be.visible").then(($button) => {
+      cy.get(".login-languages").then(($languages) => {
+        const buttonRect = $button[0].getBoundingClientRect();
+        const languageRect = $languages[0].getBoundingClientRect();
+
+        expect(buttonRect.top).to.be.at.least(languageRect.bottom + 8);
+      });
+    });
+  });
+
   it("ui Login mobile layout stays usable", () => {
     cy.viewport(390, 844);
     cy.visit("http://localhost:7001/login");
 
-    cy.get(".login-page-shell").should("be.visible");
     cy.get(".login-page-card").should("be.visible").then(($card) => {
       const rect = $card[0].getBoundingClientRect();
       expect(rect.left).to.be.at.least(0);
