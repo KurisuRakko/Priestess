@@ -44,7 +44,8 @@ import "./LoginPage.less";
 const FaceRecognitionCommonModal = lazy(() => import("../common/modal/FaceRecognitionCommonModal"));
 const FaceRecognitionModal = lazy(() => import("../common/modal/FaceRecognitionModal"));
 
-const methodSwitchTotalDurationMs = 320;
+const methodSwitchTotalDurationMs = 360;
+const contentFadeInDelayMs = 160;
 
 class LoginPage extends React.Component {
   constructor(props) {
@@ -82,6 +83,7 @@ class LoginPage extends React.Component {
       loginMethod: undefined,
       displayedLoginMethod: undefined,
       isMethodSwitching: false,
+      contentEntering: false,
       panelHeight: null,
     };
 
@@ -222,6 +224,7 @@ class LoginPage extends React.Component {
       loginMethod: loginMethod,
       displayedLoginMethod: loginMethod,
       isMethodSwitching: false,
+      contentEntering: false,
       panelHeight: null,
     });
   }
@@ -249,6 +252,7 @@ class LoginPage extends React.Component {
       loginMethod: nextLoginMethod,
       displayedLoginMethod: nextLoginMethod,
       isMethodSwitching: true,
+      contentEntering: false,
       panelHeight: panelHeight ?? this.state.panelHeight,
     }, () => {
       this.updatePanelHeightAfterRender();
@@ -256,6 +260,13 @@ class LoginPage extends React.Component {
       this.scheduleMethodSwitchTimer(() => {
         this.setState({
           isMethodSwitching: false,
+          contentEntering: true,
+        });
+      }, contentFadeInDelayMs);
+
+      this.scheduleMethodSwitchTimer(() => {
+        this.setState({
+          contentEntering: false,
           panelHeight: null,
         });
       }, methodSwitchTotalDurationMs);
@@ -1721,6 +1732,7 @@ class LoginPage extends React.Component {
       "auth-card-enter",
       "login-panel-switch-root",
       this.state.isMethodSwitching ? "login-panel-switching" : null,
+      this.state.contentEntering ? "login-panel-content-entering" : null,
     ].filter(Boolean).join(" ");
 
     return (
