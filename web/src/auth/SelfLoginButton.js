@@ -13,52 +13,69 @@
 // limitations under the License.
 
 import React, {memo} from "react";
-import {ArrowRightOutlined} from "@ant-design/icons";
 
-function getAccountShowName(account) {
-  const name = account?.name ?? "";
-  const displayName = account?.displayName ?? "";
-  if (name !== "" && displayName !== "") {
-    return `${name} (${displayName})`;
+class SelfLoginButton extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = {avatarError: false};
   }
 
-  return name || displayName;
-}
+  getAccountShowName() {
+    let {name, displayName} = this.props.account;
+    if (displayName !== "") {
+      name += " (" + displayName + ")";
+    }
+    return name;
+  }
 
-function getAvatarFallbackText(account) {
-  const avatarName = (account?.displayName || account?.name || "?").trim();
-  return avatarName.charAt(0).toUpperCase();
-}
+  getAvatarSrc() {
+    const avatar = this.props.account?.avatar;
+    if (avatar) {
+      return avatar;
+    }
+    return this.props.fallbackAvatar || "";
+  }
 
-function SelfLoginButton({account, onClick}) {
-  const accountShowName = getAccountShowName(account);
-  const avatar = account?.avatar ?? "";
+  handleAvatarError = () => {
+    this.setState({avatarError: true});
+  };
 
-  return (
-    <button type="button" className="self-login-button" onClick={onClick}>
-      <span className="self-login-button-avatar" aria-hidden="true">
-        {avatar ? (
-          <img
-            className="self-login-button-avatar-image"
-            width={40}
-            height={40}
-            src={avatar}
-            alt=""
-          />
-        ) : (
-          <span className="self-login-button-avatar-fallback">{getAvatarFallbackText(account)}</span>
-        )}
-      </span>
-      <span className="self-login-button-content">
-        <span className="self-login-button-name" title={accountShowName}>
-          {accountShowName}
+  render() {
+    const avatarSrc = this.getAvatarSrc();
+    const title = this.getAccountShowName();
+    const subtitle = this.props.subtitle || "";
+    const showImg = avatarSrc && !this.state.avatarError;
+    const initial = (this.props.account?.name || "?")[0].toUpperCase();
+
+    return (
+      <button
+        type="button"
+        className="self-login-card"
+        onClick={this.props.onClick}
+      >
+        <span className="self-login-card-avatar">
+          {showImg ? (
+            <img src={avatarSrc} alt="" onError={this.handleAvatarError} />
+          ) : (
+            <span className="self-login-card-avatar-fallback">
+              {initial}
+            </span>
+          )}
         </span>
-      </span>
-      <span className="self-login-button-arrow" aria-hidden="true">
-        <ArrowRightOutlined />
-      </span>
-    </button>
-  );
+        <span className="self-login-card-text">
+          <span className="self-login-card-title">{title}</span>
+          {subtitle && (
+            <span className="self-login-card-subtitle">{subtitle}</span>
+          )}
+        </span>
+        <span className="self-login-card-arrow">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M6 3l5 5-5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </span>
+      </button>
+    );
+  }
 }
 
 export default memo(SelfLoginButton);

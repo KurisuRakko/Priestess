@@ -1383,17 +1383,30 @@ class LoginPage extends React.Component {
       return null;
     }
 
+    const subtitle = application?.organizationObj?.displayName
+      || application?.organization
+      || application?.displayName
+      || application?.name
+      || "";
+
+    const fallbackAvatar = application?.organizationObj?.favicon || "";
+
     return (
-      <div className="continue-with-section">
-        <div className="continue-with-label">
+      <div className="signed-in-box">
+        <div className="signed-in-box-title">
           {i18next.t("login:Continue with")}&nbsp;:
         </div>
-        <SelfLoginButton account={this.props.account} onClick={() => {
-          const values = {};
-          values["application"] = application.name;
-          this.login(values);
-        }} />
-        <div className="continue-with-label continue-with-label-secondary">
+        <SelfLoginButton
+          account={this.props.account}
+          subtitle={subtitle}
+          fallbackAvatar={fallbackAvatar}
+          onClick={() => {
+            const values = {};
+            values["application"] = application.name;
+            this.login(values);
+          }}
+        />
+        <div className="signed-in-box-divider">
           {i18next.t("login:Or sign in with another account")}&nbsp;:
         </div>
       </div>
