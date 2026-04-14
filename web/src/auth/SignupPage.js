@@ -32,22 +32,7 @@ import * as PasswordChecker from "../common/PasswordChecker";
 import * as InvitationBackend from "../backend/InvitationBackend";
 
 const formItemLayout = {
-  labelCol: {
-    xs: {
-      span: 24,
-    },
-    sm: {
-      span: 8,
-    },
-  },
-  wrapperCol: {
-    xs: {
-      span: 24,
-    },
-    sm: {
-      span: 16,
-    },
-  },
+  layout: "vertical",
 };
 
 const renderFormItem = (signupItem) => {
@@ -96,14 +81,7 @@ const renderFormItem = (signupItem) => {
 
 export const tailFormItemLayout = {
   wrapperCol: {
-    xs: {
-      span: 24,
-      offset: 0,
-    },
-    sm: {
-      span: 16,
-      offset: 8,
-    },
+    span: 24,
   },
 };
 
@@ -836,21 +814,23 @@ class SignupPage extends React.Component {
       );
     } else if (signupItem.name === "Signup button") {
       return (
-        <Form.Item {...tailFormItemLayout}>
-          <Button type="primary" htmlType="submit" className="signup-button">
+        <Form.Item {...tailFormItemLayout} style={{marginBottom: 0}}>
+          <Button type="primary" htmlType="submit" className="signup-button" block>
             {i18next.t("account:Sign Up")}
           </Button>
-          &nbsp;&nbsp;{i18next.t("signup:Have account?")}&nbsp;
-          <a className="signup-link" onClick={() => {
-            const linkInStorage = sessionStorage.getItem("signinUrl");
-            if (linkInStorage !== null && linkInStorage !== "") {
-              Setting.goToLinkSoft(this, linkInStorage);
-            } else {
-              Setting.redirectToLoginPage(application, this.props.history);
-            }
-          }}>
-            {i18next.t("signup:sign in now")}
-          </a>
+          <div style={{textAlign: "center", marginTop: 16}}>
+            {i18next.t("signup:Have account?")}&nbsp;
+            <a className="signup-link" onClick={() => {
+              const linkInStorage = sessionStorage.getItem("signinUrl");
+              if (linkInStorage !== null && linkInStorage !== "") {
+                Setting.goToLinkSoft(this, linkInStorage);
+              } else {
+                Setting.redirectToLoginPage(application, this.props.history);
+              }
+            }}>
+              {i18next.t("signup:sign in now")}
+            </a>
+          </div>
         </Form.Item>
       );
     } else if (signupItem.name === "Providers") {
@@ -933,8 +913,8 @@ class SignupPage extends React.Component {
           countryCode: application.organizationObj.countryCodes?.[0],
         }}
         size="large"
-        layout={Setting.isMobile() ? "vertical" : "horizontal"}
-        style={{width: Setting.isMobile() ? "300px" : "400px"}}
+        layout="vertical"
+        style={{width: Setting.isMobile() ? "300px" : "380px"}}
       >
         <Form.Item
           name="application"

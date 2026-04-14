@@ -44,8 +44,7 @@ import "./LoginPage.less";
 const FaceRecognitionCommonModal = lazy(() => import("../common/modal/FaceRecognitionCommonModal"));
 const FaceRecognitionModal = lazy(() => import("../common/modal/FaceRecognitionModal"));
 
-const methodSwitchTotalDurationMs = 360;
-const contentFadeInDelayMs = 160;
+const heightTransitionDurationMs = 420;
 
 class LoginPage extends React.Component {
   constructor(props) {
@@ -83,7 +82,6 @@ class LoginPage extends React.Component {
       loginMethod: undefined,
       displayedLoginMethod: undefined,
       isMethodSwitching: false,
-      contentEntering: false,
       panelHeight: null,
     };
 
@@ -190,7 +188,9 @@ class LoginPage extends React.Component {
       return null;
     }
 
-    return Math.ceil(panelContent.getBoundingClientRect().height);
+    // Use scrollHeight to get the natural content height, ignoring
+    // min-height:100% that stretches inner to match locked outer height
+    return panelContent.scrollHeight;
   }
 
   updatePanelHeightAfterRender() {
@@ -224,7 +224,6 @@ class LoginPage extends React.Component {
       loginMethod: loginMethod,
       displayedLoginMethod: loginMethod,
       isMethodSwitching: false,
-      contentEntering: false,
       panelHeight: null,
     });
   }
@@ -244,32 +243,56 @@ class LoginPage extends React.Component {
       return;
     }
 
-    const panelHeight = this.getPanelContentHeight();
     this.clearMethodSwitchTimers();
     this.cancelPanelHeightMeasurement();
+
+    // Get the card's outer element for direct DOM manipulation
+    const panel = this.panelContentRef.current?.parentElement;
+    if (!panel) {
+      this.setLoginMethodImmediately(nextLoginMethod);
+      return;
+    }
+
+    // Step 1: Read current rendered height
+    const fromHeight = panel.getBoundingClientRect().height;
+
+    // Step 2: Switch content + disable transition temporarily
+    panel.style.transition = "none";
+    panel.style.height = fromHeight + "px";
 
     this.setState({
       loginMethod: nextLoginMethod,
       displayedLoginMethod: nextLoginMethod,
       isMethodSwitching: true,
-      contentEntering: false,
-      panelHeight: panelHeight ?? this.state.panelHeight,
+      panelHeight: null, // don't set inline via React — we control it via DOM
     }, () => {
-      this.updatePanelHeightAfterRender();
+      // Step 3: After React renders new content, measure natural height
+      this.panelHeightAnimationFrame = window.requestAnimationFrame(() => {
+        this.panelHeightAnimationFrame = null;
+        this.panelHeightSecondAnimationFrame = window.requestAnimationFrame(() => {
+          this.panelHeightSecondAnimationFrame = null;
 
-      this.scheduleMethodSwitchTimer(() => {
-        this.setState({
-          isMethodSwitching: false,
-          contentEntering: true,
-        });
-      }, contentFadeInDelayMs);
+          // Temporarily release height to measure content
+          panel.style.height = "auto";
+          const toHeight = panel.getBoundingClientRect().height;
 
-      this.scheduleMethodSwitchTimer(() => {
-        this.setState({
-          contentEntering: false,
-          panelHeight: null,
+          // Lock back to fromHeight (no visual change since transition is off)
+          panel.style.height = fromHeight + "px";
+          // Force browser to commit this frame at fromHeight
+          // eslint-disable-next-line no-unused-expressions
+          panel.offsetHeight;
+
+          // Step 4: Re-enable transition and set target height — animate!
+          panel.style.transition = "";
+          panel.style.height = toHeight + "px";
+
+          // Step 5: After transition, release to auto
+          this.scheduleMethodSwitchTimer(() => {
+            panel.style.height = "";
+            this.setState({isMethodSwitching: false});
+          }, heightTransitionDurationMs);
         });
-      }, methodSwitchTotalDurationMs);
+      });
     });
   }
 
@@ -1053,6 +1076,10 @@ class LoginPage extends React.Component {
       if (signinItem.rule === "None" || signinItem.rule === "") {
         signinItem.rule = showForm ? "small" : "big";
       }
+      const visibleProviders = application.providers.filter(providerItem => this.isProviderVisible(providerItem));
+      if (visibleProviders.length === 0) {
+        return null;
+      }
       const searchParams = new URLSearchParams(window.location.search);
       const providerHint = searchParams.get("provider_hint");
 
@@ -1061,7 +1088,7 @@ class LoginPage extends React.Component {
           <div dangerouslySetInnerHTML={{__html: ("<style>" + signinItem.customCss?.replaceAll("<style>", "").replaceAll("</style>", "") + "</style>")}} />
           <Form.Item>
             {
-              application.providers.filter(providerItem => this.isProviderVisible(providerItem)).map((providerItem, id) => {
+              visibleProviders.map((providerItem, id) => {
                 if (providerHint === providerItem.provider.name) {
                   goToLink(Provider.getAuthUrl(application, providerItem.provider, "signup"));
                   return;
@@ -1732,7 +1759,6 @@ class LoginPage extends React.Component {
       "auth-card-enter",
       "login-panel-switch-root",
       this.state.isMethodSwitching ? "login-panel-switching" : null,
-      this.state.contentEntering ? "login-panel-content-entering" : null,
     ].filter(Boolean).join(" ");
 
     return (
