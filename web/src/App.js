@@ -455,7 +455,7 @@ class App extends Component {
       window.history.replaceState({}, document.title, newUrl);
     }
 
-    AuthBackend.getAccount(query)
+    return AuthBackend.getAccount(query)
       .then((res) => {
         let account = null;
         let accessToken = null;
@@ -476,9 +476,11 @@ class App extends Component {
           }
         }
 
-        this.setState({
-          account: account,
-          accessToken: accessToken,
+        return new Promise((resolve) => {
+          this.setState({
+            account: account,
+            accessToken: accessToken,
+          }, resolve);
         });
       });
   }
@@ -591,7 +593,7 @@ class App extends Component {
     if (redirectUrl) {
       localStorage.setItem("mfaRedirectUrl", redirectUrl);
     }
-    this.getAccount();
+    return this.getAccount();
   }
 
   renderPage() {
@@ -633,13 +635,13 @@ class App extends Component {
                           application: application,
                         });
                       }}
-                      onLoginSuccess={(redirectUrl) => {this.onLoginSuccess(redirectUrl);}}
+                      onLoginSuccess={(redirectUrl) => this.onLoginSuccess(redirectUrl)}
                       onUpdateAccount={(account) => this.onUpdateAccount(account)}
                       updataThemeData={this.setTheme}
                     /> :
                     <Switch>
-                      <Route exact path="/callback" render={(props) => <AuthCallback {...props} {...this.props} application={this.state.application} onLoginSuccess={(redirectUrl) => {this.onLoginSuccess(redirectUrl);}} />} />
-                      <Route exact path="/callback/saml" render={(props) => <SamlCallback {...props} {...this.props} application={this.state.application} onLoginSuccess={(redirectUrl) => {this.onLoginSuccess(redirectUrl);}} />} />
+                      <Route exact path="/callback" render={(props) => <AuthCallback {...props} {...this.props} application={this.state.application} onLoginSuccess={(redirectUrl) => this.onLoginSuccess(redirectUrl)} />} />
+                      <Route exact path="/callback/saml" render={(props) => <SamlCallback {...props} {...this.props} application={this.state.application} onLoginSuccess={(redirectUrl) => this.onLoginSuccess(redirectUrl)} />} />
                       <Route exact path="/telegram-login" render={(props) => <TelegramLogin {...props} {...this.props} />} />
                       <Route path="" render={() => <Result status="404" title="404 NOT FOUND" subTitle={i18next.t("general:Sorry, the page you visited does not exist.")}
                         extra={<a href="/"><Button type="primary">{i18next.t("general:Back Home")}</Button></a>} />} />

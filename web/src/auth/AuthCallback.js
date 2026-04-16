@@ -13,7 +13,6 @@
 // limitations under the License.
 
 import React from "react";
-import {Spin} from "antd";
 import {withRouter} from "react-router-dom";
 import * as AuthBackend from "./AuthBackend";
 import * as Util from "./Util";
@@ -23,6 +22,11 @@ import * as Setting from "../Setting";
 import i18next from "i18next";
 import RedirectForm from "../common/RedirectForm";
 import {createFormAndSubmit, renderLoginPanel} from "../Setting";
+import {NextMfa, RequiredMfa} from "./mfa/MfaAuthVerifyForm";
+import {
+  showLoginSuccessOverlay as showLoginSuccessOverlayPopup,
+  startLoginTransitionOverlay as startLoginTransitionOverlayPopup
+} from "../common/LoginSuccessOverlay";
 
 const reactFallbackKey = "__casdoor_callback_react";
 const reactFallbackPayloadKey = "casdoor_callback_react_fallback";
@@ -37,6 +41,10 @@ class AuthCallback extends React.Component {
       relayState: "",
       redirectUrl: "",
     };
+    this.loginTransitionOverlayController = null;
+    this.isUnmounted = false;
+    this.hasStartedCallbackFlow = false;
+    this.activeCallbackRequestId = 0;
   }
 
   getNormalizedSearch(search) {
@@ -65,13 +73,164 @@ class AuthCallback extends React.Component {
     }
   }
 
-  handleCasLoginResult(res, body, casService) {
-    const handleCasLogin = (res) => {
-      let msg = "Logged in successfully.";
-      if (casService === "") {
-        msg += "Now you can visit apps protected by Priestess.";
+  getInnerParamValue(innerParams, key) {
+    if (!innerParams || typeof innerParams.get !== "function") {
+      return "";
+    }
+    return innerParams.get(key) || "";
+  }
+
+  getLoginTransitionOverlayProps(innerParams, body, applicationName, overrides = {}) {
+    const organizationName = overrides.organizationName
+      || this.props.application?.organizationObj?.displayName
+      || this.props.application?.organization
+      || body?.organization
+      || this.getInnerParamValue(innerParams, "organization")
+      || applicationName
+      || "";
+    const username = overrides.username
+      || this.getInnerParamValue(innerParams, "username")
+      || this.getInnerParamValue(innerParams, "login_hint")
+      || body?.username
+      || "";
+    const themeData = Setting.getThemeData(this.props.application?.organizationObj, this.props.application);
+
+    return {
+      loadingTitle: overrides.loadingTitle || i18next.t("login:Signing in..."),
+      organizationName: organizationName,
+      username: username,
+      title: overrides.title || i18next.t("application:Logged in successfully"),
+      description: overrides.description,
+      primaryColor: overrides.primaryColor || themeData?.colorPrimary,
+      durationMs: overrides.durationMs,
+      postAnimationDelayMs: overrides.postAnimationDelayMs,
+      onVisualComplete: overrides.onVisualComplete,
+    };
+  }
+
+  clearLoginTransitionOverlayController(controller = this.loginTransitionOverlayController) {
+    if (this.loginTransitionOverlayController === controller) {
+      this.loginTransitionOverlayController = null;
+    }
+  }
+
+  setStateIfMounted(nextState, callback = undefined) {
+    if (!this.isUnmounted) {
+      this.setState(nextState, callback);
+    }
+  }
+
+  startCallbackRequest() {
+    this.activeCallbackRequestId += 1;
+    return this.activeCallbackRequestId;
+  }
+
+  isActiveCallbackRequest(requestId) {
+    return !this.isUnmounted && requestId === this.activeCallbackRequestId;
+  }
+
+  beginLoginTransition(innerParams, body, applicationName, overrides = {}) {
+    if (this.isUnmounted) {
+      return null;
+    }
+
+    if (this.loginTransitionOverlayController === null) {
+      this.loginTransitionOverlayController = startLoginTransitionOverlayPopup(this.getLoginTransitionOverlayProps(innerParams, body, applicationName, overrides));
+    }
+
+    return this.loginTransitionOverlayController;
+  }
+
+  abortLoginTransition() {
+    if (this.loginTransitionOverlayController === null) {
+      return;
+    }
+
+    const controller = this.loginTransitionOverlayController;
+    this.loginTransitionOverlayController = null;
+    controller.dismiss();
+  }
+
+  completeLoginTransition(innerParams, body, applicationName, overrides = {}, requestId = this.activeCallbackRequestId) {
+    if (!this.isActiveCallbackRequest(requestId)) {
+      return Promise.resolve();
+    }
+
+    const overlayProps = this.getLoginTransitionOverlayProps(innerParams, body, applicationName, overrides);
+    const controller = this.loginTransitionOverlayController;
+    if (controller === null) {
+      return showLoginSuccessOverlayPopup(overlayProps);
+    }
+
+    const outcomePromise = controller.succeed(overlayProps);
+    this.clearLoginTransitionOverlayController(controller);
+    return outcomePromise;
+  }
+
+  failLoginTransition(innerParams, body, applicationName, overrides = {}, requestId = this.activeCallbackRequestId) {
+    if (!this.isActiveCallbackRequest(requestId)) {
+      return Promise.resolve();
+    }
+
+    const controller = this.beginLoginTransition(innerParams, body, applicationName, overrides);
+    if (controller === null) {
+      return Promise.resolve();
+    }
+
+    const outcomePromise = controller.fail(this.getLoginTransitionOverlayProps(innerParams, body, applicationName, overrides));
+    this.clearLoginTransitionOverlayController(controller);
+    return outcomePromise;
+  }
+
+  shouldDismissLoginTransitionOverlay(res) {
+    return res?.data === RequiredMfa
+      || res?.data === NextMfa
+      || res?.data === "SelectPlan"
+      || res?.data === "BuyPlanResult";
+  }
+
+  getLoginTransitionErrorMessage(error) {
+    const errorText = error?.message || (typeof error === "string" ? error : "");
+    if (errorText === "") {
+      return i18next.t("general:Failed to connect to server");
+    }
+
+    return `${i18next.t("general:Failed to connect to server")}: ${errorText}`;
+  }
+
+  continueLoggedInSession(nextAction = null, redirectUrl = undefined) {
+    return Promise.resolve(this.props.onLoginSuccess(redirectUrl)).then(() => {
+      if (typeof nextAction === "function") {
+        return nextAction();
       }
-      Setting.showMessage("success", msg);
+
+      return undefined;
+    });
+  }
+
+  continueToAccountPage(signinUrl) {
+    return this.continueLoggedInSession(() => {
+      if (signinUrl) {
+        sessionStorage.setItem("signinUrl", signinUrl);
+      }
+      Setting.goToLinkSoft(this, "/account");
+    });
+  }
+
+  isExternalLink(link) {
+    return typeof link === "string" && link.startsWith("http");
+  }
+
+  handleCasLoginResult(res, body, casService, innerParams = null, applicationName = "", requestId = this.activeCallbackRequestId) {
+    const handleCasLogin = async(res) => {
+      if (!this.isActiveCallbackRequest(requestId)) {
+        return;
+      }
+
+      await this.completeLoginTransition(innerParams, body, applicationName, {}, requestId);
+      if (!this.isActiveCallbackRequest(requestId)) {
+        return;
+      }
 
       if (casService !== "") {
         const st = res.data;
@@ -81,33 +240,53 @@ class AuthCallback extends React.Component {
       }
     };
 
+    if (!this.isActiveCallbackRequest(requestId)) {
+      return;
+    }
+
+    if (this.shouldDismissLoginTransitionOverlay(res)) {
+      this.abortLoginTransition();
+    }
     Setting.checkLoginMfa(res, body, {"service": casService}, handleCasLogin, this);
   }
 
-  handleOAuthLoginResult(res, body, innerParams, queryString, applicationName, responseType) {
+  handleOAuthLoginResult(res, body, innerParams, queryString, applicationName, responseType, requestId = this.activeCallbackRequestId) {
     const oAuthParams = Util.getOAuthGetParameters(innerParams);
     const concatChar = oAuthParams?.redirectUri?.includes("?") ? "&" : "?";
     const responseMode = oAuthParams?.responseMode || "query";
     const signinUrl = localStorage.getItem("signinUrl");
     const responseTypes = responseType.split(" ");
 
-    const handleLogin = (res) => {
+    const handleLogin = async(res) => {
+      if (!this.isActiveCallbackRequest(requestId)) {
+        return;
+      }
+
       if (responseType === "login") {
         if (res.data3) {
-          sessionStorage.setItem("signinUrl", signinUrl);
-          Setting.goToLinkSoft(this, "/account");
+          await this.completeLoginTransition(innerParams, body, applicationName, {
+            onVisualComplete: () => this.continueToAccountPage(signinUrl),
+          }, requestId);
           return;
         }
-        Setting.showMessage("success", "Logged in successfully");
         const link = Setting.getFromLink();
-        Setting.goToLink(link);
+        await this.completeLoginTransition(innerParams, body, applicationName, {
+          onVisualComplete: () => this.continueLoggedInSession(() => {
+            Setting.goToLinkSoftOrJumpSelf(this, link);
+          }),
+        }, requestId);
       } else if (responseType === "code") {
         if (res.data3) {
-          sessionStorage.setItem("signinUrl", signinUrl);
-          Setting.goToLinkSoft(this, "/account");
+          await this.completeLoginTransition(innerParams, body, applicationName, {
+            onVisualComplete: () => this.continueToAccountPage(signinUrl),
+          }, requestId);
           return;
         }
 
+        await this.completeLoginTransition(innerParams, body, applicationName, {}, requestId);
+        if (!this.isActiveCallbackRequest(requestId)) {
+          return;
+        }
         if (responseMode === "form_post") {
           const params = {
             code: res.data,
@@ -120,11 +299,16 @@ class AuthCallback extends React.Component {
         }
       } else if (responseTypes.includes("token") || responseTypes.includes("id_token")) {
         if (res.data3) {
-          sessionStorage.setItem("signinUrl", signinUrl);
-          Setting.goToLinkSoft(this, "/account");
+          await this.completeLoginTransition(innerParams, body, applicationName, {
+            onVisualComplete: () => this.continueToAccountPage(signinUrl),
+          }, requestId);
           return;
         }
 
+        await this.completeLoginTransition(innerParams, body, applicationName, {}, requestId);
+        if (!this.isActiveCallbackRequest(requestId)) {
+          return;
+        }
         if (responseMode === "form_post") {
           const params = {
             token: responseTypes.includes("token") ? res.data : null,
@@ -135,7 +319,7 @@ class AuthCallback extends React.Component {
           createFormAndSubmit(oAuthParams?.redirectUri, params);
         } else {
           const token = res.data;
-          Setting.goToLink(`${oAuthParams.redirectUri}${concatChar}${responseType}=${encodeURIComponent(token)}&state=${encodeURIComponent(oAuthParams.state)}&token_type=bearer`);
+          Setting.goToLink(Setting.buildOAuthTokenRedirectUrl(oAuthParams.redirectUri, responseType, token, oAuthParams.state));
         }
       } else if (responseType === "link") {
         let from = innerParams.get("from");
@@ -143,20 +327,39 @@ class AuthCallback extends React.Component {
         if (oauth) {
           from += `?oauth=${oauth}`;
         }
-        Setting.goToLinkSoftOrJumpSelf(this, from);
+        if (this.isExternalLink(from)) {
+          await this.completeLoginTransition(innerParams, body, applicationName, {}, requestId);
+          if (!this.isActiveCallbackRequest(requestId)) {
+            return;
+          }
+          Setting.goToLinkSoftOrJumpSelf(this, from);
+          return;
+        }
+
+        await this.completeLoginTransition(innerParams, body, applicationName, {
+          onVisualComplete: () => this.continueLoggedInSession(() => {
+            Setting.goToLinkSoftOrJumpSelf(this, from);
+          }),
+        }, requestId);
       } else if (responseType === "saml") {
+        if (res.data3) {
+          await this.completeLoginTransition(innerParams, body, applicationName, {
+            onVisualComplete: () => this.continueToAccountPage(signinUrl),
+          }, requestId);
+          return;
+        }
+
+        await this.completeLoginTransition(innerParams, body, applicationName, {}, requestId);
+        if (!this.isActiveCallbackRequest(requestId)) {
+          return;
+        }
         if (res.data2.method === "POST") {
-          this.setState({
+          this.setStateIfMounted({
             samlResponse: res.data,
             redirectUrl: res.data2.redirectUrl,
             relayState: oAuthParams.relayState,
           });
         } else {
-          if (res.data3) {
-            sessionStorage.setItem("signinUrl", signinUrl);
-            Setting.goToLinkSoft(this, "/account");
-            return;
-          }
           const SAMLResponse = res.data;
           const redirectUri = res.data2.redirectUrl;
           Setting.goToLink(`${redirectUri}${redirectUri.includes("?") ? "&" : "?"}SAMLResponse=${encodeURIComponent(SAMLResponse)}&RelayState=${oAuthParams.relayState}`);
@@ -164,6 +367,13 @@ class AuthCallback extends React.Component {
       }
     };
 
+    if (!this.isActiveCallbackRequest(requestId)) {
+      return;
+    }
+
+    if (this.shouldDismissLoginTransitionOverlay(res)) {
+      this.abortLoginTransition();
+    }
     Setting.checkLoginMfa(res, body, oAuthParams, handleLogin, this, window.location.origin);
   }
 
@@ -216,7 +426,24 @@ class AuthCallback extends React.Component {
     }
   }
 
-  UNSAFE_componentWillMount() {
+  componentDidMount() {
+    this.isUnmounted = false;
+    this.runCallbackFlow();
+  }
+
+  componentWillUnmount() {
+    this.isUnmounted = true;
+    this.activeCallbackRequestId += 1;
+    this.abortLoginTransition();
+  }
+
+  runCallbackFlow() {
+    if (this.hasStartedCallbackFlow) {
+      return;
+    }
+
+    this.hasStartedCallbackFlow = true;
+    const requestId = this.startCallbackRequest();
     const params = new URLSearchParams(this.props.location.search);
     const queryString = Util.getQueryParamsFromState(params.get("state"));
     const isSteam = params.get("openid.mode");
@@ -303,38 +530,92 @@ class AuthCallback extends React.Component {
 
     const reactFallbackPayload = this.consumeReactFallbackPayload();
     if (reactFallbackPayload !== null) {
+      const fallbackInnerParams = new URLSearchParams(reactFallbackPayload.innerParams || Util.getQueryParamsFromState(params.get("state")));
+      this.beginLoginTransition(fallbackInnerParams, reactFallbackPayload.body || body, applicationName);
+      if (!this.isActiveCallbackRequest(requestId)) {
+        return;
+      }
+
       if (reactFallbackPayload.flow === "cas") {
-        this.handleCasLoginResult(reactFallbackPayload.res, reactFallbackPayload.body || body, reactFallbackPayload.casService || casService);
+        this.handleCasLoginResult(
+          reactFallbackPayload.res,
+          reactFallbackPayload.body || body,
+          reactFallbackPayload.casService || casService,
+          fallbackInnerParams,
+          applicationName,
+          requestId
+        );
       } else {
-        const fallbackInnerParams = new URLSearchParams(reactFallbackPayload.innerParams || Util.getQueryParamsFromState(params.get("state")));
-        this.handleOAuthLoginResult(reactFallbackPayload.res, reactFallbackPayload.body || body, fallbackInnerParams, reactFallbackPayload.queryString, applicationName, reactFallbackPayload.responseType || this.getResponseType());
+        this.handleOAuthLoginResult(
+          reactFallbackPayload.res,
+          reactFallbackPayload.body || body,
+          fallbackInnerParams,
+          reactFallbackPayload.queryString,
+          applicationName,
+          reactFallbackPayload.responseType || this.getResponseType(),
+          requestId
+        );
       }
       return;
     }
 
     if (this.getResponseType() === "cas") {
       // user is using casdoor as cas sso server, and wants the ticket to be acquired
+      this.beginLoginTransition(innerParams, body, applicationName);
       AuthBackend.loginCas(body, {"service": casService}).then((res) => {
-        if (res.status === "ok") {
-          this.handleCasLoginResult(res, body, casService);
-        } else {
-          Setting.showMessage("error", `${i18next.t("application:Failed to sign in")}: ${res.msg}`);
+        if (!this.isActiveCallbackRequest(requestId)) {
+          return;
         }
+
+        if (res.status === "ok") {
+          this.handleCasLoginResult(res, body, casService, innerParams, applicationName, requestId);
+        } else {
+          this.failLoginTransition(innerParams, body, applicationName, {
+            description: res.msg,
+            onVisualComplete: () => this.setStateIfMounted({msg: res.msg}),
+          }, requestId);
+        }
+      }).catch((error) => {
+        if (!this.isActiveCallbackRequest(requestId)) {
+          return;
+        }
+
+        const errorMsg = this.getLoginTransitionErrorMessage(error);
+        this.failLoginTransition(innerParams, body, applicationName, {
+          description: errorMsg,
+          onVisualComplete: () => this.setStateIfMounted({msg: errorMsg}),
+        }, requestId);
       });
       return;
     }
     // OAuth
     const oAuthParams = Util.getOAuthGetParameters(innerParams);
 
+    this.beginLoginTransition(innerParams, body, applicationName);
     AuthBackend.login(body, oAuthParams)
       .then((res) => {
-        if (res.status === "ok") {
-          this.handleOAuthLoginResult(res, body, innerParams, queryString, applicationName, this.getResponseType());
-        } else {
-          this.setState({
-            msg: res.msg,
-          });
+        if (!this.isActiveCallbackRequest(requestId)) {
+          return;
         }
+
+        if (res.status === "ok") {
+          this.handleOAuthLoginResult(res, body, innerParams, queryString, applicationName, this.getResponseType(), requestId);
+        } else {
+          this.failLoginTransition(innerParams, body, applicationName, {
+            description: res.msg,
+            onVisualComplete: () => this.setStateIfMounted({msg: res.msg}),
+          }, requestId);
+        }
+      }).catch((error) => {
+        if (!this.isActiveCallbackRequest(requestId)) {
+          return;
+        }
+
+        const errorMsg = this.getLoginTransitionErrorMessage(error);
+        this.failLoginTransition(innerParams, body, applicationName, {
+          description: errorMsg,
+          onVisualComplete: () => this.setStateIfMounted({msg: errorMsg}),
+        }, requestId);
       });
   }
 
@@ -348,17 +629,11 @@ class AuthCallback extends React.Component {
       return renderLoginPanel(application, this.state.getVerifyTotp, this);
     }
 
-    return (
-      <div style={{display: "flex", justifyContent: "center", alignItems: "center"}}>
-        {
-          (this.state.msg === null) ? (
-            <Spin size="large" tip={i18next.t("login:Signing in...")} style={{paddingTop: "10%"}} />
-          ) : (
-            Util.renderMessageLarge(this, this.state.msg)
-          )
-        }
-      </div>
-    );
+    if (this.state.msg === null) {
+      return null;
+    }
+
+    return Util.renderMessageLarge(this, this.state.msg);
   }
 }
 

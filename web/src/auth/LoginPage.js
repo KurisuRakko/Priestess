@@ -34,12 +34,16 @@ import {SendCodeInput} from "../common/SendCodeInput";
 import LanguageSelect from "../common/select/LanguageSelect";
 import {CaptchaModal} from "../common/modal/CaptchaModal";
 import RedirectForm from "../common/RedirectForm";
-import {RequiredMfa} from "./mfa/MfaAuthVerifyForm";
+import {NextMfa, RequiredMfa} from "./mfa/MfaAuthVerifyForm";
 import {GoogleOneTapLoginVirtualButton} from "./GoogleLoginButton";
 import * as ProviderButton from "./ProviderButton";
 import {createFormAndSubmit, goToLink} from "../Setting";
 import WeChatLoginPanel from "./WeChatLoginPanel";
 import {CountryCodeSelect} from "../common/select/CountryCodeSelect";
+import {
+  showLoginSuccessOverlay as showLoginSuccessOverlayPopup,
+  startLoginTransitionOverlay as startLoginTransitionOverlayPopup
+} from "../common/LoginSuccessOverlay";
 import "./LoginPage.less";
 const FaceRecognitionCommonModal = lazy(() => import("../common/modal/FaceRecognitionCommonModal"));
 const FaceRecognitionModal = lazy(() => import("../common/modal/FaceRecognitionModal"));
@@ -54,6 +58,8 @@ class LoginPage extends React.Component {
     this.methodSwitchTimers = [];
     this.panelHeightAnimationFrame = null;
     this.panelHeightSecondAnimationFrame = null;
+    this.loginTransitionOverlayController = null;
+    this.isUnmounted = false;
     const urlParams = new URLSearchParams(this.props.location?.search);
     this.state = {
       classes: props,
@@ -102,6 +108,7 @@ class LoginPage extends React.Component {
   }
 
   componentDidMount() {
+    this.isUnmounted = false;
     if (this.getApplicationObj() === undefined) {
       if (this.state.type === "login" || this.state.type === "saml") {
         this.getApplication();
@@ -153,8 +160,16 @@ class LoginPage extends React.Component {
   }
 
   componentWillUnmount() {
+    this.isUnmounted = true;
+    this.abortLoginTransition();
     this.clearMethodSwitchTimers();
     this.cancelPanelHeightMeasurement();
+  }
+
+  setStateIfMounted(nextState, callback = undefined) {
+    if (!this.isUnmounted) {
+      this.setState(nextState, callback);
+    }
   }
 
   clearMethodSwitchTimers() {
@@ -301,14 +316,21 @@ class LoginPage extends React.Component {
       .then((res) => {
         if (res.status === "ok") {
           if (res.data) {
-            this.setState({
+            this.setStateIfMounted({
               openCaptchaModal: true,
               values: values,
+              loginLoading: false,
             });
-            return null;
+            return;
           }
         }
-        this.login(values);
+        if (!this.isUnmounted) {
+          this.login(values);
+        }
+      })
+      .catch((error) => {
+        this.setStateIfMounted({loginLoading: false});
+        Setting.showMessage("error", this.getLoginTransitionErrorMessage(error));
       });
   }
 
@@ -378,6 +400,125 @@ class LoginPage extends React.Component {
 
   getApplicationObj() {
     return this.props.application;
+  }
+
+  getLoginTransitionOverlayProps(values = {}, overrides = {}) {
+    const application = this.getApplicationObj();
+    const organizationName = overrides.organizationName
+      || application?.organizationObj?.displayName
+      || application?.organization
+      || values?.organization
+      || "";
+    const username = overrides.username
+      || values?.username
+      || this.state.username
+      || this.state.prefilledUsername
+      || "";
+    const themeData = Setting.getThemeData(application?.organizationObj, application);
+
+    return {
+      loadingTitle: overrides.loadingTitle || i18next.t("login:Signing in..."),
+      organizationName: organizationName,
+      username: username,
+      title: overrides.title || i18next.t("application:Logged in successfully"),
+      description: overrides.description,
+      primaryColor: overrides.primaryColor || themeData?.colorPrimary,
+      durationMs: overrides.durationMs,
+      postAnimationDelayMs: overrides.postAnimationDelayMs,
+      onVisualComplete: overrides.onVisualComplete,
+    };
+  }
+
+  clearLoginTransitionOverlayController(controller = this.loginTransitionOverlayController) {
+    if (this.loginTransitionOverlayController === controller) {
+      this.loginTransitionOverlayController = null;
+    }
+  }
+
+  beginLoginTransition(values = {}, overrides = {}) {
+    if (this.isUnmounted) {
+      return null;
+    }
+
+    if (this.loginTransitionOverlayController === null) {
+      this.loginTransitionOverlayController = startLoginTransitionOverlayPopup(this.getLoginTransitionOverlayProps(values, overrides));
+    }
+
+    return this.loginTransitionOverlayController;
+  }
+
+  abortLoginTransition() {
+    if (this.loginTransitionOverlayController === null) {
+      return;
+    }
+
+    const controller = this.loginTransitionOverlayController;
+    this.loginTransitionOverlayController = null;
+    controller.dismiss();
+  }
+
+  completeLoginTransition(values = {}, overrides = {}) {
+    if (this.isUnmounted) {
+      return Promise.resolve();
+    }
+
+    const overlayProps = this.getLoginTransitionOverlayProps(values, overrides);
+    const controller = this.loginTransitionOverlayController;
+    if (controller === null) {
+      return showLoginSuccessOverlayPopup(overlayProps);
+    }
+
+    const outcomePromise = controller.succeed(overlayProps);
+    this.clearLoginTransitionOverlayController(controller);
+    return outcomePromise;
+  }
+
+  failLoginTransition(values = {}, overrides = {}) {
+    if (this.isUnmounted) {
+      return Promise.resolve();
+    }
+
+    const controller = this.beginLoginTransition(values, overrides);
+    if (controller === null) {
+      return Promise.resolve();
+    }
+
+    const outcomePromise = controller.fail(this.getLoginTransitionOverlayProps(values, overrides));
+    this.clearLoginTransitionOverlayController(controller);
+    return outcomePromise;
+  }
+
+  shouldDismissLoginTransitionOverlay(res) {
+    return res?.data === RequiredMfa
+      || res?.data === NextMfa
+      || res?.data === "SelectPlan"
+      || res?.data === "BuyPlanResult";
+  }
+
+  getLoginTransitionErrorMessage(error) {
+    const errorText = error?.message || (typeof error === "string" ? error : "");
+    if (errorText === "") {
+      return i18next.t("general:Failed to connect to server");
+    }
+
+    return `${i18next.t("general:Failed to connect to server")}: ${errorText}`;
+  }
+
+  continueLoggedInSession(nextAction = null, redirectUrl = undefined) {
+    return Promise.resolve(this.props.onLoginSuccess(redirectUrl)).then(() => {
+      if (typeof nextAction === "function") {
+        return nextAction();
+      }
+
+      return undefined;
+    });
+  }
+
+  continueToAccountPage() {
+    return this.continueLoggedInSession(() => {
+      sessionStorage.setItem("signinUrl", window.location.pathname + window.location.search);
+      Setting.goToLinkSoft(this, "/account");
+    });
   }
 
   getDefaultLoginMethod(application) {
@@ -551,7 +692,7 @@ class LoginPage extends React.Component {
 
   onFinish(values) {
     const loginMethod = this.getDisplayedLoginMethod();
-    this.setState({loginLoading: true});
+    this.setStateIfMounted({loginLoading: true});
     if (loginMethod === "webAuthn") {
       let username = this.state.username;
       if (username === null || username === "") {
@@ -576,16 +717,22 @@ class LoginPage extends React.Component {
       }).then(res => res.json())
         .then((res) => {
           if (res.status === "error") {
-            this.setState({
+            this.setStateIfMounted({
               loginLoading: false,
             });
             Setting.showMessage("error", res.msg);
             return;
           }
-          this.setState({
+          this.setStateIfMounted({
             openFaceRecognitionModal: true,
             values: values,
+            loginLoading: false,
           });
+        }).catch((error) => {
+          this.setStateIfMounted({
+            loginLoading: false,
+          });
+          Setting.showMessage("error", this.getLoginTransitionErrorMessage(error));
         });
       return;
     }
@@ -593,6 +740,7 @@ class LoginPage extends React.Component {
       const organization = this.getApplicationObj()?.organizationObj;
       const [passwordCipher, errorMessage] = Obfuscator.encryptByPasswordObfuscator(organization?.passwordObfuscatorType, organization?.passwordObfuscatorKey, values["password"]);
       if (errorMessage.length > 0) {
+        this.setStateIfMounted({loginLoading: false});
         Setting.showMessage("error", errorMessage);
         return;
       } else {
@@ -603,9 +751,10 @@ class LoginPage extends React.Component {
       const inlineCaptchaEnabled = Setting.isInlineCaptchaEnabled(application);
       if (!inlineCaptchaEnabled) {
         if (captchaRule === Setting.CaptchaRule.Always) {
-          this.setState({
+          this.setStateIfMounted({
             openCaptchaModal: true,
             values: values,
+            loginLoading: false,
           });
           return;
         } else if (captchaRule === Setting.CaptchaRule.Dynamic) {
@@ -636,15 +785,10 @@ class LoginPage extends React.Component {
       const casParams = Util.getCasParameters();
       values["signinMethod"] = this.getCurrentLoginMethod();
       values["type"] = this.state.type;
+      this.beginLoginTransition(values);
       AuthBackend.loginCas(values, casParams).then((res) => {
-        const loginHandler = (res) => {
-          let msg = "Logged in successfully. ";
-          if (casParams.service === "") {
-            // If service was not specified, Casdoor must display a message notifying the client that it has successfully initiated a single sign-on session.
-            msg += "Now you can visit apps protected by Priestess.";
-          }
-          Setting.showMessage("success", msg);
-
+        const loginHandler = async(res) => {
+          await this.completeLoginTransition(values);
           if (casParams.service !== "") {
             const st = res.data;
             const newUrl = new URL(casParams.service);
@@ -654,48 +798,67 @@ class LoginPage extends React.Component {
         };
 
         if (res.status === "ok") {
+          if (this.shouldDismissLoginTransitionOverlay(res)) {
+            this.abortLoginTransition();
+          }
           Setting.checkLoginMfa(res, values, casParams, loginHandler, this);
         } else {
-          Setting.showMessage("error", `${i18next.t("application:Failed to sign in")}: ${res.msg}`);
+          this.failLoginTransition(values, {description: res.msg});
           if (shouldRefreshCaptcha) {
             this.refreshInlineCaptcha();
           }
         }
+      }).catch((error) => {
+        this.failLoginTransition(values, {description: this.getLoginTransitionErrorMessage(error)});
       }).finally(() => {
-        this.setState({loginLoading: false});
+        this.setStateIfMounted({loginLoading: false});
       });
     } else {
       // OAuth
       const oAuthParams = Util.getOAuthGetParameters();
       this.populateOauthValues(values);
+      this.beginLoginTransition(values);
       AuthBackend.login(values, oAuthParams)
         .then((res) => {
-          const loginHandler = (res) => {
+          const loginHandler = async(res) => {
             const responseType = values["type"];
             const responseTypes = responseType.split(" ");
             const responseMode = oAuthParams?.responseMode || "query";
             if (responseType === "login") {
               if (res.data3) {
-                sessionStorage.setItem("signinUrl", window.location.pathname + window.location.search);
-                Setting.goToLinkSoft(this, "/account");
+                await this.completeLoginTransition(values, {
+                  onVisualComplete: () => this.continueToAccountPage(),
+                });
                 return;
               }
-              Setting.showMessage("success", i18next.t("application:Logged in successfully"));
-              this.props.onLoginSuccess();
+              await this.completeLoginTransition(values, {
+                onVisualComplete: () => this.continueLoggedInSession(),
+              });
             } else if (responseType === "code") {
+              if (res.data3) {
+                await this.completeLoginTransition(values, {
+                  onVisualComplete: () => this.continueToAccountPage(),
+                });
+                return;
+              }
+              await this.completeLoginTransition(values);
               this.postCodeLoginAction(res);
             } else if (responseType === "device") {
-              Setting.showMessage("success", "Successful login");
-              this.setState({
-                userCodeStatus: "success",
+              await this.completeLoginTransition(values, {
+                onVisualComplete: () => {
+                  this.setStateIfMounted({
+                    userCodeStatus: "success",
+                  });
+                },
               });
             } else if (responseTypes.includes("token") || responseTypes.includes("id_token")) {
               if (res.data3) {
-                sessionStorage.setItem("signinUrl", window.location.pathname + window.location.search);
-                Setting.goToLinkSoft(this, "/account");
+                await this.completeLoginTransition(values, {
+                  onVisualComplete: () => this.continueToAccountPage(),
+                });
                 return;
               }
-              const amendatoryResponseType = responseType === "token" ? "access_token" : responseType;
+              await this.completeLoginTransition(values);
               const accessToken = res.data;
               if (responseMode === "form_post") {
                 const params = {
@@ -706,7 +869,7 @@ class LoginPage extends React.Component {
                 };
                 createFormAndSubmit(oAuthParams?.redirectUri, params);
               } else {
-                Setting.goToLink(`${oAuthParams.redirectUri}#${amendatoryResponseType}=${accessToken}&state=${oAuthParams.state}&token_type=bearer`);
+                Setting.goToLink(Setting.buildOAuthTokenRedirectUrl(oAuthParams.redirectUri, responseType, accessToken, oAuthParams.state));
               }
             } else if (responseType === "saml") {
               if (res.data === RequiredMfa) {
@@ -714,12 +877,14 @@ class LoginPage extends React.Component {
                 return;
               }
               if (res.data3) {
-                sessionStorage.setItem("signinUrl", window.location.pathname + window.location.search);
-                Setting.goToLinkSoft(this, "/account");
+                await this.completeLoginTransition(values, {
+                  onVisualComplete: () => this.continueToAccountPage(),
+                });
                 return;
               }
+              await this.completeLoginTransition(values);
               if (res.data2.method === "POST") {
-                this.setState({
+                this.setStateIfMounted({
                   samlResponse: res.data,
                   redirectUrl: res.data2.redirectUrl,
                   relayState: oAuthParams.relayState,
@@ -733,16 +898,21 @@ class LoginPage extends React.Component {
           };
 
           if (res.status === "ok") {
+            if (this.shouldDismissLoginTransitionOverlay(res)) {
+              this.abortLoginTransition();
+            }
             Setting.checkLoginMfa(res, values, oAuthParams, loginHandler, this);
           } else {
-            Setting.showMessage("error", `${i18next.t("application:Failed to sign in")}: ${res.msg}`);
+            this.failLoginTransition(values, {description: res.msg});
             if (shouldRefreshCaptcha) {
               this.refreshInlineCaptcha();
             }
           }
+        }).catch((error) => {
+          this.failLoginTransition(values, {description: this.getLoginTransitionErrorMessage(error)});
         }).finally(() => {
           localStorage.setItem("lastLoginOrg", values?.organization || "");
-          this.setState({loginLoading: false});
+          this.setStateIfMounted({loginLoading: false});
         });
     }
   }
@@ -1440,6 +1610,10 @@ class LoginPage extends React.Component {
         });
       })
       .then((assertion) => {
+        if (this.isUnmounted) {
+          return null;
+        }
+
         const authData = assertion.response.authenticatorData;
         const clientDataJSON = assertion.response.clientDataJSON;
         const rawId = assertion.rawId;
@@ -1452,6 +1626,7 @@ class LoginPage extends React.Component {
         if (values["type"] === "code") {
           finishUrl = `${Setting.ServerUrl}/api/webauthn/signin/finish?responseType=${values["type"]}&clientId=${oAuthParams.clientId}&scope=${oAuthParams.scope}&redirectUri=${oAuthParams.redirectUri}&nonce=${oAuthParams.nonce}&state=${oAuthParams.state}&codeChallenge=${oAuthParams.codeChallenge}&challengeMethod=${oAuthParams.challengeMethod}${resourceQuery}`;
         }
+        this.beginLoginTransition(values, {username: username});
         return fetch(finishUrl, {
           method: "POST",
           credentials: "include",
@@ -1467,29 +1642,68 @@ class LoginPage extends React.Component {
             },
           }),
         })
-          .then(res => res.json()).then((res) => {
+          .then(res => res.json()).then(async(res) => {
+            if (res === null || this.isUnmounted) {
+              return;
+            }
+
             if (res.status === "ok") {
               const responseType = values["type"];
+              const responseTypes = responseType.split(" ");
+              const responseMode = oAuthParams?.responseMode || "query";
               if (responseType === "code") {
+                if (res.data3) {
+                  await this.completeLoginTransition(values, {
+                    username: username,
+                    onVisualComplete: () => this.continueToAccountPage(),
+                  });
+                  return;
+                }
+                await this.completeLoginTransition(values, {username: username});
                 this.postCodeLoginAction(res);
-              } else if (responseType === "token" || responseType === "id_token") {
+              } else if (responseTypes.includes("token") || responseTypes.includes("id_token")) {
+                if (res.data3) {
+                  await this.completeLoginTransition(values, {
+                    username: username,
+                    onVisualComplete: () => this.continueToAccountPage(),
+                  });
+                  return;
+                }
+                await this.completeLoginTransition(values, {username: username});
                 const accessToken = res.data;
-                Setting.goToLink(`${oAuthParams.redirectUri}#${responseType}=${accessToken}?state=${oAuthParams.state}&token_type=bearer`);
+                if (responseMode === "form_post") {
+                  const params = {
+                    token: responseTypes.includes("token") ? res.data : null,
+                    id_token: responseTypes.includes("id_token") ? res.data : null,
+                    token_type: "bearer",
+                    state: oAuthParams?.state,
+                  };
+                  createFormAndSubmit(oAuthParams?.redirectUri, params);
+                } else {
+                  Setting.goToLink(Setting.buildOAuthTokenRedirectUrl(oAuthParams.redirectUri, responseType, accessToken, oAuthParams.state));
+                }
               } else {
-                Setting.showMessage("success", i18next.t("login:Successfully logged in with WebAuthn credentials"));
-                Setting.goToLink("/");
+                await this.completeLoginTransition(values, {
+                  username: username,
+                  onVisualComplete: () => this.continueLoggedInSession(() => {
+                    Setting.goToLinkSoft(this, "/");
+                  }),
+                });
               }
             } else {
-              Setting.showMessage("error", res.msg);
+              this.failLoginTransition(values, {username: username, description: res.msg});
             }
           })
           .catch(error => {
-            Setting.showMessage("error", `${i18next.t("general:Failed to connect to server")}${error}`);
+            this.failLoginTransition(values, {
+              username: username,
+              description: this.getLoginTransitionErrorMessage(error),
+            });
           });
       }).catch(error => {
         Setting.showMessage("error", `${error.message}`);
       }).finally(() => {
-        this.setState({
+        this.setStateIfMounted({
           loginLoading: false,
         });
       });

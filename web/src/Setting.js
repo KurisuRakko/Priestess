@@ -62,6 +62,20 @@ export function getThemeData(organization, application) {
   }
 }
 
+export function buildOAuthTokenRedirectUrl(redirectUri, responseType, token, state) {
+  const responseTypes = (responseType || "").split(" ").filter(Boolean);
+  const hashParams = new URLSearchParams();
+  if (responseTypes.includes("token")) {
+    hashParams.set("access_token", token);
+  }
+  if (responseTypes.includes("id_token")) {
+    hashParams.set("id_token", token);
+  }
+  hashParams.set("state", state || "");
+  hashParams.set("token_type", "bearer");
+  return `${redirectUri}#${hashParams.toString()}`;
+}
+
 export function getAlgorithm(themeAlgorithmNames) {
   return themeAlgorithmNames.sort().reverse().map((algorithmName) => {
     if (algorithmName === "dark") {
