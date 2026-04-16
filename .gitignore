@@ -1,0 +1,32 @@
+# Build output
+/casdoor
+/casdoor.exe
+
+# Go
+/vendor/
+
+# Web build artifacts
+/web/build
+/web/build */
+
+# Claude Code
+/.claude/
+/AGENTS.md
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# Credentials / secrets
+*.pem
+*.key
+/conf/app.conf
