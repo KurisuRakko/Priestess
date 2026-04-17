@@ -14,7 +14,7 @@
 
 import React, {Suspense, lazy} from "react";
 import {Button, Checkbox, Col, Form, Input, Result, Spin, Tabs, message} from "antd";
-import {ArrowLeftOutlined, LockOutlined, UserOutlined} from "@ant-design/icons";
+import {ArrowLeftOutlined, DownOutlined, LockOutlined, UpOutlined, UserOutlined} from "@ant-design/icons";
 import {withRouter} from "react-router-dom";
 import * as UserWebauthnBackend from "../backend/UserWebauthnBackend";
 import OrganizationSelect from "../common/select/OrganizationSelect";
@@ -50,7 +50,7 @@ const FaceRecognitionModal = lazy(() => import("../common/modal/FaceRecognitionM
 
 const heightTransitionDurationMs = 420;
 
-class LoginPage extends React.Component {
+export class LoginPage extends React.Component {
   constructor(props) {
     super(props);
     this.captchaRef = React.createRef();
@@ -89,6 +89,7 @@ class LoginPage extends React.Component {
       displayedLoginMethod: undefined,
       isMethodSwitching: false,
       panelHeight: null,
+      isLoginFormExpanded: false,
     };
 
     if (this.state.type === "cas" && props.match?.params.casApplicationName !== undefined) {
@@ -101,6 +102,7 @@ class LoginPage extends React.Component {
     this.form = React.createRef();
     this.refreshInlineCaptcha = this.refreshInlineCaptcha.bind(this);
     this.handleMethodChange = this.handleMethodChange.bind(this);
+    this.handleLoginFormToggle = this.handleLoginFormToggle.bind(this);
   }
 
   refreshInlineCaptcha() {
@@ -127,6 +129,11 @@ class LoginPage extends React.Component {
     }
     if (prevProps.application !== this.props.application) {
       this.setLoginMethodImmediately(this.getDefaultLoginMethod(this.props.application));
+    }
+    if (prevProps.account !== this.props.account) {
+      this.setState({
+        isLoginFormExpanded: !this.shouldRenderSignedInBox(),
+      });
     }
     if (this.props.account !== undefined) {
       if (prevProps.account === this.props.account && prevProps.application === this.props.application) {
@@ -311,6 +318,52 @@ class LoginPage extends React.Component {
     });
   }
 
+  handleLoginFormToggle() {
+    const nextExpanded = !this.state.isLoginFormExpanded;
+
+    if (this.prefersReducedMotion()) {
+      this.setState({isLoginFormExpanded: nextExpanded});
+      return;
+    }
+
+    // 复用现有的高度动画逻辑
+    const panel = this.panelContentRef.current?.parentElement;
+    if (!panel) {
+      this.setState({isLoginFormExpanded: nextExpanded});
+      return;
+    }
+
+    const fromHeight = panel.getBoundingClientRect().height;
+    panel.style.transition = "none";
+    panel.style.height = fromHeight + "px";
+
+    this.setState({
+      isLoginFormExpanded: nextExpanded,
+      isMethodSwitching: true,
+    }, () => {
+      this.panelHeightAnimationFrame = window.requestAnimationFrame(() => {
+        this.panelHeightAnimationFrame = null;
+        this.panelHeightSecondAnimationFrame = window.requestAnimationFrame(() => {
+          this.panelHeightSecondAnimationFrame = null;
+
+          panel.style.height = "auto";
+          const toHeight = panel.getBoundingClientRect().height;
+          panel.style.height = fromHeight + "px";
+          // eslint-disable-next-line no-unused-expressions
+          panel.offsetHeight;
+
+          panel.style.transition = "";
+          panel.style.height = toHeight + "px";
+
+          this.scheduleMethodSwitchTimer(() => {
+            panel.style.height = "";
+            this.setState({isMethodSwitching: false});
+          }, heightTransitionDurationMs);
+        });
+      });
+    });
+  }
+
   checkCaptchaStatus(values) {
     AuthBackend.getCaptchaStatus(values)
       .then((res) => {
@@ -420,7 +473,7 @@ class LoginPage extends React.Component {
       loadingTitle: overrides.loadingTitle || i18next.t("login:Signing in..."),
       organizationName: organizationName,
       username: username,
-      title: overrides.title || i18next.t("application:Logged in successfully"),
+      title: overrides.title,
       description: overrides.description,
       primaryColor: overrides.primaryColor || themeData?.colorPrimary,
       durationMs: overrides.durationMs,
@@ -785,10 +838,13 @@ class LoginPage extends React.Component {
       const casParams = Util.getCasParameters();
       values["signinMethod"] = this.getCurrentLoginMethod();
       values["type"] = this.state.type;
+      const requestStartTime = Date.now();
       this.beginLoginTransition(values);
       AuthBackend.loginCas(values, casParams).then((res) => {
         const loginHandler = async(res) => {
-          await this.completeLoginTransition(values);
+          const elapsedMs = Date.now() - requestStartTime;
+          const durationMs = Math.max(1800, Math.min(4000, elapsedMs + 1200));
+          await this.completeLoginTransition(values, {durationMs});
           if (casParams.service !== "") {
             const st = res.data;
             const newUrl = new URL(casParams.service);
@@ -803,13 +859,17 @@ class LoginPage extends React.Component {
           }
           Setting.checkLoginMfa(res, values, casParams, loginHandler, this);
         } else {
-          this.failLoginTransition(values, {description: res.msg});
+          const elapsedMs = Date.now() - requestStartTime;
+          const durationMs = Math.max(1800, Math.min(4000, elapsedMs + 1200));
+          this.failLoginTransition(values, {durationMs, description: res.msg});
           if (shouldRefreshCaptcha) {
             this.refreshInlineCaptcha();
           }
         }
       }).catch((error) => {
-        this.failLoginTransition(values, {description: this.getLoginTransitionErrorMessage(error)});
+        const elapsedMs = Date.now() - requestStartTime;
+        const durationMs = Math.max(1800, Math.min(4000, elapsedMs + 1200));
+        this.failLoginTransition(values, {durationMs, description: this.getLoginTransitionErrorMessage(error)});
       }).finally(() => {
         this.setStateIfMounted({loginLoading: false});
       });
@@ -817,34 +877,41 @@ class LoginPage extends React.Component {
       // OAuth
       const oAuthParams = Util.getOAuthGetParameters();
       this.populateOauthValues(values);
+      const requestStartTime = Date.now();
       this.beginLoginTransition(values);
       AuthBackend.login(values, oAuthParams)
         .then((res) => {
           const loginHandler = async(res) => {
+            const elapsedMs = Date.now() - requestStartTime;
+            const durationMs = Math.max(1800, Math.min(4000, elapsedMs + 1200));
             const responseType = values["type"];
             const responseTypes = responseType.split(" ");
             const responseMode = oAuthParams?.responseMode || "query";
             if (responseType === "login") {
               if (res.data3) {
                 await this.completeLoginTransition(values, {
+                  durationMs,
                   onVisualComplete: () => this.continueToAccountPage(),
                 });
                 return;
               }
               await this.completeLoginTransition(values, {
+                durationMs,
                 onVisualComplete: () => this.continueLoggedInSession(),
               });
             } else if (responseType === "code") {
               if (res.data3) {
                 await this.completeLoginTransition(values, {
+                  durationMs,
                   onVisualComplete: () => this.continueToAccountPage(),
                 });
                 return;
               }
-              await this.completeLoginTransition(values);
+              await this.completeLoginTransition(values, {durationMs});
               this.postCodeLoginAction(res);
             } else if (responseType === "device") {
               await this.completeLoginTransition(values, {
+                durationMs,
                 onVisualComplete: () => {
                   this.setStateIfMounted({
                     userCodeStatus: "success",
@@ -854,11 +921,12 @@ class LoginPage extends React.Component {
             } else if (responseTypes.includes("token") || responseTypes.includes("id_token")) {
               if (res.data3) {
                 await this.completeLoginTransition(values, {
+                  durationMs,
                   onVisualComplete: () => this.continueToAccountPage(),
                 });
                 return;
               }
-              await this.completeLoginTransition(values);
+              await this.completeLoginTransition(values, {durationMs});
               const accessToken = res.data;
               if (responseMode === "form_post") {
                 const params = {
@@ -878,11 +946,12 @@ class LoginPage extends React.Component {
               }
               if (res.data3) {
                 await this.completeLoginTransition(values, {
+                  durationMs,
                   onVisualComplete: () => this.continueToAccountPage(),
                 });
                 return;
               }
-              await this.completeLoginTransition(values);
+              await this.completeLoginTransition(values, {durationMs});
               if (res.data2.method === "POST") {
                 this.setStateIfMounted({
                   samlResponse: res.data,
@@ -903,13 +972,17 @@ class LoginPage extends React.Component {
             }
             Setting.checkLoginMfa(res, values, oAuthParams, loginHandler, this);
           } else {
-            this.failLoginTransition(values, {description: res.msg});
+            const elapsedMs = Date.now() - requestStartTime;
+            const durationMs = Math.max(1800, Math.min(4000, elapsedMs + 1200));
+            this.failLoginTransition(values, {durationMs, description: res.msg});
             if (shouldRefreshCaptcha) {
               this.refreshInlineCaptcha();
             }
           }
         }).catch((error) => {
-          this.failLoginTransition(values, {description: this.getLoginTransitionErrorMessage(error)});
+          const elapsedMs = Date.now() - requestStartTime;
+          const durationMs = Math.max(1800, Math.min(4000, elapsedMs + 1200));
+          this.failLoginTransition(values, {durationMs, description: this.getLoginTransitionErrorMessage(error)});
         }).finally(() => {
           localStorage.setItem("lastLoginOrg", values?.organization || "");
           this.setStateIfMounted({loginLoading: false});
@@ -1576,8 +1649,18 @@ class LoginPage extends React.Component {
             this.login(values);
           }}
         />
-        <div className="signed-in-box-divider">
-          {i18next.t("login:Or sign in with another account")}&nbsp;:
+        <div className="login-other-account-toggle">
+          <Button
+            type="text"
+            size="large"
+            onClick={() => this.handleLoginFormToggle()}
+            className="login-other-account-button"
+            icon={this.state.isLoginFormExpanded ? <UpOutlined /> : <DownOutlined />}
+          >
+            {this.state.isLoginFormExpanded
+              ? i18next.t("login:Hide")
+              : i18next.t("login:Login with another account")}
+          </Button>
         </div>
       </div>
     );
@@ -1851,14 +1934,21 @@ class LoginPage extends React.Component {
 
     if (this.state.getVerifyTotp !== undefined) {
       return this.state.getVerifyTotp();
-    } else {
-      return (
-        <React.Fragment>
-          {this.renderSignedInBox()}
-          {this.renderForm(application)}
-        </React.Fragment>
-      );
     }
+
+    const shouldShowForm = !this.shouldRenderSignedInBox(application)
+      || this.state.isLoginFormExpanded;
+
+    return (
+      <React.Fragment>
+        {this.renderSignedInBox()}
+        {shouldShowForm && (
+          <div className="login-form-container">
+            {this.renderForm(application)}
+          </div>
+        )}
+      </React.Fragment>
+    );
   }
 
   renderOrganizationChoiceBox(orgChoiceMode) {

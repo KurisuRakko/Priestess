@@ -21,6 +21,7 @@ import * as Setting from "../Setting";
 import i18next from "i18next";
 import {withRouter} from "react-router-dom";
 import * as Util from "./Util";
+import "./ConsentPage.less";
 
 class ConsentPage extends React.Component {
   constructor(props) {
@@ -156,10 +157,11 @@ class ConsentPage extends React.Component {
     const isScopeEmpty = scopeDescriptions.length === 0;
 
     return (
-      <div className="login-content">
+      <div className="login-content consent-page-wrapper">
         <div className={Setting.isDarkTheme(this.props.themeAlgorithm) ? "login-panel-dark" : "login-panel"}>
           <div className="login-form">
             <Card
+              className="consent-card"
               style={{
                 padding: "32px",
                 width: 450,
@@ -170,7 +172,7 @@ class ConsentPage extends React.Component {
             >
               <div style={{textAlign: "center", marginBottom: 24}}>
                 {application.logo && (
-                  <div style={{marginBottom: 16}}>
+                  <div className="consent-logo" style={{marginBottom: 16}}>
                     <img
                       src={application.logo}
                       alt={application.displayName || application.name}
@@ -178,12 +180,12 @@ class ConsentPage extends React.Component {
                     />
                   </div>
                 )}
-                <h2 style={{margin: 0, fontWeight: 600, fontSize: "24px"}}>
+                <h2 className="consent-title" style={{margin: 0, fontWeight: 600, fontSize: "24px"}}>
                   {i18next.t("consent:Authorization Request")}
                 </h2>
               </div>
 
-              <div style={{marginBottom: 32}}>
+              <div className="consent-description" style={{marginBottom: 32}}>
                 <p style={{fontSize: 15, color: "#666", textAlign: "center", lineHeight: "1.6"}}>
                   <span style={{fontWeight: 600, color: "#000"}}>{application.displayName || application.name}</span>
                   {" "}{i18next.t("consent:wants to access your account")}
@@ -198,30 +200,31 @@ class ConsentPage extends React.Component {
               </div>
 
               <div style={{marginBottom: 32}}>
-                <div style={{fontSize: 14, color: "#8c8c8c", marginBottom: 16}}>
+                <div className="consent-scope-header" style={{fontSize: 14, color: "#8c8c8c", marginBottom: 16}}>
                   <LockOutlined style={{marginRight: 8}} /> {i18next.t("consent:This application is requesting")}
                 </div>
-                <div style={{display: "flex", justifyContent: "center"}}>
-                  <List
-                    size="small"
-                    dataSource={scopeDescriptions}
-                    style={{width: "100%"}}
-                    renderItem={item => (
-                      <List.Item style={{borderBottom: "none", width: "100%"}}>
-                        <div style={{display: "inline-grid", gridTemplateColumns: "16px auto", columnGap: 8, alignItems: "start"}}>
-                          <CheckOutlined style={{color: "#52c41a", fontSize: "14px", marginTop: "4px", justifySelf: "center"}} />
+                <List
+                  size="small"
+                  dataSource={scopeDescriptions}
+                  style={{width: "100%"}}
+                  renderItem={(item, index) => (
+                    <List.Item className="consent-scope-item" style={{borderBottom: "none", "--scope-index": index}}>
+                      <div style={{width: "100%"}}>
+                        <div style={{display: "grid", gridTemplateColumns: "16px 1fr", columnGap: 8, alignItems: "start", marginBottom: 2}}>
+                          <CheckOutlined style={{color: "#52c41a", fontSize: "14px", marginTop: "4px"}} />
                           <div style={{fontWeight: 500, fontSize: "14px", lineHeight: "22px"}}>{item.displayName || item.scope}</div>
                         </div>
-                        <div style={{fontSize: "12px", color: "#8c8c8c", marginTop: 2}}>{item.description}</div>
-                      </List.Item>
-                    )}
-                  />
-                </div>
+                        <div style={{fontSize: "12px", color: "#8c8c8c", marginLeft: 24}}>{item.description}</div>
+                      </div>
+                    </List.Item>
+                  )}
+                />
               </div>
 
-              <div style={{textAlign: "center", marginBottom: 24}}>
+              <div className="consent-buttons" style={{textAlign: "center", marginBottom: 24}}>
                 <Space size={16}>
                   <Button
+                    className="consent-allow-button"
                     type="primary"
                     size="large"
                     shape="round"
@@ -233,6 +236,7 @@ class ConsentPage extends React.Component {
                     {i18next.t("consent:Allow")}
                   </Button>
                   <Button
+                    className="consent-deny-button"
                     size="large"
                     shape="round"
                     onClick={() => this.handleDeny()}
@@ -244,7 +248,7 @@ class ConsentPage extends React.Component {
                 </Space>
               </div>
 
-              <div style={{padding: "16px", backgroundColor: "#fafafa", borderRadius: "8px", border: "1px solid #f0f0f0"}}>
+              <div className="consent-footer" style={{padding: "16px", backgroundColor: "#fafafa", borderRadius: "8px", border: "1px solid #f0f0f0"}}>
                 <p style={{margin: 0, fontSize: 12, color: "#8c8c8c", textAlign: "center", lineHeight: "1.5"}}>
                   {i18next.t("consent:By clicking Allow, you allow this app to use your information")}
                 </p>

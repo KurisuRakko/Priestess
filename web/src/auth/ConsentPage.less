@@ -1,0 +1,333 @@
+/* Consent Page Animations */
+
+.consent-page-wrapper {
+  animation: consent-fade-in 400ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+.consent-card {
+  animation: consent-card-enter 480ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  transition: box-shadow 300ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.consent-card:hover {
+  box-shadow: 0 12px 32px rgb(0 0 0 / 8%) !important;
+}
+
+.consent-logo {
+  animation: consent-logo-in 420ms cubic-bezier(0.4, 0, 0.2, 1) 100ms both;
+}
+
+.consent-logo img {
+  transition: transform 300ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.consent-logo:hover img {
+  transform: scale(1.05);
+}
+
+.consent-title {
+  animation: consent-title-in 380ms cubic-bezier(0.4, 0, 0.2, 1) 180ms both;
+}
+
+.consent-description {
+  animation: consent-text-in 360ms cubic-bezier(0.4, 0, 0.2, 1) 240ms both;
+}
+
+.consent-scope-header {
+  animation: consent-text-in 340ms cubic-bezier(0.4, 0, 0.2, 1) 300ms both;
+}
+
+.consent-scope-item {
+  animation: consent-scope-in 320ms cubic-bezier(0.4, 0, 0.2, 1) both;
+  animation-delay: calc(var(--scope-index, 0) * 60ms + 360ms);
+  transition: background-color 200ms ease;
+  padding: 8px 12px;
+  border-radius: 8px;
+  margin-bottom: 4px;
+  display: block !important;
+}
+
+.consent-scope-item:hover {
+  background-color: rgb(24 144 255 / 4%);
+}
+
+.consent-buttons {
+  animation: consent-text-in 380ms cubic-bezier(0.4, 0, 0.2, 1) 420ms both;
+}
+
+.consent-footer {
+  animation: consent-text-in 360ms cubic-bezier(0.4, 0, 0.2, 1) 480ms both;
+  transition: all 200ms ease;
+}
+
+.consent-footer:hover {
+  background-color: #f5f5f5 !important;
+  border-color: #e8e8e8 !important;
+}
+
+/* Button hover effects with ripple */
+.consent-allow-button {
+  transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.consent-allow-button::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 40%);
+  transform: translate(-50%, -50%);
+  transition:
+    width 500ms cubic-bezier(0.4, 0, 0.2, 1),
+    height 500ms cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 500ms cubic-bezier(0.4, 0, 0.2, 1);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.consent-allow-button:not(:active)::before {
+  opacity: 0;
+}
+
+.consent-allow-button:active:not(:disabled)::before {
+  width: 300px;
+  height: 300px;
+  opacity: 1;
+  transition-duration: 0ms;
+}
+
+.consent-allow-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgb(24 144 255 / 35%);
+}
+
+.consent-allow-button:active:not(:disabled) {
+  transform: translateY(0);
+  transition-duration: 100ms;
+}
+
+.consent-deny-button {
+  transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.consent-deny-button::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: rgb(0 0 0 / 8%);
+  transform: translate(-50%, -50%);
+  transition:
+    width 500ms cubic-bezier(0.4, 0, 0.2, 1),
+    height 500ms cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 500ms cubic-bezier(0.4, 0, 0.2, 1);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.consent-deny-button:not(:active)::before {
+  opacity: 0;
+}
+
+.consent-deny-button:active:not(:disabled)::before {
+  width: 300px;
+  height: 300px;
+  opacity: 1;
+  transition-duration: 0ms;
+}
+
+.consent-deny-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 12%);
+  border-color: #d9d9d9;
+}
+
+.consent-deny-button:active:not(:disabled) {
+  transform: translateY(0);
+  transition-duration: 100ms;
+}
+
+/* Scope item check icon animation */
+.consent-scope-item .anticon-check {
+  transition: transform 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.consent-scope-item:hover .anticon-check {
+  transform: scale(1.2);
+}
+
+/* Link hover effect */
+.consent-description a {
+  transition: all 200ms ease;
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+}
+
+.consent-description a:hover {
+  border-bottom-color: #1890ff;
+  opacity: 0.8;
+}
+
+/* Keyframes */
+@keyframes consent-fade-in {
+  0% {
+    opacity: 0;
+  }
+
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes consent-card-enter {
+  0% {
+    opacity: 0;
+    transform: translateY(24px) scale(0.97);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes consent-logo-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes consent-title-in {
+  0% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes consent-text-in {
+  0% {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes consent-scope-in {
+  0% {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Dark theme support */
+.login-panel-dark .consent-scope-item:hover {
+  background-color: rgb(24 144 255 / 8%);
+}
+
+.login-panel-dark .consent-footer:hover {
+  background-color: rgb(255 255 255 / 4%) !important;
+  border-color: rgb(255 255 255 / 12%) !important;
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .consent-page-wrapper,
+  .consent-card,
+  .consent-logo,
+  .consent-title,
+  .consent-description,
+  .consent-scope-header,
+  .consent-scope-item,
+  .consent-buttons,
+  .consent-footer {
+    animation: consent-fade-simple 200ms ease both !important;
+  }
+
+  @keyframes consent-fade-simple {
+    0% {
+      opacity: 0;
+    }
+
+    100% {
+      opacity: 1;
+    }
+  }
+
+  .consent-card,
+  .consent-logo img,
+  .consent-scope-item,
+  .consent-footer,
+  .consent-allow-button,
+  .consent-deny-button,
+  .consent-scope-item .anticon-check,
+  .consent-description a {
+    transition: none !important;
+  }
+
+  .consent-card:hover,
+  .consent-logo:hover img,
+  .consent-scope-item:hover,
+  .consent-allow-button:hover:not(:disabled),
+  .consent-deny-button:hover:not(:disabled),
+  .consent-scope-item:hover .anticon-check {
+    transform: none !important;
+    box-shadow: none !important;
+  }
+
+  .consent-allow-button::before,
+  .consent-deny-button::before {
+    display: none;
+  }
+}
+
+/* Mobile responsive */
+@media screen and (max-width: 768px) {
+  .consent-card {
+    width: 100% !important;
+    max-width: 450px;
+    margin: 0 16px;
+  }
+
+  .consent-scope-item {
+    padding: 6px 10px !important;
+  }
+
+  .consent-buttons .ant-space {
+    width: 100%;
+  }
+
+  .consent-buttons .ant-btn {
+    flex: 1;
+    min-width: 100px !important;
+  }
+}

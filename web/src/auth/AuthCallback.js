@@ -31,7 +31,7 @@ import {
 const reactFallbackKey = "__casdoor_callback_react";
 const reactFallbackPayloadKey = "casdoor_callback_react_fallback";
 
-class AuthCallback extends React.Component {
+export class AuthCallback extends React.Component {
   constructor(props) {
     super(props);
     this.state = {
@@ -99,7 +99,7 @@ class AuthCallback extends React.Component {
       loadingTitle: overrides.loadingTitle || i18next.t("login:Signing in..."),
       organizationName: organizationName,
       username: username,
-      title: overrides.title || i18next.t("application:Logged in successfully"),
+      title: overrides.title,
       description: overrides.description,
       primaryColor: overrides.primaryColor || themeData?.colorPrimary,
       durationMs: overrides.durationMs,
@@ -221,13 +221,13 @@ class AuthCallback extends React.Component {
     return typeof link === "string" && link.startsWith("http");
   }
 
-  handleCasLoginResult(res, body, casService, innerParams = null, applicationName = "", requestId = this.activeCallbackRequestId) {
+  handleCasLoginResult(res, body, casService, innerParams = null, applicationName = "", requestId = this.activeCallbackRequestId, durationMs = undefined) {
     const handleCasLogin = async(res) => {
       if (!this.isActiveCallbackRequest(requestId)) {
         return;
       }
 
-      await this.completeLoginTransition(innerParams, body, applicationName, {}, requestId);
+      await this.completeLoginTransition(innerParams, body, applicationName, {durationMs}, requestId);
       if (!this.isActiveCallbackRequest(requestId)) {
         return;
       }
@@ -250,7 +250,7 @@ class AuthCallback extends React.Component {
     Setting.checkLoginMfa(res, body, {"service": casService}, handleCasLogin, this);
   }
 
-  handleOAuthLoginResult(res, body, innerParams, queryString, applicationName, responseType, requestId = this.activeCallbackRequestId) {
+  handleOAuthLoginResult(res, body, innerParams, queryString, applicationName, responseType, requestId = this.activeCallbackRequestId, durationMs = undefined) {
     const oAuthParams = Util.getOAuthGetParameters(innerParams);
     const concatChar = oAuthParams?.redirectUri?.includes("?") ? "&" : "?";
     const responseMode = oAuthParams?.responseMode || "query";
@@ -265,12 +265,14 @@ class AuthCallback extends React.Component {
       if (responseType === "login") {
         if (res.data3) {
           await this.completeLoginTransition(innerParams, body, applicationName, {
+            durationMs,
             onVisualComplete: () => this.continueToAccountPage(signinUrl),
           }, requestId);
           return;
         }
         const link = Setting.getFromLink();
         await this.completeLoginTransition(innerParams, body, applicationName, {
+          durationMs,
           onVisualComplete: () => this.continueLoggedInSession(() => {
             Setting.goToLinkSoftOrJumpSelf(this, link);
           }),
@@ -278,12 +280,13 @@ class AuthCallback extends React.Component {
       } else if (responseType === "code") {
         if (res.data3) {
           await this.completeLoginTransition(innerParams, body, applicationName, {
+            durationMs,
             onVisualComplete: () => this.continueToAccountPage(signinUrl),
           }, requestId);
           return;
         }
 
-        await this.completeLoginTransition(innerParams, body, applicationName, {}, requestId);
+        await this.completeLoginTransition(innerParams, body, applicationName, {durationMs}, requestId);
         if (!this.isActiveCallbackRequest(requestId)) {
           return;
         }
@@ -300,12 +303,13 @@ class AuthCallback extends React.Component {
       } else if (responseTypes.includes("token") || responseTypes.includes("id_token")) {
         if (res.data3) {
           await this.completeLoginTransition(innerParams, body, applicationName, {
+            durationMs,
             onVisualComplete: () => this.continueToAccountPage(signinUrl),
           }, requestId);
           return;
         }
 
-        await this.completeLoginTransition(innerParams, body, applicationName, {}, requestId);
+        await this.completeLoginTransition(innerParams, body, applicationName, {durationMs}, requestId);
         if (!this.isActiveCallbackRequest(requestId)) {
           return;
         }
@@ -328,7 +332,7 @@ class AuthCallback extends React.Component {
           from += `?oauth=${oauth}`;
         }
         if (this.isExternalLink(from)) {
-          await this.completeLoginTransition(innerParams, body, applicationName, {}, requestId);
+          await this.completeLoginTransition(innerParams, body, applicationName, {durationMs}, requestId);
           if (!this.isActiveCallbackRequest(requestId)) {
             return;
           }
@@ -337,6 +341,7 @@ class AuthCallback extends React.Component {
         }
 
         await this.completeLoginTransition(innerParams, body, applicationName, {
+          durationMs,
           onVisualComplete: () => this.continueLoggedInSession(() => {
             Setting.goToLinkSoftOrJumpSelf(this, from);
           }),
@@ -344,12 +349,13 @@ class AuthCallback extends React.Component {
       } else if (responseType === "saml") {
         if (res.data3) {
           await this.completeLoginTransition(innerParams, body, applicationName, {
+            durationMs,
             onVisualComplete: () => this.continueToAccountPage(signinUrl),
           }, requestId);
           return;
         }
 
-        await this.completeLoginTransition(innerParams, body, applicationName, {}, requestId);
+        await this.completeLoginTransition(innerParams, body, applicationName, {durationMs}, requestId);
         if (!this.isActiveCallbackRequest(requestId)) {
           return;
         }
@@ -561,16 +567,21 @@ class AuthCallback extends React.Component {
 
     if (this.getResponseType() === "cas") {
       // user is using casdoor as cas sso server, and wants the ticket to be acquired
+      const requestStartTime = Date.now();
       this.beginLoginTransition(innerParams, body, applicationName);
       AuthBackend.loginCas(body, {"service": casService}).then((res) => {
         if (!this.isActiveCallbackRequest(requestId)) {
           return;
         }
 
+        const elapsedMs = Date.now() - requestStartTime;
+        const durationMs = Math.max(1800, Math.min(4000, elapsedMs + 1200));
+
         if (res.status === "ok") {
-          this.handleCasLoginResult(res, body, casService, innerParams, applicationName, requestId);
+          this.handleCasLoginResult(res, body, casService, innerParams, applicationName, requestId, durationMs);
         } else {
           this.failLoginTransition(innerParams, body, applicationName, {
+            durationMs,
             description: res.msg,
             onVisualComplete: () => this.setStateIfMounted({msg: res.msg}),
           }, requestId);
@@ -580,8 +591,11 @@ class AuthCallback extends React.Component {
           return;
         }
 
+        const elapsedMs = Date.now() - requestStartTime;
+        const durationMs = Math.max(1800, Math.min(4000, elapsedMs + 1200));
         const errorMsg = this.getLoginTransitionErrorMessage(error);
         this.failLoginTransition(innerParams, body, applicationName, {
+          durationMs,
           description: errorMsg,
           onVisualComplete: () => this.setStateIfMounted({msg: errorMsg}),
         }, requestId);
@@ -591,6 +605,7 @@ class AuthCallback extends React.Component {
     // OAuth
     const oAuthParams = Util.getOAuthGetParameters(innerParams);
 
+    const requestStartTime = Date.now();
     this.beginLoginTransition(innerParams, body, applicationName);
     AuthBackend.login(body, oAuthParams)
       .then((res) => {
@@ -598,10 +613,14 @@ class AuthCallback extends React.Component {
           return;
         }
 
+        const elapsedMs = Date.now() - requestStartTime;
+        const durationMs = Math.max(1800, Math.min(4000, elapsedMs + 1200));
+
         if (res.status === "ok") {
-          this.handleOAuthLoginResult(res, body, innerParams, queryString, applicationName, this.getResponseType(), requestId);
+          this.handleOAuthLoginResult(res, body, innerParams, queryString, applicationName, this.getResponseType(), requestId, durationMs);
         } else {
           this.failLoginTransition(innerParams, body, applicationName, {
+            durationMs,
             description: res.msg,
             onVisualComplete: () => this.setStateIfMounted({msg: res.msg}),
           }, requestId);
@@ -611,8 +630,11 @@ class AuthCallback extends React.Component {
           return;
         }
 
+        const elapsedMs = Date.now() - requestStartTime;
+        const durationMs = Math.max(1800, Math.min(4000, elapsedMs + 1200));
         const errorMsg = this.getLoginTransitionErrorMessage(error);
         this.failLoginTransition(innerParams, body, applicationName, {
+          durationMs,
           description: errorMsg,
           onVisualComplete: () => this.setStateIfMounted({msg: errorMsg}),
         }, requestId);

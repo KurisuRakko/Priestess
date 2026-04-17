@@ -26,24 +26,20 @@
 }
 
 .login-page-shell .login-page-form-content-with-floating-actions {
-  padding-top: 56px;
+  padding-top: 48px;
 }
 
 /* Signed-in box */
 .signed-in-box {
-  margin-bottom: 24px;
+  margin-bottom: 0;
 }
 
 .signed-in-box-title {
   font-size: 16px;
   text-align: left;
-  margin-bottom: 12px;
-}
-
-.signed-in-box-divider {
-  font-size: 16px;
-  text-align: left;
-  margin-top: 20px;
+  margin-bottom: 16px;
+  font-weight: 500;
+  color: rgb(15 23 42);
 }
 
 /* Self-login account card */
@@ -58,7 +54,7 @@
   border: 1px solid rgb(15 23 42 / 10%);
   border-radius: 12px;
   background: #fff;
-  box-shadow: 0 1px 3px rgb(15 23 42 / 6%);
+  box-shadow: 0 2px 8px rgb(15 23 42 / 8%);
   cursor: pointer;
   transition: box-shadow 180ms ease, transform 180ms ease, border-color 180ms ease;
   text-align: left;
@@ -70,7 +66,7 @@
 }
 
 .self-login-card:hover {
-  box-shadow: 0 4px 12px rgb(15 23 42 / 10%);
+  box-shadow: 0 6px 16px rgb(15 23 42 / 12%);
   transform: translateY(-1px);
   border-color: rgb(15 23 42 / 16%);
 }
@@ -151,11 +147,11 @@
 .login-panel-dark .self-login-card {
   background: rgb(39 39 42);
   border-color: rgb(255 255 255 / 10%);
-  box-shadow: 0 1px 3px rgb(0 0 0 / 18%);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 24%);
 }
 
 .login-panel-dark .self-login-card:hover {
-  box-shadow: 0 4px 12px rgb(0 0 0 / 22%);
+  box-shadow: 0 6px 16px rgb(0 0 0 / 32%);
   border-color: rgb(255 255 255 / 16%);
 }
 
@@ -179,6 +175,96 @@
 .login-panel-dark .self-login-card-avatar-fallback {
   background: rgb(24 144 255 / 16%);
   color: #4dabff;
+}
+
+/* Login other account toggle */
+.login-other-account-toggle {
+  margin-top: 24px;
+  text-align: center;
+}
+
+.login-other-account-button {
+  font-size: 14px;
+  font-weight: 500;
+  color: #1890ff;
+  padding: 10px 20px;
+  height: auto;
+  border-radius: 8px;
+  transition: all 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  &:hover {
+    color: #40a9ff;
+    background: rgb(24 144 255 / 6%);
+    transform: translateY(-1px);
+  }
+
+  &:active {
+    color: #096dd9;
+    background: rgb(24 144 255 / 10%);
+    transform: translateY(0);
+  }
+
+  &:focus-visible {
+    outline: 2px solid rgb(24 144 255 / 30%);
+    outline-offset: 2px;
+  }
+
+  .anticon {
+    transition: transform 320ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+}
+
+/* Login form container with enhanced animations */
+.login-form-container {
+  margin-top: 28px;
+  padding-top: 28px;
+  border-top: 1px solid rgb(15 23 42 / 8%);
+  animation: login-form-expand 420ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes login-form-expand {
+  from {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Dark theme enhancements */
+.login-panel-dark {
+  .login-other-account-button {
+    color: #4dabff;
+
+    &:hover {
+      color: #6ec1ff;
+      background: rgb(77 171 255 / 10%);
+    }
+
+    &:active {
+      color: #2d9aff;
+      background: rgb(77 171 255 / 14%);
+    }
+  }
+
+  .login-form-container {
+    border-top-color: rgb(255 255 255 / 8%);
+  }
+}
+
+/* Smooth panel height transition */
+.login-panel-switch-root {
+  transition:
+    height 420ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 420ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    border-color 420ms ease;
+}
+
+.login-panel-switching {
+  overflow: hidden;
 }
 
 @media screen and (max-width: 768px) {
@@ -213,5 +299,19 @@
 
   .self-login-card-subtitle {
     font-size: 12px;
+  }
+
+  .login-other-account-toggle {
+    margin-top: 20px;
+  }
+
+  .login-other-account-button {
+    font-size: 13px;
+    padding: 8px 16px;
+  }
+
+  .login-form-container {
+    margin-top: 24px;
+    padding-top: 24px;
   }
 }

@@ -17,11 +17,11 @@ import {createRoot} from "react-dom/client";
 import i18next from "i18next";
 import "./LoginSuccessOverlay.less";
 
-const DEFAULT_DURATION_MS = 1400;
-const DEFAULT_POST_ANIMATION_DELAY_MS = 1000;
-const BASE_SEQUENCE_MS = 1180;
-const MIN_DURATION_MS = 900;
-const MAX_DURATION_MS = 2600;
+const DEFAULT_DURATION_MS = 2200;
+const DEFAULT_POST_ANIMATION_DELAY_MS = 800;
+const BASE_SEQUENCE_MS = 1800;
+const MIN_DURATION_MS = 1800;
+const MAX_DURATION_MS = 4000;
 const PHASE_LOADING = "loading";
 const PHASE_SUCCESS = "success";
 const PHASE_FAILURE = "failure";
@@ -77,17 +77,17 @@ function buildOutcomeTimeline(durationMs, postAnimationDelayMs) {
     fadeOutMs: fadeOutMs,
     overlayFadeInMs: scaled(150, 90),
     spinnerDelayMs: scaled(100),
-    spinnerStopMs: scaled(700, 420),
-    spinnerRotateMs: scaled(560, 420),
-    spinnerArcMs: scaled(1200, 900),
-    spinnerFadeMs: scaled(260, 160),
-    markDelayMs: scaled(650, 390),
-    markDrawMs: scaled(300, 180),
-    textInMs: scaled(300, 180),
-    loadingTitleInMs: scaled(220, 160),
-    titleDelayMs: scaled(850, 520),
-    organizationDelayMs: scaled(950, 620),
-    usernameDelayMs: scaled(1050, 720),
+    spinnerStopMs: scaled(600, 400),
+    spinnerRotateMs: scaled(500, 400),
+    spinnerArcMs: scaled(1000, 800),
+    spinnerFadeMs: scaled(240, 150),
+    markDelayMs: scaled(550, 350),
+    markDrawMs: scaled(280, 160),
+    textInMs: scaled(350, 200),
+    loadingTitleInMs: scaled(200, 140),
+    titleDelayMs: scaled(700, 450),
+    organizationDelayMs: scaled(1400, 1000),
+    usernameDelayMs: scaled(2100, 1600),
     postAnimationDelayMs: normalizePostAnimationDelay(postAnimationDelayMs),
   };
 }
