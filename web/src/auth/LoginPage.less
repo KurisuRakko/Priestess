@@ -29,15 +29,37 @@
   padding-top: 48px;
 }
 
+/* Floating header actions */
+.floating-header-actions {
+  position: absolute;
+  top: 10px;
+  left: 0;
+  right: 0;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 0 8px 0 16px;
+  z-index: 1;
+}
+
+.floating-language-select {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+}
+
 /* Signed-in box */
 .signed-in-box {
   margin-bottom: 0;
+  width: 320px;
+  max-width: 100%;
 }
 
 .signed-in-box-title {
   font-size: 16px;
   text-align: left;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
   font-weight: 500;
   color: rgb(15 23 42);
 }
@@ -56,7 +78,10 @@
   background: #fff;
   box-shadow: 0 2px 8px rgb(15 23 42 / 8%);
   cursor: pointer;
-  transition: box-shadow 180ms ease, transform 180ms ease, border-color 180ms ease;
+  transition:
+    box-shadow 240ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    transform 240ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    border-color 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
   text-align: left;
   font-family: inherit;
   font-size: inherit;
@@ -67,7 +92,7 @@
 
 .self-login-card:hover {
   box-shadow: 0 6px 16px rgb(15 23 42 / 12%);
-  transform: translateY(-1px);
+  transform: translateY(-2px);
   border-color: rgb(15 23 42 / 16%);
 }
 
@@ -179,7 +204,7 @@
 
 /* Login other account toggle */
 .login-other-account-toggle {
-  margin-top: 24px;
+  margin-top: 16px;
   text-align: center;
 }
 
@@ -195,13 +220,15 @@
   &:hover {
     color: #40a9ff;
     background: rgb(24 144 255 / 6%);
-    transform: translateY(-1px);
+    transform: translateY(-2px);
+    box-shadow: 0 2px 8px rgb(24 144 255 / 12%);
   }
 
   &:active {
     color: #096dd9;
     background: rgb(24 144 255 / 10%);
     transform: translateY(0);
+    box-shadow: none;
   }
 
   &:focus-visible {
@@ -210,16 +237,23 @@
   }
 
   .anticon {
-    transition: transform 320ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    transition: transform 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
   }
 }
 
 /* Login form container with enhanced animations */
 .login-form-container {
-  margin-top: 28px;
-  padding-top: 28px;
+  margin-top: 20px;
+  padding-top: 20px;
   border-top: 1px solid rgb(15 23 42 / 8%);
   animation: login-form-expand 420ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+/* When no signed-in box exists, remove separator and adjust spacing */
+.login-form-container-no-separator {
+  border-top: none;
+  margin-top: 0;
+  padding-top: 0;
 }
 
 @keyframes login-form-expand {
@@ -242,11 +276,13 @@
     &:hover {
       color: #6ec1ff;
       background: rgb(77 171 255 / 10%);
+      box-shadow: 0 2px 8px rgb(77 171 255 / 12%);
     }
 
     &:active {
       color: #2d9aff;
       background: rgb(77 171 255 / 14%);
+      box-shadow: none;
     }
   }
 
@@ -302,7 +338,7 @@
   }
 
   .login-other-account-toggle {
-    margin-top: 20px;
+    margin-top: 14px;
   }
 
   .login-other-account-button {
@@ -311,7 +347,123 @@
   }
 
   .login-form-container {
-    margin-top: 24px;
-    padding-top: 24px;
+    margin-top: 16px;
+    padding-top: 16px;
   }
+
+  .login-form-container-no-separator {
+    margin-top: 0;
+    padding-top: 0;
+  }
+
+  .back-inner-button,
+  .floating-back-button {
+    height: 2.5em;
+    width: 85px;
+    font-size: 13px;
+  }
+
+  .back-inner-button > svg,
+  .floating-back-button > svg {
+    font-size: 18px;
+  }
+}
+
+/* Enhanced back button styles - Unified */
+.back-inner-button,
+.floating-back-button {
+  display: flex;
+  height: 3em;
+  width: 100px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  letter-spacing: 1px;
+  transition: all 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  cursor: pointer;
+  border: none;
+  background: #fff;
+  box-shadow: none;
+  font-family: inherit;
+  font-size: 14px;
+  color: inherit;
+}
+
+.back-inner-button > svg,
+.floating-back-button > svg {
+  margin-right: 5px;
+  margin-left: 5px;
+  font-size: 20px;
+  transition: transform 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  fill: currentcolor;
+}
+
+.back-inner-button:hover > svg,
+.floating-back-button:hover > svg {
+  transform: translateX(-5px);
+}
+
+.back-inner-button:hover,
+.floating-back-button:hover {
+  box-shadow: 0 6px 16px rgb(15 23 42 / 12%);
+  transform: translateY(-2px);
+}
+
+.back-inner-button:active,
+.floating-back-button:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 3px rgb(15 23 42 / 6%);
+}
+
+.back-inner-button:focus-visible,
+.floating-back-button:focus-visible {
+  outline: 2px solid rgb(24 144 255 / 30%);
+  outline-offset: 2px;
+}
+
+/* Dark theme for enhanced back button */
+.login-panel-dark .back-inner-button,
+.login-panel-dark .floating-back-button {
+  background: rgb(39 39 42);
+  color: rgb(248 250 252);
+  box-shadow: none;
+}
+
+.login-panel-dark .back-inner-button:hover,
+.login-panel-dark .floating-back-button:hover {
+  box-shadow: 0 6px 16px rgb(0 0 0 / 32%);
+}
+
+.login-panel-dark .back-inner-button:active,
+.login-panel-dark .floating-back-button:active {
+  box-shadow: 0 1px 3px rgb(0 0 0 / 18%);
+}
+
+/* Login button - unified hover effect */
+.login-button {
+  transition: all 240ms cubic-bezier(0.2, 0.8, 0.2, 1) !important;
+}
+
+.login-button:focus-visible {
+  outline: 2px solid rgb(24 144 255 / 30%);
+  outline-offset: 2px;
+}
+
+.login-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgb(24 144 255 / 24%) !important;
+}
+
+.login-button:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 1px 3px rgb(24 144 255 / 12%) !important;
+}
+
+/* Dark theme */
+.login-panel-dark .login-button:hover:not(:disabled) {
+  box-shadow: 0 6px 16px rgb(77 171 255 / 32%) !important;
+}
+
+.login-panel-dark .login-button:active:not(:disabled) {
+  box-shadow: 0 1px 3px rgb(77 171 255 / 18%) !important;
 }

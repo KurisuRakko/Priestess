@@ -14,7 +14,7 @@
 
 import React, {Suspense, lazy} from "react";
 import {Button, Checkbox, Col, Form, Input, Result, Spin, Tabs, message} from "antd";
-import {ArrowLeftOutlined, DownOutlined, LockOutlined, UpOutlined, UserOutlined} from "@ant-design/icons";
+import {DownOutlined, LockOutlined, UpOutlined, UserOutlined} from "@ant-design/icons";
 import {withRouter} from "react-router-dom";
 import * as UserWebauthnBackend from "../backend/UserWebauthnBackend";
 import OrganizationSelect from "../common/select/OrganizationSelect";
@@ -1070,25 +1070,8 @@ export class LoginPage extends React.Component {
         </div>
       );
     } else if (signinItem.name === "Languages") {
-      const languages = application.organizationObj.languages;
-      if (languages.length <= 1) {
-        const language = (languages.length === 1) ? languages[0] : "en";
-        if (Setting.getLanguage() !== language) {
-          Setting.setLanguage(language);
-        }
-        return null;
-      }
-
-      return (
-        <div key={resultItemKey} className="login-languages">
-          <div dangerouslySetInnerHTML={{__html: ("<style>" + signinItem.customCss?.replaceAll("<style>", "").replaceAll("</style>", "") + "</style>")}} />
-          <LanguageSelect
-            languages={application.organizationObj.languages}
-            mode={signinItem.rule}
-            onClick={key => {this.setState({userLang: key});}}
-          />
-        </div>
-      );
+      // Language selector is now only shown in the floating header
+      return null;
     } else if (signinItem.name === "Signin methods") {
       return (
         <div key={resultItemKey}>
@@ -1615,6 +1598,35 @@ export class LoginPage extends React.Component {
     });
   }
 
+  renderFloatingHeaderActions() {
+    const application = this.getApplicationObj();
+
+    if (!this.shouldRenderSignedInBox(application)) {
+      return null;
+    }
+
+    const showLanguages = (application.organizationObj?.languages?.length ?? 0) > 1;
+
+    return (
+      <div className="floating-header-actions">
+        <button className="floating-back-button" onClick={() => history.back()}>
+          <svg height="16" width="16" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 1024 1024">
+            <path d="M874.690416 495.52477c0 11.2973-9.168824 20.466124-20.466124 20.466124l-604.773963 0 188.083679 188.083679c7.992021 7.992021 7.992021 20.947078 0 28.939099-4.001127 3.990894-9.240455 5.996574-14.46955 5.996574-5.239328 0-10.478655-1.995447-14.479783-5.996574l-223.00912-223.00912c-3.837398-3.837398-5.996574-9.046027-5.996574-14.46955 0-5.433756 2.159176-10.632151 5.996574-14.46955l223.019353-223.029586c7.992021-7.992021 20.957311-7.992021 28.949332 0 7.992021 8.002254 7.992021 20.957311 0 28.949332l-188.073446 188.073446 604.753497 0C865.521592 475.058646 874.690416 484.217237 874.690416 495.52477z"></path>
+          </svg>
+          <span>Back</span>
+        </button>
+        {showLanguages && (
+          <div className="floating-language-select">
+            <LanguageSelect
+              languages={application.organizationObj.languages}
+              mode="dropdown"
+            />
+          </div>
+        )}
+      </div>
+    );
+  }
+
   renderSignedInBox() {
     if (this.props.account === undefined || this.props.account === null) {
       this.sendSilentSigninData("user-not-logged-in");
@@ -1939,11 +1951,14 @@ export class LoginPage extends React.Component {
     const shouldShowForm = !this.shouldRenderSignedInBox(application)
       || this.state.isLoginFormExpanded;
 
+    const hasSignedInBox = this.shouldRenderSignedInBox(application);
+
     return (
       <React.Fragment>
+        {this.renderFloatingHeaderActions()}
         {this.renderSignedInBox()}
         {shouldShowForm && (
-          <div className="login-form-container">
+          <div className={`login-form-container ${!hasSignedInBox ? "login-form-container-no-separator" : ""}`}>
             {this.renderForm(application)}
           </div>
         )}
@@ -2020,9 +2035,12 @@ export class LoginPage extends React.Component {
   renderBackButton() {
     if (this.shouldRenderBackButton()) {
       return (
-        <Button className="back-inner-button" type="text" size="large" icon={<ArrowLeftOutlined />}
-          onClick={() => history.back()}>
-        </Button>
+        <button className="back-inner-button" onClick={() => history.back()}>
+          <svg height="16" width="16" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 1024 1024">
+            <path d="M874.690416 495.52477c0 11.2973-9.168824 20.466124-20.466124 20.466124l-604.773963 0 188.083679 188.083679c7.992021 7.992021 7.992021 20.947078 0 28.939099-4.001127 3.990894-9.240455 5.996574-14.46955 5.996574-5.239328 0-10.478655-1.995447-14.479783-5.996574l-223.00912-223.00912c-3.837398-3.837398-5.996574-9.046027-5.996574-14.46955 0-5.433756 2.159176-10.632151 5.996574-14.46955l223.019353-223.029586c7.992021-7.992021 20.957311-7.992021 28.949332 0 7.992021 8.002254 7.992021 20.957311 0 28.949332l-188.073446 188.073446 604.753497 0C865.521592 475.058646 874.690416 484.217237 874.690416 495.52477z"></path>
+          </svg>
+          <span>Back</span>
+        </button>
       );
     }
   }
