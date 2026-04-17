@@ -236,6 +236,7 @@ class ForgetPage extends React.Component {
         {this.state.current === 0 ?
           <Form
             ref={this.form}
+            className="auth-step-form"
             name="step1"
             // eslint-disable-next-line no-console
             onFinishFailed={(errorInfo) => console.log(errorInfo)}
@@ -244,7 +245,6 @@ class ForgetPage extends React.Component {
               organization: application.organization,
               username: this.state.name,
             }}
-            style={{width: "300px"}}
             size="large"
           >
             <Form.Item
@@ -293,6 +293,7 @@ class ForgetPage extends React.Component {
         {/* STEP 2: verify email or phone */}
         {this.state.current === 1 ? <Form
           ref={this.form}
+          className="auth-step-form"
           name="step2"
           onFinishFailed={(errorInfo) =>
             this.onFinishFailed(
@@ -316,7 +317,6 @@ class ForgetPage extends React.Component {
             organization: application.organization,
             dest: this.state.dest,
           }}
-          style={{width: "300px"}}
           size="large"
         >
           <Form.Item
@@ -387,6 +387,7 @@ class ForgetPage extends React.Component {
         {this.state.current === 2 ?
           <Form
             ref={this.form}
+            className="auth-step-form"
             name="step3"
             onFinish={(values) => this.onFinish(values)}
             onFinishFailed={(errorInfo) =>
@@ -400,7 +401,6 @@ class ForgetPage extends React.Component {
               application: application.name,
               organization: application.organization,
             }}
-            style={{width: "300px"}}
             size="large"
           >
             <Form.Item
@@ -526,11 +526,11 @@ class ForgetPage extends React.Component {
     return (
       <React.Fragment>
         <CustomGithubCorner />
-        <div className="forget-content auth-card-enter" style={{padding: Setting.isMobile() ? "0" : null, boxShadow: Setting.isMobile() ? "none" : null}}>
+        <div className="forget-content auth-card-enter">
           {Setting.inIframe() || Setting.isMobile() ? null : <div dangerouslySetInnerHTML={{__html: application.formCss}} />}
           {Setting.inIframe() || !Setting.isMobile() ? null : <div dangerouslySetInnerHTML={{__html: application.formCssMobile}} />}
           <Button type="text"
-            style={{position: "relative", left: Setting.isMobile() ? "10px" : "-90px", top: 0}}
+            className="forget-page-back-button"
             icon={<ArrowLeftOutlined style={{fontSize: "24px"}} />}
             size={"large"}
             onClick={() => {this.stepBack();}}
@@ -539,7 +539,7 @@ class ForgetPage extends React.Component {
             <Col span={24} style={{justifyContent: "center"}}>
               <Row>
                 <Col span={24}>
-                  <div style={{marginTop: "80px", marginBottom: "10px", textAlign: "center"}}>
+                  <div className="forget-page-brand">
                     {
                       Setting.renderHelmet(application)
                     }
@@ -551,7 +551,7 @@ class ForgetPage extends React.Component {
               </Row>
               <Row>
                 <Col span={24}>
-                  <div style={{textAlign: "center", fontSize: "28px"}}>
+                  <div className="forget-page-title">
                     {i18next.t("forget:Reset password")}
                   </div>
                 </Col>
@@ -574,19 +574,14 @@ class ForgetPage extends React.Component {
                         icon: <KeyOutlined />,
                       },
                     ]}
-                    style={{
-                      width: "90%",
-                      maxWidth: "500px",
-                      margin: "auto",
-                      marginTop: "80px",
-                    }}
+                    className="auth-process-steps"
                   >
                   </Steps>
                 </Col>
               </Row>
             </Col>
             <Col span={24} style={{display: "flex", justifyContent: "center"}}>
-              <div style={{marginTop: "40px", textAlign: "center"}}>
+              <div className="auth-process-panel">
                 {this.renderForm(application)}
               </div>
             </Col>

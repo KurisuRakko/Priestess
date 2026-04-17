@@ -82,24 +82,21 @@ class ResultPage extends React.Component {
 
     if (application === null) {
       return (
-        <div style={{display: "flex", justifyContent: "center", alignItems: "center"}}>
+        <div className="login-content auth-standalone-card-shell">
           <Spin size="large" tip={i18next.t("login:Loading")} style={{paddingTop: "10%"}} />
         </div>
       );
     }
 
     return (
-      <div style={{display: "flex", flex: "1", justifyContent: "center"}}>
-        <Card>
+      <div className="login-content auth-standalone-card-shell">
+        <Card className="auth-standalone-card">
           <div style={{marginTop: "30px", marginBottom: "30px", textAlign: "center"}}>
             {
               Setting.renderHelmet(application)
             }
             {
               Setting.renderLogo(application)
-            }
-            {
-              Setting.renderHelmet(application)
             }
             <Result
               status="success"

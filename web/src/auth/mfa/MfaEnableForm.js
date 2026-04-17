@@ -28,7 +28,7 @@ export function MfaEnableForm({user, mfaType, secret, recoveryCodes, dest, count
   };
 
   return (
-    <div style={{width: "400px"}}>
+    <div className="mfa-form-wide">
       <p>{i18next.t("mfa:Please save this recovery code. Once your device cannot provide an authentication code, you can reset mfa authentication by this recovery code")}</p>
       <br />
       <code style={{fontStyle: "solid"}}>{recoveryCodes[0]}</code>

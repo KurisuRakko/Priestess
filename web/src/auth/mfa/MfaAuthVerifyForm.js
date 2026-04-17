@@ -70,8 +70,8 @@ export function MfaAuthVerifyForm({formValues, authParams, mfaProps, application
 
   if (mfaType !== RecoveryMfaType) {
     return (
-      <div style={{width: 320, height: 350}}>
-        <div style={{marginBottom: 24, textAlign: "center", fontSize: "24px"}}>
+      <div className="mfa-auth-shell">
+        <div className="mfa-verify-heading">
           {i18next.t("mfa:Multi-factor authentication")}
         </div>
         {mfaProps.mfaType === SmsMfaType || mfaProps.mfaType === EmailMfaType ? (
@@ -119,7 +119,7 @@ export function MfaAuthVerifyForm({formValues, authParams, mfaProps, application
             />
           </Fragment>
         )}
-        <span style={{float: "right"}}>
+        <span className="mfa-helper-link">
           {i18next.t("mfa:Have problems?")}
           <a onClick={() => {
             setMfaType("recovery");
@@ -131,8 +131,8 @@ export function MfaAuthVerifyForm({formValues, authParams, mfaProps, application
     );
   } else {
     return (
-      <div style={{width: 300, height: 350}}>
-        <div style={{marginBottom: 24, textAlign: "center", fontSize: "24px"}}>
+      <div className="mfa-recovery-shell">
+        <div className="mfa-verify-heading">
           {i18next.t("mfa:Multi-factor recover")}
         </div>
         <div style={{marginBottom: 24}}>
@@ -149,7 +149,7 @@ export function MfaAuthVerifyForm({formValues, authParams, mfaProps, application
             recover();
           }}>{i18next.t("forget:Verify")}
         </Button>
-        <span style={{float: "right"}}>
+        <span className="mfa-helper-link">
           {i18next.t("mfa:Have problems?")}
           <a onClick={() => {
             setMfaType(mfaProps.mfaType);

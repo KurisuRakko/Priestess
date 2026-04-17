@@ -613,7 +613,7 @@ class SignupPage extends React.Component {
                   ]}
                 >
                   <CountryCodeSelect
-                    style={{width: "35%"}}
+                    style={{width: Setting.isMobile() ? "40%" : "35%"}}
                     countryCodes={this.getApplicationObj().organizationObj.countryCodes}
                   />
                 </Form.Item>
@@ -646,7 +646,7 @@ class SignupPage extends React.Component {
                   <Input
                     className="signup-phone-input"
                     placeholder={signupItem.placeholder}
-                    style={{width: "65%"}}
+                    style={{width: Setting.isMobile() ? "60%" : "65%"}}
                     disabled={this.state.invitation !== undefined && this.state.invitation.phone !== ""}
                     onChange={e => this.setState({phone: e.target.value})}
                   />
@@ -693,7 +693,7 @@ class SignupPage extends React.Component {
         return (
           <React.Fragment>
             <Row style={{marginTop: "30px", marginBottom: "20px"}} >
-              <Radio.Group style={{width: "400px"}} buttonStyle="solid" onChange={e => {
+              <Radio.Group style={{width: "100%", maxWidth: "400px"}} buttonStyle="solid" onChange={e => {
                 this.setState({
                   emailOrPhoneMode: e.target.value,
                 });
@@ -914,7 +914,7 @@ class SignupPage extends React.Component {
         }}
         size="large"
         layout="vertical"
-        style={{width: Setting.isMobile() ? "300px" : "380px"}}
+        style={{width: "100%", maxWidth: Setting.isMobile() ? "320px" : "380px"}}
       >
         <Form.Item
           name="application"
@@ -981,25 +981,28 @@ class SignupPage extends React.Component {
     return (
       <React.Fragment>
         <CustomGithubCorner />
-        <div className="login-content" style={{margin: this.props.preview ?? this.parseOffset(application.formOffset)}}>
+        <div className="login-content signup-page-shell" style={{margin: this.props.preview ?? this.parseOffset(application.formOffset)}}>
           {Setting.inIframe() || Setting.isMobile() ? null : <div dangerouslySetInnerHTML={{__html: application.formCss}} />}
           {Setting.inIframe() || !Setting.isMobile() ? null : <div dangerouslySetInnerHTML={{__html: application.formCssMobile}} />}
-          <div className={`${Setting.isDarkTheme(this.props.themeAlgorithm) ? "login-panel-dark" : "login-panel"} auth-card-enter`}>
+          <div className={`${Setting.isDarkTheme(this.props.themeAlgorithm) ? "login-panel-dark" : "login-panel"} auth-card-enter signup-page-panel`}>
             <div className="side-image" style={{display: application.formOffset !== 4 ? "none" : null}}>
               <div dangerouslySetInnerHTML={{__html: application.formSideHtml}} />
             </div>
-            <div className="login-form">
-              {
-                Setting.renderHelmet(application)
-              }
-              {
-                Setting.renderLogo(application)
-              }
-              <LanguageSelect
-                languages={application.organizationObj.languages}
-                mode={this.getLanguageSelectorMode(application)}
-                style={{top: "55px", right: "5px", position: "absolute"}}
-              />
+            <div className="login-form signup-page-form">
+              <div className="signup-page-header">
+                {
+                  Setting.renderHelmet(application)
+                }
+                {
+                  Setting.renderLogo(application)
+                }
+                <div className="signup-page-language-select">
+                  <LanguageSelect
+                    languages={application.organizationObj.languages}
+                    mode={this.getLanguageSelectorMode(application)}
+                  />
+                </div>
+              </div>
               {
                 this.renderForm(application)
               }

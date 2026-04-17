@@ -92,36 +92,27 @@ class TelegramLogin extends React.Component {
 
   render() {
     return (
-      <div className="login-content" style={{margin: "auto"}}>
-        <div style={{marginBottom: "10px", textAlign: "center"}}>
+      <div className="login-content auth-standalone-card-shell" style={{margin: "auto"}}>
+        <div className="auth-standalone-card">
           <Card
-            style={{
-              width: "400px",
-              margin: "0 auto",
-              marginTop: "100px",
-            }}
+            className="telegram-login-card"
             title={
-              <div>
+              <div className="telegram-login-title">
                 <img
                   width={40}
                   height={40}
                   src={Setting.getProviderLogoURL({type: "Telegram", category: "OAuth"})}
                   alt="Telegram"
-                  style={{marginRight: "10px"}}
                 />
                 {i18next.t("login:Sign in with Telegram")}
               </div>
             }
           >
-            <div style={{textAlign: "center", padding: "20px"}}>
+            <div className="telegram-login-body">
               <p>{i18next.t("login:Click the button below to sign in with Telegram")}</p>
               <div
                 id="telegram-login-container"
-                style={{
-                  display: "flex",
-                  justifyContent: "center",
-                  marginTop: "20px",
-                }}
+                className="telegram-login-widget"
               />
             </div>
           </Card>

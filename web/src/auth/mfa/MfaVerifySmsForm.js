@@ -50,7 +50,7 @@ export const MfaVerifySmsForm = ({mfaProps, application, onFinish, method, user}
   return (
     <Form
       form={form}
-      style={{width: "300px"}}
+      className="mfa-form"
       onFinish={onFinish}
       initialValues={{
         countryCode: mfaProps.countryCode,
@@ -67,7 +67,7 @@ export const MfaVerifySmsForm = ({mfaProps, application, onFinish, method, user}
           </p>
         )
       }
-      <Space.Compact style={{width: "300Px", marginBottom: "30px", display: isShowText() ? "none" : ""}}>
+      <Space.Compact style={{width: "100%", marginBottom: "30px", display: isShowText() ? "none" : ""}}>
         {isEmail() || isShowText() ? null :
           <Form.Item
             name="countryCode"
@@ -81,7 +81,7 @@ export const MfaVerifySmsForm = ({mfaProps, application, onFinish, method, user}
           >
             <CountryCodeSelect
               initValue={mfaProps.countryCode}
-              style={{width: "30%"}}
+              style={{width: "32%"}}
               countryCodes={application.organizationObj.countryCodes}
             />
           </Form.Item>
@@ -92,7 +92,7 @@ export const MfaVerifySmsForm = ({mfaProps, application, onFinish, method, user}
           rules={[{required: true, message: i18next.t("login:Please input your Email or Phone!")}]}
         >
           <Input
-            style={{width: isEmail() ? "100% " : "70%"}}
+            style={{width: isEmail() ? "100%" : "68%"}}
             onChange={(e) => {setDest(e.target.value);}}
             prefix={<UserOutlined />}
             placeholder={isEmail() ? i18next.t("general:Email") : i18next.t("general:Phone")}

@@ -25,30 +25,30 @@ const baseAccount = {
 };
 
 test("renders the stitched account name when a display name exists", () => {
-  const {container} = render(<SelfLoginButton account={baseAccount} />);
+  render(<SelfLoginButton account={baseAccount} />);
 
-  expect(container.querySelector("button.self-login-button")).toHaveTextContent("admin (Admin)");
+  expect(screen.getByRole("button")).toHaveTextContent("admin (Admin)");
 });
 
 test("renders the account name when no display name exists", () => {
-  const {container} = render(<SelfLoginButton account={{...baseAccount, displayName: ""}} />);
+  render(<SelfLoginButton account={{...baseAccount, displayName: ""}} />);
 
-  expect(container.querySelector("button.self-login-button")).toHaveTextContent("admin");
+  expect(screen.getByRole("button")).toHaveTextContent("admin");
 });
 
 test("calls onClick when the account card is clicked", () => {
   const onClick = jest.fn();
-  const {container} = render(<SelfLoginButton account={baseAccount} onClick={onClick} />);
+  render(<SelfLoginButton account={baseAccount} onClick={onClick} />);
 
-  fireEvent.click(container.querySelector("button.self-login-button"));
+  fireEvent.click(screen.getByRole("button"));
 
   expect(onClick).toHaveBeenCalledTimes(1);
 });
 
 test("renders a real button element for keyboard and screen reader access", () => {
-  const {container} = render(<SelfLoginButton account={baseAccount} />);
+  render(<SelfLoginButton account={baseAccount} />);
 
-  const button = container.querySelector("button.self-login-button");
+  const button = screen.getByRole("button");
   button.focus();
 
   expect(button).toHaveAttribute("type", "button");

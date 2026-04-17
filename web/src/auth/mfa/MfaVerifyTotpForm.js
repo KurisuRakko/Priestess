@@ -25,13 +25,13 @@ export const MfaVerifyTotpForm = ({mfaProps, onFinish}) => {
         <p style={{textAlign: "center"}}>{i18next.t("mfa:Scan the QR code with your Authenticator App")}</p>
         <p style={{textAlign: "center"}}>{i18next.t("mfa:Or copy the secret to your Authenticator App")}</p>
         <Col span={24}>
-          <Space>
+          <Space.Compact style={{width: "100%"}}>
             <Input value={mfaProps.secret} />
             <Button type="primary" shape="round" icon={<CopyOutlined />} onClick={() => {
               copy(`${mfaProps.secret}`);
               Setting.showMessage("success", i18next.t("general:Copied to clipboard successfully"));
             }} />
-          </Space>
+          </Space.Compact>
         </Col>
       </React.Fragment>
     );
@@ -39,7 +39,7 @@ export const MfaVerifyTotpForm = ({mfaProps, onFinish}) => {
   return (
     <Form
       form={form}
-      style={{width: "300px"}}
+      className="mfa-form"
       onFinish={onFinish}
       initialValues={{
         enableMfaRemember: false,

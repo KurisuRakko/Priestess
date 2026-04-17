@@ -25,6 +25,11 @@
   max-width: 100%;
 }
 
+.login-page-form-content,
+.login-page-form-content-with-floating-actions {
+  width: 100%;
+}
+
 .login-page-shell .login-page-form-content-with-floating-actions {
   padding-top: 48px;
 }
@@ -39,6 +44,7 @@
   display: flex;
   align-items: center;
   justify-content: flex-start;
+  gap: 12px;
   padding: 0 8px 0 16px;
   z-index: 1;
 }
@@ -308,12 +314,55 @@
     overflow-x: hidden;
   }
 
-  .login-page-shell .login-page-form-content-with-floating-actions {
-    padding-top: 0;
+  .login-page-card,
+  .login-page-form,
+  .login-page-wechat-panel {
+    width: 100%;
+  }
+
+  .login-page-form {
+    display: flex;
+    justify-content: center;
   }
 
   .login-page-dynamic {
     flex-wrap: wrap;
+    gap: 24px;
+  }
+
+  .login-page-form-content,
+  .login-page-form-content-with-floating-actions {
+    max-width: 420px;
+  }
+
+  .login-page-shell .login-page-form-content-with-floating-actions {
+    padding-top: 0;
+  }
+
+  .floating-header-actions {
+    position: static;
+    min-height: 48px;
+    height: auto;
+    margin-bottom: 20px;
+    padding: 0;
+    z-index: auto;
+  }
+
+  .floating-language-select {
+    margin-left: auto;
+    flex-shrink: 0;
+  }
+
+  .floating-language-select .select-box {
+    float: none;
+    width: 44px;
+    height: 44px;
+    margin-right: 0;
+  }
+
+  .signed-in-box {
+    width: 100%;
+    max-width: 420px;
   }
 
   .self-login-card {
@@ -349,6 +398,8 @@
   .login-form-container {
     margin-top: 16px;
     padding-top: 16px;
+    width: 100%;
+    max-width: 420px;
   }
 
   .login-form-container-no-separator {
@@ -359,13 +410,34 @@
   .back-inner-button,
   .floating-back-button {
     height: 2.5em;
-    width: 85px;
+    width: auto;
+    min-width: 85px;
+    padding: 0 14px;
     font-size: 13px;
   }
 
   .back-inner-button > svg,
   .floating-back-button > svg {
     font-size: 18px;
+  }
+
+  .login-page-wechat-panel {
+    padding-top: 24px;
+    border-top: 1px solid rgb(15 23 42 / 8%);
+  }
+
+  .login-panel-dark .login-page-wechat-panel {
+    border-top-color: rgb(255 255 255 / 8%);
+  }
+
+  .login-page-wechat-panel-content {
+    width: 100%;
+    max-width: 320px;
+  }
+
+  .login-page-wechat-title {
+    width: 100% !important;
+    max-width: 100%;
   }
 }
 

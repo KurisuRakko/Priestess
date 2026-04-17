@@ -144,7 +144,7 @@ class PromptPage extends React.Component {
 
   renderContent(application) {
     return (
-      <div style={{width: "500px"}}>
+      <div className="prompt-content">
         {
           this.renderAffiliation(application)
         }
@@ -250,9 +250,9 @@ class PromptPage extends React.Component {
 
   renderPromptProvider(application) {
     return (
-      <div style={{display: "flex", alignItems: "center", flexDirection: "column"}}>
+      <div className="prompt-action-bar" style={{flexDirection: "column"}}>
         {this.renderContent(application)}
-        <Button style={{marginTop: "50px", width: "200px"}}
+        <Button className="prompt-submit-button"
           disabled={!Setting.isPromptAnswered(this.state.user, application)}
           type="primary" size="large" onClick={() => {
             this.submitUserEdit(true);
@@ -283,7 +283,7 @@ class PromptPage extends React.Component {
     }
 
     return (
-      <Card style={{marginTop: "20px", marginBottom: "20px"}}
+      <Card className="prompt-card"
         title={this.state.steps[this.state.current].title}
       >
         <div >{this.state.steps[this.state.current].content}</div>
@@ -317,7 +317,7 @@ class PromptPage extends React.Component {
     }
 
     return (
-      <div style={{display: "flex", flex: "1", justifyContent: "center"}}>
+      <div className="prompt-page-shell">
         {this.renderSteps()}
       </div>
     );

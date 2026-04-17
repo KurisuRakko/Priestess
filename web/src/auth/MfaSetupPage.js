@@ -264,13 +264,14 @@ class MfaSetupPage extends React.Component {
     }
 
     return (
-      <Row>
+      <Row className="mfa-setup-shell">
         <Col span={24} style={{justifyContent: "center"}}>
           <Row>
             <Col span={24}>
-              <p style={{textAlign: "center", fontSize: "28px"}}>
-                {i18next.t("mfa:Protect your account with Multi-factor authentication")}</p>
-              <p style={{textAlign: "center", fontSize: "16px", marginTop: "10px"}}>{i18next.t("mfa:Each time you sign in to your Account, you'll need your password and a authentication code")}</p>
+              <p className="mfa-setup-title">
+                {i18next.t("mfa:Protect your account with Multi-factor authentication")}
+              </p>
+              <p className="mfa-setup-description">{i18next.t("mfa:Each time you sign in to your Account, you'll need your password and a authentication code")}</p>
             </Col>
           </Row>
           <Spin spinning={this.state.loading}>
@@ -280,13 +281,12 @@ class MfaSetupPage extends React.Component {
                 {title: i18next.t("mfa:Verify Code"), icon: <KeyOutlined />},
                 {title: i18next.t("general:Enable"), icon: <CheckOutlined />},
               ]}
-              style={{width: "90%", maxWidth: "500px", margin: "auto", marginTop: "50px",
-              }} >
+              className="mfa-setup-steps" >
             </Steps>
           </Spin>
         </Col>
         <Col span={24} style={{display: "flex", justifyContent: "center"}}>
-          <div style={{marginTop: "10px", textAlign: "center"}}>
+          <div className="mfa-step-panel">
             {this.renderStep()}
           </div>
         </Col>

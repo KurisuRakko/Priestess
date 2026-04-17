@@ -1099,7 +1099,7 @@ export class LoginPage extends React.Component {
               ]}
             >
               <CountryCodeSelect
-                style={{width: "35%"}}
+                style={{width: Setting.isMobile() ? "40%" : "35%"}}
                 countryCodes={this.getApplicationObj().organizationObj.countryCodes}
               />
             </Form.Item>
@@ -1132,7 +1132,7 @@ export class LoginPage extends React.Component {
               <Input
                 className="signup-phone-input"
                 placeholder={signinItem.placeholder}
-                style={{width: "65%", textAlign: "left"}}
+                style={{width: Setting.isMobile() ? "60%" : "65%", textAlign: "left"}}
                 onChange={e => this.setState({username: e.target.value})}
               />
             </Form.Item>
@@ -1977,7 +1977,7 @@ export class LoginPage extends React.Component {
             <p style={{fontSize: "large"}}>
               {i18next.t("login:Please select an organization to sign in")}
             </p>
-            <OrganizationSelect style={{width: "70%"}}
+            <OrganizationSelect style={{width: "100%"}}
               onSelect={(value) => {
                 Setting.goToLink(`/login/${value}?orgChoiceMode=None`);
               }} />
@@ -1991,13 +1991,14 @@ export class LoginPage extends React.Component {
             </p>
             <Form
               name="basic"
+              className="auth-choice-control"
               onFinish={(values) => {Setting.goToLink(`/login/${values.organizationName}?orgChoiceMode=None`);}}
             >
               <Form.Item
                 name="organizationName"
                 rules={[{required: true, message: i18next.t("login:Please input your organization name!")}]}
               >
-                <Input style={{width: "70%"}} onPressEnter={(e) => {
+                <Input style={{width: "100%"}} onPressEnter={(e) => {
                   Setting.goToLink(`/login/${e.target.value}?orgChoiceMode=None`);
                 }} />
               </Form.Item>
@@ -2013,8 +2014,10 @@ export class LoginPage extends React.Component {
     };
 
     return (
-      <div style={{height: 300, minWidth: 320}}>
-        {renderChoiceBox()}
+      <div className="auth-choice-shell">
+        <div className="auth-choice-content">
+          {renderChoiceBox()}
+        </div>
       </div>
     );
   }
@@ -2121,7 +2124,7 @@ export class LoginPage extends React.Component {
                 {
                   wechatSigninMethods?.length > 0 ? (<div className="login-page-wechat-panel" style={{display: "flex", justifyContent: "center", alignItems: "center"}}>
                     <div className="login-page-wechat-panel-content">
-                      <h3 style={{textAlign: "center", width: 320}}>{i18next.t("provider:Please use WeChat to scan the QR code and follow the official account for sign in")}</h3>
+                      <h3 className="login-page-wechat-title" style={{textAlign: "center", width: 320}}>{i18next.t("provider:Please use WeChat to scan the QR code and follow the official account for sign in")}</h3>
                       <WeChatLoginPanel application={application} loginMethod={displayedLoginMethod} />
                     </div>
                   </div>

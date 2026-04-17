@@ -8,7 +8,7 @@ export const MfaVerifyPushForm = ({mfaProps, application, onFinish, method, user
   return (
     <Form
       form={form}
-      style={{width: "300px"}}
+      className="mfa-form"
       onFinish={onFinish}
       initialValues={{
         enableMfaRemember: false,
