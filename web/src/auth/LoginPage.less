@@ -309,8 +309,12 @@
   overflow: hidden;
 }
 
-@media screen and (max-width: 768px) {
+@media screen and (max-width: 768px), screen and (max-height: 500px) {
   .login-page-shell {
+    width: 100%;
+    min-height: var(--login-viewport-height, 100dvh);
+    margin: 0 auto !important;
+    align-items: stretch;
     overflow-x: hidden;
   }
 
@@ -320,19 +324,47 @@
     width: 100%;
   }
 
+  .login-page-card {
+    min-height: var(--login-viewport-height, 100dvh) !important;
+    max-height: var(--login-viewport-height, 100dvh) !important;
+    margin: 0 !important;
+    border-radius: 0 !important;
+    border-left: none !important;
+    border-right: none !important;
+    box-shadow: none !important;
+    overflow: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .login-page-panel-inner,
+  .login-page-dynamic {
+    min-height: 100%;
+  }
+
   .login-page-form {
     display: flex;
-    justify-content: center;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    min-height: 100%;
+    padding:
+      calc(env(safe-area-inset-top) + 24px)
+      20px
+      calc(env(safe-area-inset-bottom) + 32px) !important;
   }
 
   .login-page-dynamic {
+    flex: 1 1 auto;
     flex-wrap: wrap;
     gap: 24px;
+    align-content: stretch;
   }
 
   .login-page-form-content,
   .login-page-form-content-with-floating-actions {
+    width: 100%;
     max-width: 420px;
+    margin-block: auto;
   }
 
   .login-page-shell .login-page-form-content-with-floating-actions {
@@ -422,6 +454,10 @@
   }
 
   .login-page-wechat-panel {
+    padding:
+      24px
+      20px
+      calc(env(safe-area-inset-bottom) + 32px);
     padding-top: 24px;
     border-top: 1px solid rgb(15 23 42 / 8%);
   }

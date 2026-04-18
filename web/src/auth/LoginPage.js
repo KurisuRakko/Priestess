@@ -54,6 +54,7 @@ export class LoginPage extends React.Component {
   constructor(props) {
     super(props);
     this.captchaRef = React.createRef();
+    this.loginShellRef = React.createRef();
     this.panelContentRef = React.createRef();
     this.methodSwitchTimers = [];
     this.panelHeightAnimationFrame = null;
@@ -103,14 +104,69 @@ export class LoginPage extends React.Component {
     this.refreshInlineCaptcha = this.refreshInlineCaptcha.bind(this);
     this.handleMethodChange = this.handleMethodChange.bind(this);
     this.handleLoginFormToggle = this.handleLoginFormToggle.bind(this);
+    this.handleViewportChange = this.syncViewportHeight.bind(this);
   }
 
   refreshInlineCaptcha() {
     this.captchaRef.current?.loadCaptcha?.();
   }
 
+  getViewportHeight() {
+    if (typeof window === "undefined") {
+      return null;
+    }
+
+    const visualViewportHeight = window.visualViewport?.height;
+    if (typeof visualViewportHeight === "number" && Number.isFinite(visualViewportHeight)) {
+      return Math.round(visualViewportHeight);
+    }
+
+    return window.innerHeight;
+  }
+
+  syncViewportHeight() {
+    const loginShell = this.loginShellRef.current;
+    if (!loginShell) {
+      return;
+    }
+
+    const viewportHeight = this.getViewportHeight();
+    if (viewportHeight === null) {
+      loginShell.style.removeProperty("--login-viewport-height");
+      return;
+    }
+
+    // Keep the shell aligned with the visible viewport when browser chrome or
+    // the software keyboard changes the usable height on mobile devices.
+    loginShell.style.setProperty("--login-viewport-height", `${viewportHeight}px`);
+  }
+
+  bindViewportListeners() {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.addEventListener("resize", this.handleViewportChange);
+    window.addEventListener("orientationchange", this.handleViewportChange);
+    window.visualViewport?.addEventListener("resize", this.handleViewportChange);
+    window.visualViewport?.addEventListener("scroll", this.handleViewportChange);
+  }
+
+  unbindViewportListeners() {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.removeEventListener("resize", this.handleViewportChange);
+    window.removeEventListener("orientationchange", this.handleViewportChange);
+    window.visualViewport?.removeEventListener("resize", this.handleViewportChange);
+    window.visualViewport?.removeEventListener("scroll", this.handleViewportChange);
+  }
+
   componentDidMount() {
     this.isUnmounted = false;
+    this.bindViewportListeners();
+    this.syncViewportHeight();
     if (this.getApplicationObj() === undefined) {
       if (this.state.type === "login" || this.state.type === "saml") {
         this.getApplication();
@@ -123,6 +179,7 @@ export class LoginPage extends React.Component {
   }
 
   componentDidUpdate(prevProps, prevState, snapshot) {
+    this.syncViewportHeight();
     if (prevState.loginMethod === undefined && this.state.loginMethod === undefined) {
       const application = this.getApplicationObj();
       this.setLoginMethodImmediately(this.getDefaultLoginMethod(application));
@@ -171,6 +228,7 @@ export class LoginPage extends React.Component {
     this.abortLoginTransition();
     this.clearMethodSwitchTimers();
     this.cancelPanelHeightMeasurement();
+    this.unbindViewportListeners();
   }
 
   setStateIfMounted(nextState, callback = undefined) {
@@ -2102,7 +2160,11 @@ export class LoginPage extends React.Component {
     return (
       <React.Fragment>
         <CustomGithubCorner />
-        <div className="login-content login-page-shell" style={{margin: this.props.preview ?? this.parseOffset(application.formOffset)}}>
+        <div
+          ref={this.loginShellRef}
+          className="login-content login-page-shell"
+          style={{margin: this.props.preview ?? this.parseOffset(application.formOffset)}}
+        >
           {Setting.inIframe() || Setting.isMobile() ? null : <div dangerouslySetInnerHTML={{__html: application.formCss}} />}
           {Setting.inIframe() || !Setting.isMobile() ? null : <div dangerouslySetInnerHTML={{__html: application.formCssMobile}} />}
           <div

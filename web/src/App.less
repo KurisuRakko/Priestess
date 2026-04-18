@@ -518,9 +518,14 @@ body[theme="dark"] .global-loading-card {
   background-attachment: fixed;
 }
 
-@media screen and (max-width: 768px) {
+@media screen and (max-width: 768px), screen and (max-height: 500px) {
   .loginBackground,
   .loginBackgroundDark {
+    width: 100%;
+    min-height: 100vh;
+    min-height: 100dvh;
+    align-items: stretch;
+    overflow-x: hidden;
     background-attachment: scroll;
   }
 

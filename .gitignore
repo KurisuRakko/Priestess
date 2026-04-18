@@ -5,9 +5,15 @@
 # Go
 /vendor/
 
+# Node.js dependencies
+node_modules/
+
 # Web build artifacts
 /web/build
 /web/build */
+
+# Local test sandboxes
+/oidc-client-test/
 
 # Claude Code
 /.claude/

@@ -7,6 +7,24 @@ describe("Login test", () => {
     password: "#normal_login_password",
     loginButton: ".ant-btn",
   };
+
+  const visitLoginWithViewport = (width, height) => {
+    cy.viewport(width, height);
+    cy.visit("http://localhost:7001/login");
+  };
+
+  const assertCardFitsViewport = (width) => {
+    cy.get(".login-page-card").should("be.visible").then(($card) => {
+      const rect = $card[0].getBoundingClientRect();
+      expect(rect.left).to.be.at.least(0);
+      expect(rect.right).to.be.at.most(width + 1);
+    });
+
+    cy.document().then((doc) => {
+      expect(doc.documentElement.scrollWidth).to.be.at.most(doc.documentElement.clientWidth + 1);
+    });
+  };
+
   it("Login succeeded", () => {
     cy.request({
       method: "POST",
@@ -61,19 +79,9 @@ describe("Login test", () => {
     });
   });
 
-  it("ui Login mobile layout stays usable", () => {
-    cy.viewport(390, 844);
-    cy.visit("http://localhost:7001/login");
-
-    cy.get(".login-page-card").should("be.visible").then(($card) => {
-      const rect = $card[0].getBoundingClientRect();
-      expect(rect.left).to.be.at.least(0);
-      expect(rect.right).to.be.at.most(390);
-    });
-
-    cy.document().then((doc) => {
-      expect(doc.documentElement.scrollWidth).to.be.at.most(doc.documentElement.clientWidth + 1);
-    });
+  it("ui Login mobile portrait layout stays usable", () => {
+    visitLoginWithViewport(390, 844);
+    assertCardFitsViewport(390);
 
     cy.get(".login-page-form-body").should("be.visible");
     cy.get(selector.username).should("be.visible");
@@ -109,6 +117,34 @@ describe("Login test", () => {
     cy.get(selector.password).type("123");
     cy.get(".login-button").click();
     cy.url().should("eq", "http://localhost:7001/");
+  });
+
+  it("ui Login mobile landscape layout keeps content reachable", () => {
+    visitLoginWithViewport(844, 390);
+    assertCardFitsViewport(844);
+
+    cy.get(".login-page-form-body").should("be.visible");
+    cy.get(".login-page-card").scrollTo("bottom");
+    cy.get(".login-button").should("be.visible").and("not.be.disabled").then(($button) => {
+      const rect = $button[0].getBoundingClientRect();
+      expect(rect.bottom).to.be.at.most(391);
+    });
+  });
+
+  it("ui Login compact mobile height keeps actions reachable", () => {
+    visitLoginWithViewport(390, 500);
+    assertCardFitsViewport(390);
+
+    cy.get(".login-page-card").should("be.visible").then(($card) => {
+      const rect = $card[0].getBoundingClientRect();
+      expect(rect.height).to.be.at.least(490);
+    });
+
+    cy.get(".login-page-card").scrollTo("bottom");
+    cy.get(".login-button").should("be.visible").and("not.be.disabled").then(($button) => {
+      const rect = $button[0].getBoundingClientRect();
+      expect(rect.bottom).to.be.at.most(501);
+    });
   });
 
   it("Login failed", () => {
