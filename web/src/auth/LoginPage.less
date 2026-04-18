@@ -25,6 +25,11 @@
   max-width: 100%;
 }
 
+/* 登录过渡期间隐藏原卡片，让 overlay shell 从卡片位置放大/收缩时占据视觉焦点；保留布局占位 */
+.login-page-card.is-login-transition-origin {
+  visibility: hidden;
+}
+
 .login-page-form-content,
 .login-page-form-content-with-floating-actions {
   width: 100%;

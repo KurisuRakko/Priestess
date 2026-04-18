@@ -150,11 +150,39 @@ function getOutcomeAnimationCompletionMs(phase, timeline, prefersReducedMotion, 
   );
 }
 
+function normalizeOriginRect(originRect) {
+  if (!originRect || typeof originRect !== "object") {
+    return null;
+  }
+
+  const {top, left, width, height} = originRect;
+  if (!Number.isFinite(top) || !Number.isFinite(left) || !Number.isFinite(width) || !Number.isFinite(height)) {
+    return null;
+  }
+
+  if (width <= 0 || height <= 0) {
+    return null;
+  }
+
+  const borderRadiusRaw = typeof originRect.borderRadius === "string" ? originRect.borderRadius.trim() : "";
+  const parsedRadius = parseFloat(borderRadiusRaw);
+  const borderRadius = Number.isFinite(parsedRadius) && parsedRadius > 0 ? parsedRadius : 0;
+
+  return {
+    top: top,
+    left: left,
+    width: width,
+    height: height,
+    borderRadius: borderRadius,
+  };
+}
+
 function buildRenderState(baseParams, phase, phaseKey, params = {}) {
   const normalizedLoadingTitle = normalizeText(baseParams.loadingTitle) || getDefaultLoadingTitle();
   const normalizedOrganizationName = normalizeText(baseParams.organizationName);
   const normalizedUsername = normalizeText(baseParams.username);
   const basePrimaryColor = normalizeText(baseParams.primaryColor);
+  const baseOriginRect = baseParams.originRect || null;
 
   if (phase === PHASE_LOADING) {
     return {
@@ -168,6 +196,7 @@ function buildRenderState(baseParams, phase, phaseKey, params = {}) {
       timeline: buildOutcomeTimeline(DEFAULT_DURATION_MS, DEFAULT_POST_ANIMATION_DELAY_MS),
       phaseKey: phaseKey,
       onVisualComplete: undefined,
+      originRect: baseOriginRect,
     };
   }
 
@@ -182,10 +211,18 @@ function buildRenderState(baseParams, phase, phaseKey, params = {}) {
     timeline: buildOutcomeTimeline(params.durationMs, params.postAnimationDelayMs),
     phaseKey: phaseKey,
     onVisualComplete: params.onVisualComplete,
+    originRect: params.originRect || baseOriginRect,
   };
 }
 
 const DEFAULT_PRIMARY_COLOR = "#5734d3";
+const ORIGIN_EXPAND_MS = 360;
+const ORIGIN_SHRINK_MS = 320;
+const ORIGIN_SHRINK_DELAY_MS = 80;
+const ORIGIN_CONTENT_IN_DELAY_MS = 200;
+const ORIGIN_CONTENT_IN_MS = 220;
+const ORIGIN_CONTENT_OUT_MS = 160;
+const ORIGIN_SHRINK_TOTAL_MS = ORIGIN_SHRINK_MS + ORIGIN_SHRINK_DELAY_MS + 20;
 
 function LoginTransitionOverlayInner(props) {
   const {
@@ -200,10 +237,45 @@ function LoginTransitionOverlayInner(props) {
     phaseKey,
     onVisualComplete,
     onFinish,
+    originRect,
   } = props;
   const prefersReducedMotion = usePrefersReducedMotion();
   const [isExiting, setIsExiting] = React.useState(false);
   const hasTriggeredVisualCompleteRef = React.useRef(false);
+
+  // 计算 shell 从原卡片矩形到整屏的起始变换。仅在 originRect 变化时重新计算。
+  const originStyleVars = React.useMemo(() => {
+    const rect = normalizeOriginRect(originRect);
+    if (!rect || typeof window === "undefined") {
+      return null;
+    }
+
+    const vw = window.innerWidth || 1;
+    const vh = window.innerHeight || 1;
+    const sx = Math.max(rect.width / vw, 0.0001);
+    const sy = Math.max(rect.height / vh, 0.0001);
+
+    return {
+      "--lso-origin-translate-x": `${rect.left}px`,
+      "--lso-origin-translate-y": `${rect.top}px`,
+      "--lso-origin-scale-x": sx,
+      "--lso-origin-scale-y": sy,
+      "--lso-origin-radius-h": `${rect.borderRadius / sx}px`,
+      "--lso-origin-radius-v": `${rect.borderRadius / sy}px`,
+      "--lso-expand-ms": `${ORIGIN_EXPAND_MS}ms`,
+      "--lso-shrink-ms": `${ORIGIN_SHRINK_MS}ms`,
+      "--lso-shrink-delay-ms": `${ORIGIN_SHRINK_DELAY_MS}ms`,
+      "--lso-origin-content-in-delay-ms": `${ORIGIN_CONTENT_IN_DELAY_MS}ms`,
+      "--lso-origin-content-in-ms": `${ORIGIN_CONTENT_IN_MS}ms`,
+      "--lso-origin-content-out-ms": `${ORIGIN_CONTENT_OUT_MS}ms`,
+    };
+  }, [originRect]);
+
+  const hasOriginMorph = originStyleVars !== null && !prefersReducedMotion;
+  const isShrinking = hasOriginMorph && phase === PHASE_FAILURE && isExiting;
+  const exitDurationMs = isShrinking
+    ? ORIGIN_SHRINK_TOTAL_MS
+    : timeline.fadeOutMs;
 
   const loadingTitleText = normalizeText(loadingTitle) || getDefaultLoadingTitle();
   const titleText = normalizeText(title) || (phase === PHASE_FAILURE ? getDefaultFailureTitle() : getDefaultSuccessTitle());
@@ -232,6 +304,7 @@ function LoginTransitionOverlayInner(props) {
     "--lso-text-in-ms": `${prefersReducedMotion ? 180 : timeline.textInMs}ms`,
     "--lso-loading-title-in-ms": `${prefersReducedMotion ? 140 : timeline.loadingTitleInMs}ms`,
     "--lso-primary-color": normalizeText(primaryColor) || DEFAULT_PRIMARY_COLOR,
+    ...(hasOriginMorph ? originStyleVars : {}),
   };
 
   React.useEffect(() => {
@@ -277,7 +350,7 @@ function LoginTransitionOverlayInner(props) {
       }
 
       setIsExiting(true);
-      await waitFor(timeline.fadeOutMs);
+      await waitFor(exitDurationMs);
       if (isCancelled) {
         return;
       }
@@ -290,7 +363,7 @@ function LoginTransitionOverlayInner(props) {
       isCancelled = true;
       timerIds.forEach((timerId) => window.clearTimeout(timerId));
     };
-  }, [onFinish, onVisualComplete, outcomeAnimationCompletionMs, phase, phaseKey, timeline.fadeOutMs, timeline.postAnimationDelayMs]);
+  }, [onFinish, onVisualComplete, outcomeAnimationCompletionMs, phase, phaseKey, exitDurationMs, timeline.postAnimationDelayMs]);
 
   return (
     <div
@@ -301,11 +374,14 @@ function LoginTransitionOverlayInner(props) {
         phase === PHASE_FAILURE ? "is-failure" : null,
         isExiting ? "is-exiting" : null,
         prefersReducedMotion ? "is-reduced-motion" : null,
+        hasOriginMorph ? "has-origin" : null,
+        isShrinking ? "is-shrinking" : null,
       ].filter(Boolean).join(" ")}
       style={styleVars}
       role="status"
       aria-live="polite"
     >
+      {hasOriginMorph ? <div className="login-success-overlay-shell" aria-hidden="true" /> : null}
       <div className="login-success-overlay-content">
         <div className="login-success-overlay-icon" aria-hidden="true">
           <svg className="login-success-overlay-icon-svg" viewBox="0 0 80 80">
@@ -392,11 +468,13 @@ function createOverlayController(params = {}, options = {}) {
   let currentPhase = initialPhase;
   let currentOutcomePromise = null;
   let resolveCurrentOutcome = null;
+  const onCloseCallback = typeof params.onClose === "function" ? params.onClose : null;
   const baseParams = {
     loadingTitle: params.loadingTitle,
     organizationName: params.organizationName,
     username: params.username,
     primaryColor: params.primaryColor,
+    originRect: normalizeOriginRect(params.originRect),
   };
   const initialOutcomeParams = options.outcomeParams || params;
   let renderState = buildRenderState(baseParams, initialPhase, phaseKey, initialOutcomeParams);
@@ -423,6 +501,13 @@ function createOverlayController(params = {}, options = {}) {
       currentOverlayController = null;
     }
     resolveOutcome();
+    if (onCloseCallback !== null) {
+      try {
+        onCloseCallback();
+      } catch (error) {
+        // 忽略调用方回调里的异常，避免阻断卸载流程喵
+      }
+    }
   };
 
   const renderOverlay = () => {
@@ -442,6 +527,7 @@ function createOverlayController(params = {}, options = {}) {
         timeline={renderState.timeline}
         phaseKey={renderState.phaseKey}
         onVisualComplete={renderState.onVisualComplete}
+        originRect={renderState.originRect}
         onFinish={cleanup}
       />
     );

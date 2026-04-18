@@ -56,10 +56,12 @@ export class LoginPage extends React.Component {
     this.captchaRef = React.createRef();
     this.loginShellRef = React.createRef();
     this.panelContentRef = React.createRef();
+    this.loginCardRef = React.createRef();
     this.methodSwitchTimers = [];
     this.panelHeightAnimationFrame = null;
     this.panelHeightSecondAnimationFrame = null;
     this.loginTransitionOverlayController = null;
+    this.loginTransitionOriginRect = null;
     this.isUnmounted = false;
     const urlParams = new URLSearchParams(this.props.location?.search);
     this.state = {
@@ -91,6 +93,7 @@ export class LoginPage extends React.Component {
       isMethodSwitching: false,
       panelHeight: null,
       isLoginFormExpanded: false,
+      loginTransitionActive: false,
     };
 
     if (this.state.type === "cas" && props.match?.params.casApplicationName !== undefined) {
@@ -526,6 +529,9 @@ export class LoginPage extends React.Component {
       || this.state.prefilledUsername
       || "";
     const themeData = Setting.getThemeData(application?.organizationObj, application);
+    const originRect = overrides.originRect !== undefined
+      ? overrides.originRect
+      : this.loginTransitionOriginRect;
 
     return {
       loadingTitle: overrides.loadingTitle || i18next.t("login:Signing in..."),
@@ -537,6 +543,7 @@ export class LoginPage extends React.Component {
       durationMs: overrides.durationMs,
       postAnimationDelayMs: overrides.postAnimationDelayMs,
       onVisualComplete: overrides.onVisualComplete,
+      originRect: originRect,
     };
   }
 
@@ -546,13 +553,55 @@ export class LoginPage extends React.Component {
     }
   }
 
+  captureLoginCardOriginRect() {
+    const node = this.loginCardRef.current;
+    if (!node || typeof window === "undefined") {
+      return null;
+    }
+
+    const rect = node.getBoundingClientRect();
+    if (!rect || rect.width === 0 || rect.height === 0) {
+      return null;
+    }
+
+    let borderRadius = "0px";
+    if (typeof window.getComputedStyle === "function") {
+      const computed = window.getComputedStyle(node);
+      borderRadius = computed.borderTopLeftRadius || "0px";
+    }
+
+    return {
+      top: rect.top,
+      left: rect.left,
+      width: rect.width,
+      height: rect.height,
+      borderRadius: borderRadius,
+    };
+  }
+
+  resetLoginTransitionState() {
+    this.loginTransitionOriginRect = null;
+    if (this.state.loginTransitionActive) {
+      this.setStateIfMounted({loginTransitionActive: false});
+    }
+  }
+
   beginLoginTransition(values = {}, overrides = {}) {
     if (this.isUnmounted) {
       return null;
     }
 
     if (this.loginTransitionOverlayController === null) {
-      this.loginTransitionOverlayController = startLoginTransitionOverlayPopup(this.getLoginTransitionOverlayProps(values, overrides));
+      // 在启动 overlay 之前捕获卡片矩形，让 overlay 从卡片位置平滑放大到整屏
+      if (this.loginTransitionOriginRect === null) {
+        this.loginTransitionOriginRect = this.captureLoginCardOriginRect();
+      }
+      if (this.loginTransitionOriginRect !== null && !this.state.loginTransitionActive) {
+        this.setStateIfMounted({loginTransitionActive: true});
+      }
+      const props = this.getLoginTransitionOverlayProps(values, overrides);
+      props.onClose = () => this.resetLoginTransitionState();
+      this.loginTransitionOverlayController = startLoginTransitionOverlayPopup(props);
     }
 
     return this.loginTransitionOverlayController;
@@ -560,12 +609,14 @@ export class LoginPage extends React.Component {
 
   abortLoginTransition() {
     if (this.loginTransitionOverlayController === null) {
+      this.resetLoginTransitionState();
       return;
     }
 
     const controller = this.loginTransitionOverlayController;
     this.loginTransitionOverlayController = null;
     controller.dismiss();
+    this.resetLoginTransitionState();
   }
 
   completeLoginTransition(values = {}, overrides = {}) {
@@ -576,6 +627,7 @@ export class LoginPage extends React.Component {
     const overlayProps = this.getLoginTransitionOverlayProps(values, overrides);
     const controller = this.loginTransitionOverlayController;
     if (controller === null) {
+      overlayProps.onClose = () => this.resetLoginTransitionState();
       return showLoginSuccessOverlayPopup(overlayProps);
     }
 
@@ -2155,6 +2207,7 @@ export class LoginPage extends React.Component {
       "auth-card-enter",
       "login-panel-switch-root",
       this.state.isMethodSwitching ? "login-panel-switching" : null,
+      this.state.loginTransitionActive ? "is-login-transition-origin" : null,
     ].filter(Boolean).join(" ");
 
     return (
@@ -2168,6 +2221,7 @@ export class LoginPage extends React.Component {
           {Setting.inIframe() || Setting.isMobile() ? null : <div dangerouslySetInnerHTML={{__html: application.formCss}} />}
           {Setting.inIframe() || !Setting.isMobile() ? null : <div dangerouslySetInnerHTML={{__html: application.formCssMobile}} />}
           <div
+            ref={this.loginCardRef}
             className={`${loginPanelClasses} login-page-card`}
             style={this.state.panelHeight !== null ? {height: `${this.state.panelHeight}px`} : undefined}
           >
