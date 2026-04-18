@@ -14,6 +14,41 @@
   animation: lso-overlay-fade-out var(--lso-overlay-fade-out-ms, 220ms) cubic-bezier(0.2, 0, 0, 1) forwards;
 }
 
+/* 卡片放大动画：根容器不再自绘白色背景，由 shell 负责几何形变 */
+.login-success-overlay.has-origin {
+  background: transparent;
+  opacity: 1;
+  animation: none;
+}
+
+.login-success-overlay.has-origin.is-exiting {
+  animation: none;
+}
+
+/* 白色 shell：从登录卡片矩形变换到全屏，GPU 合成 */
+.login-success-overlay-shell {
+  position: absolute;
+  inset: 0;
+  background: #fff;
+  transform-origin: top left;
+  pointer-events: none;
+}
+
+.login-success-overlay.has-origin .login-success-overlay-shell {
+  will-change: transform, border-radius;
+  border-radius: var(--lso-origin-radius-h, 0) / var(--lso-origin-radius-v, 0);
+  transform:
+    translate(var(--lso-origin-translate-x, 0), var(--lso-origin-translate-y, 0))
+    scale(var(--lso-origin-scale-x, 1), var(--lso-origin-scale-y, 1));
+  animation: lso-shell-expand var(--lso-expand-ms, 360ms) cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+.login-success-overlay.has-origin.is-shrinking .login-success-overlay-shell {
+  animation:
+    lso-shell-shrink var(--lso-shrink-ms, 320ms) var(--lso-shrink-delay-ms, 80ms)
+    cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
 .login-success-overlay-content {
   display: flex;
   flex-direction: column;
@@ -21,10 +56,25 @@
   justify-content: center;
   padding: 24px;
   text-align: center;
+  position: relative;
+  z-index: 1;
 }
 
 .login-success-overlay.is-exiting .login-success-overlay-content {
   animation: lso-content-fade-up var(--lso-overlay-fade-out-ms, 220ms) cubic-bezier(0.2, 0, 0, 1) forwards;
+}
+
+/* has-origin 时内容独立淡入，不与 root 透明度绑定，避免 shell 未覆盖区域提前泄露 */
+.login-success-overlay.has-origin .login-success-overlay-content {
+  opacity: 0;
+  transform: translateY(8px);
+  animation:
+    lso-origin-content-in var(--lso-origin-content-in-ms, 220ms) var(--lso-origin-content-in-delay-ms, 200ms)
+    cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+.login-success-overlay.has-origin.is-shrinking .login-success-overlay-content {
+  animation: lso-origin-content-out var(--lso-origin-content-out-ms, 160ms) cubic-bezier(0.4, 0, 0.6, 1) forwards;
 }
 
 .login-success-overlay-icon {
@@ -148,6 +198,27 @@
   color: rgb(0 0 0 / 42%);
 }
 
+/* 减少动画偏好下，跳过 shell 的 transform/border-radius 变化，退回简单淡入/淡出 */
+.login-success-overlay.has-origin.is-reduced-motion {
+  background: #fff;
+  opacity: 0;
+  animation: lso-overlay-fade-in var(--lso-overlay-fade-in-ms, 150ms) cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.login-success-overlay.has-origin.is-reduced-motion.is-exiting {
+  animation: lso-overlay-fade-out var(--lso-overlay-fade-out-ms, 220ms) cubic-bezier(0.2, 0, 0, 1) forwards;
+}
+
+.login-success-overlay.has-origin.is-reduced-motion .login-success-overlay-shell {
+  display: none;
+}
+
+.login-success-overlay.has-origin.is-reduced-motion .login-success-overlay-content {
+  opacity: 1;
+  transform: none;
+  animation: none;
+}
+
 .login-success-overlay.is-reduced-motion.is-loading .login-success-overlay-spinner-layer {
   animation: none;
 }
@@ -215,6 +286,30 @@
     transform: none;
     animation-name: lso-text-fade !important;
     animation-timing-function: linear !important;
+  }
+
+  .login-success-overlay.has-origin {
+    background: #fff !important;
+    opacity: 0 !important;
+    animation:
+      lso-overlay-fade-in var(--lso-overlay-fade-in-ms, 150ms)
+      cubic-bezier(0.4, 0, 0.2, 1) forwards !important;
+  }
+
+  .login-success-overlay.has-origin.is-exiting {
+    animation:
+      lso-overlay-fade-out var(--lso-overlay-fade-out-ms, 220ms)
+      cubic-bezier(0.2, 0, 0, 1) forwards !important;
+  }
+
+  .login-success-overlay.has-origin .login-success-overlay-shell {
+    display: none !important;
+  }
+
+  .login-success-overlay.has-origin .login-success-overlay-content {
+    opacity: 1 !important;
+    transform: none !important;
+    animation: none !important;
   }
 }
 
@@ -350,5 +445,59 @@
 
   to {
     opacity: 1;
+  }
+}
+
+/* 卡片 → 整屏 shell 展开 */
+@keyframes lso-shell-expand {
+  from {
+    transform:
+      translate(var(--lso-origin-translate-x, 0), var(--lso-origin-translate-y, 0))
+      scale(var(--lso-origin-scale-x, 1), var(--lso-origin-scale-y, 1));
+    border-radius: var(--lso-origin-radius-h, 0) / var(--lso-origin-radius-v, 0);
+  }
+
+  to {
+    transform: translate(0, 0) scale(1, 1);
+    border-radius: 0 / 0;
+  }
+}
+
+/* 失败时 shell 反向缩回卡片 */
+@keyframes lso-shell-shrink {
+  from {
+    transform: translate(0, 0) scale(1, 1);
+    border-radius: 0 / 0;
+  }
+
+  to {
+    transform:
+      translate(var(--lso-origin-translate-x, 0), var(--lso-origin-translate-y, 0))
+      scale(var(--lso-origin-scale-x, 1), var(--lso-origin-scale-y, 1));
+    border-radius: var(--lso-origin-radius-h, 0) / var(--lso-origin-radius-v, 0);
+  }
+}
+
+@keyframes lso-origin-content-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes lso-origin-content-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(8px);
   }
 }
