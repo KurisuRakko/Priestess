@@ -2,7 +2,7 @@
 
 ## 协作边界
 
-- 默认只修改 `/Users/rakko/Documents/priestess` 内的文件。
+- 默认只修改 `/Users/rakko/Documents/GitHub/priestess` 内的文件。
 - 禁止修改 `/Users/rakko/Documents/GitHub/Phainon` 源码，除非用户明确说明“合并源码”或给出同等明确授权。
 - 本仓库是单 Git 项目的 npm workspaces monorepo：`apps/login` 是登录前端，`apps/admin` 是管理台前端，`packages/priestess-shared` 是共享 API、基础组件和基础样式。
 - 登录前端和管理台前端必须保持独立入口、独立路由和独立 dev 端口；不要把管理台业务面板重新 import 回登录前端，也不要把登录卡片、二维码抽屉或登录动效 import 进管理台前端。
