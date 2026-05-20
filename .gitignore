@@ -1,0 +1,14 @@
+node_modules/
+dist/
+apps/*/dist/
+packages/*/dist/
+backups/
+.DS_Store
+*.tsbuildinfo
+qa-*.png
+.env
+.env.local
+.env.*.local
+apps/*/.env
+apps/*/.env.local
+apps/*/.env.*.local

@@ -1,0 +1,17 @@
+{
+  "name": "priestess",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:login": "npm run dev -w @priestess/login",
+    "dev:admin": "npm run dev -w @priestess/admin",
+    "build:login": "npm run build -w @priestess/login",
+    "build:admin": "npm run build -w @priestess/admin",
+    "build": "npm run build:login && npm run build:admin"
+  }
+}
