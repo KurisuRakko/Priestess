@@ -21,6 +21,7 @@ import {
   getAdminSession,
   getPriestessApiBaseLabel,
   getPriestessApiErrorMessage,
+  detectPriestessLanguage,
   loginAdminSession,
   listAdminQrSessions,
   listAdminUserPasskeys,
@@ -28,6 +29,8 @@ import {
   listLoginRiskBuckets,
   listPasswordResetRequests,
   logoutAdminSession,
+  translatePriestess,
+  usePriestessTranslation,
   type AdminSession,
   type AdminPasswordResetRequest,
   type AdminPasskey,
@@ -57,7 +60,7 @@ const RISK_STATUS_OPTIONS = [
   { label: "全部", value: "all" },
 ];
 
-const dateTimeFormatter = new Intl.DateTimeFormat("zh-CN", {
+const dateTimeFormatter = new Intl.DateTimeFormat(detectPriestessLanguage(), {
   day: "2-digit",
   hour: "2-digit",
   minute: "2-digit",
@@ -65,6 +68,7 @@ const dateTimeFormatter = new Intl.DateTimeFormat("zh-CN", {
 });
 
 export function AdminPage({ onNavigateToLogin, onNotice }: AdminPageProps) {
+  const { t } = usePriestessTranslation("admin");
   const [session, setSession] = useState<AdminSession | null>(null);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [qrSessions, setQrSessions] = useState<AdminQrSession[]>([]);
@@ -136,7 +140,7 @@ export function AdminPage({ onNavigateToLogin, onNotice }: AdminPageProps) {
       setRiskBuckets([]);
       setPasswordResetRequests([]);
       setPasskeys([]);
-      setDashboardError(`会话：${getPriestessApiErrorMessage(error)}`);
+      setDashboardError(t("会话：{{message}}", { message: getPriestessApiErrorMessage(error) }));
       setLastLoadedAt(new Date());
       setIsLoading(false);
       return;
@@ -176,34 +180,34 @@ export function AdminPage({ onNavigateToLogin, onNotice }: AdminPageProps) {
       setUsers(usersResult.value);
     } else {
       setUsers([]);
-      errors.push(`用户：${getPriestessApiErrorMessage(usersResult.reason)}`);
+      errors.push(t("用户：{{message}}", { message: getPriestessApiErrorMessage(usersResult.reason) }));
     }
 
     if (qrResult.status === "fulfilled") {
       setQrSessions(qrResult.value);
     } else {
       setQrSessions([]);
-      errors.push(`二维码：${getPriestessApiErrorMessage(qrResult.reason)}`);
+      errors.push(t("二维码：{{message}}", { message: getPriestessApiErrorMessage(qrResult.reason) }));
     }
 
     if (riskResult.status === "fulfilled") {
       setRiskBuckets(riskResult.value);
     } else {
       setRiskBuckets([]);
-      errors.push(`风险：${getPriestessApiErrorMessage(riskResult.reason)}`);
+      errors.push(t("风险：{{message}}", { message: getPriestessApiErrorMessage(riskResult.reason) }));
     }
 
     if (resetResult.status === "fulfilled") {
       setPasswordResetRequests(resetResult.value);
     } else {
       setPasswordResetRequests([]);
-      errors.push(`重置：${getPriestessApiErrorMessage(resetResult.reason)}`);
+      errors.push(t("重置：{{message}}", { message: getPriestessApiErrorMessage(resetResult.reason) }));
     }
 
     setDashboardError(errors.join(" / "));
     setLastLoadedAt(new Date());
     setIsLoading(false);
-  }, [qrStatus, riskStatus]);
+  }, [qrStatus, riskStatus, t]);
 
   useEffect(() => {
     const abortController = new AbortController();
@@ -255,7 +259,7 @@ export function AdminPage({ onNavigateToLogin, onNotice }: AdminPageProps) {
   }, [selectedUserId]);
 
   const refreshDashboard = () => {
-    void loadDashboard().then(() => onNotice("管理数据已刷新"));
+    void loadDashboard().then(() => onNotice(t("管理数据已刷新")));
   };
 
   const submitAdminLogin = async(event: FormEvent<HTMLFormElement>) => {
@@ -264,7 +268,7 @@ export function AdminPage({ onNavigateToLogin, onNotice }: AdminPageProps) {
     const passwordInput = adminPasswordInputRef.current;
     const password = passwordInput?.value ?? "";
     if (!password) {
-      setAdminLoginError("请输入管理员密码");
+      setAdminLoginError(t("请输入管理员密码"));
       passwordInput?.focus();
       return;
     }
@@ -274,10 +278,10 @@ export function AdminPage({ onNavigateToLogin, onNotice }: AdminPageProps) {
     try {
       const nextSession = await loginAdminSession(password);
       setSession(nextSession);
-      onNotice("管理员已登录");
+      onNotice(t("管理员已登录"));
       await loadDashboard();
     } catch (error) {
-      setAdminLoginError(getPriestessApiErrorMessage(error, "管理员登录失败"));
+      setAdminLoginError(getPriestessApiErrorMessage(error, t("管理员登录失败")));
       passwordInput?.focus();
     } finally {
       if (passwordInput) {
@@ -297,9 +301,9 @@ export function AdminPage({ onNavigateToLogin, onNotice }: AdminPageProps) {
       setRiskBuckets([]);
       setPasswordResetRequests([]);
       setPasskeys([]);
-      onNotice("已退出登录");
+      onNotice(t("已退出登录"));
     } catch (error) {
-      onNotice(getPriestessApiErrorMessage(error, "退出登录失败"));
+      onNotice(getPriestessApiErrorMessage(error, t("退出登录失败")));
     } finally {
       setIsLoggingOut(false);
     }
@@ -308,17 +312,17 @@ export function AdminPage({ onNavigateToLogin, onNotice }: AdminPageProps) {
   return (
     <main className="admin-shell">
       <FloatingBackdrop />
-      <header className="admin-topbar" aria-label="Priestess 管理台">
+      <header className="admin-topbar" aria-label={t("Priestess Manage")}>
         <BrandMark size="sm" />
         <div className="admin-topbar__actions">
           <button className="admin-button admin-button--quiet" onClick={onNavigateToLogin} type="button">
             <LogIn aria-hidden="true" size={17} strokeWidth={1.8} />
-            <span>登录页</span>
+            <span>{t("登录页")}</span>
           </button>
           {session?.authenticated ? (
             <button className="admin-button admin-button--quiet" disabled={isLoggingOut} onClick={logout} type="button">
               <LogOut aria-hidden="true" size={17} strokeWidth={1.8} />
-              <span>{isLoggingOut ? "退出中" : "退出"}</span>
+              <span>{isLoggingOut ? t("退出中") : t("退出")}</span>
             </button>
           ) : null}
         </div>
@@ -327,26 +331,26 @@ export function AdminPage({ onNavigateToLogin, onNotice }: AdminPageProps) {
       <section className="admin-page" aria-labelledby="admin-title">
         <div className="admin-header">
           <div>
-            <h1 id="admin-title">Priestess 管理台</h1>
-            <p>{session?.authenticated ? "管理员会话已启用" : "等待管理员会话"}</p>
+            <h1 id="admin-title">Priestess Manage</h1>
+            <p>{session?.authenticated ? t("管理员会话已启用") : t("等待管理员会话")}</p>
           </div>
           <div className="admin-header__actions">
             <button className="admin-button admin-button--primary" disabled={isLoading} onClick={refreshDashboard} type="button">
               <RefreshCw aria-hidden="true" className={isLoading ? "is-spinning" : ""} size={18} strokeWidth={1.8} />
-              <span>{isLoading ? "刷新中" : "刷新"}</span>
+              <span>{isLoading ? t("刷新中") : t("刷新")}</span>
             </button>
           </div>
         </div>
 
-        <div className="admin-status-strip" aria-label="连接状态">
+        <div className="admin-status-strip" aria-label={t("连接状态")}>
           <StatusItem icon={<Server size={17} strokeWidth={1.8} />} label="API" value={getPriestessApiBaseLabel()} />
           <StatusItem
             icon={session?.authenticated ? <CheckCircle2 size={17} strokeWidth={1.8} /> : <LockKeyhole size={17} strokeWidth={1.8} />}
-            label="会话"
+            label={t("会话")}
             tone={session?.authenticated ? "good" : "warn"}
-            value={session?.authenticated ? "已登录" : "未登录"}
+            value={session?.authenticated ? t("已登录") : t("未登录")}
           />
-          <StatusItem icon={<Clock3 size={17} strokeWidth={1.8} />} label="上次刷新" value={lastLoadedAt ? dateTimeFormatter.format(lastLoadedAt) : "未刷新"} />
+          <StatusItem icon={<Clock3 size={17} strokeWidth={1.8} />} label={t("上次刷新")} value={lastLoadedAt ? dateTimeFormatter.format(lastLoadedAt) : t("未刷新")} />
         </div>
 
         {dashboardError ? (
@@ -358,25 +362,25 @@ export function AdminPage({ onNavigateToLogin, onNotice }: AdminPageProps) {
 
         {session?.authenticated ? (
           <>
-        <section className="admin-metrics" aria-label="管理概览">
-          <MetricCard icon={<UsersRound size={20} strokeWidth={1.8} />} label="本地用户" value={String(users.length)} detail={`${enabledUserCount} 个启用`} />
-          <MetricCard icon={<QrCode size={20} strokeWidth={1.8} />} label="二维码会话" value={String(qrSessions.length)} detail={formatStatusSummary(qrSessions)} />
-          <MetricCard icon={<ShieldAlert size={20} strokeWidth={1.8} />} label="登录风险" value={String(riskBuckets.length)} detail={`${lockedRiskCount} 个锁定`} />
-          <MetricCard icon={<KeyRound size={20} strokeWidth={1.8} />} label="Passkey" value={String(passkeys.length)} detail={`${activePasskeyCount} 个可用`} />
+        <section className="admin-metrics" aria-label={t("管理概览")}>
+          <MetricCard icon={<UsersRound size={20} strokeWidth={1.8} />} label={t("本地用户")} value={String(users.length)} detail={t("{{count}} 个启用", { count: enabledUserCount })} />
+          <MetricCard icon={<QrCode size={20} strokeWidth={1.8} />} label={t("二维码会话")} value={String(qrSessions.length)} detail={formatStatusSummary(qrSessions)} />
+          <MetricCard icon={<ShieldAlert size={20} strokeWidth={1.8} />} label={t("登录风险")} value={String(riskBuckets.length)} detail={t("{{count}} 个锁定", { count: lockedRiskCount })} />
+          <MetricCard icon={<KeyRound size={20} strokeWidth={1.8} />} label="Passkey" value={String(passkeys.length)} detail={t("{{count}} 个可用", { count: activePasskeyCount })} />
         </section>
 
         <div className="admin-grid">
           <section className="admin-panel admin-panel--users" aria-labelledby="admin-users-title">
             <PanelHeader
               icon={<UsersRound size={19} strokeWidth={1.8} />}
-              title="本地用户"
+              title={t("本地用户")}
               action={(
                 <label className="admin-search">
                   <Search aria-hidden="true" size={17} strokeWidth={1.8} />
                   <input
-                    aria-label="筛选用户"
+                    aria-label={t("筛选用户")}
                     onChange={(event) => setQuery(event.target.value)}
-                    placeholder="筛选用户"
+                    placeholder={t("筛选用户")}
                     type="search"
                     value={query}
                   />
@@ -388,10 +392,10 @@ export function AdminPage({ onNavigateToLogin, onNotice }: AdminPageProps) {
               <table className="admin-table">
                 <thead>
                   <tr>
-                    <th>用户</th>
-                    <th>邮箱</th>
-                    <th>状态</th>
-                    <th>更新时间</th>
+                    <th>{t("用户")}</th>
+                    <th>{t("邮箱")}</th>
+                    <th>{t("状态")}</th>
+                    <th>{t("更新时间")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -408,7 +412,7 @@ export function AdminPage({ onNavigateToLogin, onNotice }: AdminPageProps) {
                           </span>
                         </button>
                       </td>
-                      <td>{user.email || "未设置"}</td>
+                      <td>{user.email || t("未设置")}</td>
                       <td><StatusBadge label={formatEnabled(user.enabled)} tone={user.enabled === false ? "danger" : "good"} /></td>
                       <td>{formatDateTime(user.updatedAt || user.createdAt)}</td>
                     </tr>
@@ -418,7 +422,7 @@ export function AdminPage({ onNavigateToLogin, onNotice }: AdminPageProps) {
             </div>
 
             {!isLoading && visibleUsers.length === 0 ? (
-              <EmptyState icon={<UserRound size={22} strokeWidth={1.8} />} title="暂无用户" />
+              <EmptyState icon={<UserRound size={22} strokeWidth={1.8} />} title={t("暂无用户")} />
             ) : null}
           </section>
 
@@ -426,7 +430,7 @@ export function AdminPage({ onNavigateToLogin, onNotice }: AdminPageProps) {
             <section className="admin-panel" aria-labelledby="admin-passkeys-title">
               <PanelHeader icon={<KeyRound size={19} strokeWidth={1.8} />} title="Passkey" />
               <div className="admin-selected-user">
-                <span>{selectedUser?.displayName ?? "未选择用户"}</span>
+                <span>{selectedUser?.displayName ?? t("未选择用户")}</span>
                 <small>{formatPasskeySummary(passkeys, activePasskeyCount, backedUpPasskeyCount, selectedUser)}</small>
               </div>
 
@@ -437,7 +441,7 @@ export function AdminPage({ onNavigateToLogin, onNotice }: AdminPageProps) {
               <div className="admin-passkey-list">
                 {isPasskeysLoading ? (
                   <div className="admin-passkey-card admin-passkey-card--loading">
-                    <span>正在读取 Passkey</span>
+                    <span>{t("正在读取 Passkey")}</span>
                   </div>
                 ) : null}
                 {passkeys.map((passkey) => (
@@ -451,32 +455,32 @@ export function AdminPage({ onNavigateToLogin, onNotice }: AdminPageProps) {
                     </div>
                     <dl className="admin-passkey-facts">
                       <div>
-                        <dt>设备</dt>
+                        <dt>{t("设备")}</dt>
                         <dd>{formatPasskeyDevice(passkey.deviceType)}</dd>
                       </div>
                       <div>
-                        <dt>备份</dt>
-                        <dd>{passkey.backedUp === true ? "已备份" : "未标记"}</dd>
+                        <dt>{t("备份")}</dt>
+                        <dd>{passkey.backedUp === true ? t("已备份") : t("未标记")}</dd>
                       </div>
                       <div>
                         <dt>Transport</dt>
                         <dd>{formatPasskeyTransports(passkey.transports)}</dd>
                       </div>
                       <div>
-                        <dt>计数器</dt>
-                        <dd>{passkey.counter === null ? "未提供" : String(passkey.counter)}</dd>
+                        <dt>{t("计数器")}</dt>
+                        <dd>{passkey.counter === null ? t("未提供") : String(passkey.counter)}</dd>
                       </div>
                       <div>
-                        <dt>创建</dt>
+                        <dt>{t("创建")}</dt>
                         <dd>{formatDateTime(passkey.createdAt)}</dd>
                       </div>
                       <div>
-                        <dt>最近使用</dt>
+                        <dt>{t("最近使用")}</dt>
                         <dd>{formatDateTime(passkey.lastUsedAt)}</dd>
                       </div>
                       {passkey.disabledAt ? (
                         <div>
-                          <dt>禁用</dt>
+                          <dt>{t("禁用")}</dt>
                           <dd>{formatDateTime(passkey.disabledAt)}</dd>
                         </div>
                       ) : null}
@@ -486,18 +490,18 @@ export function AdminPage({ onNavigateToLogin, onNotice }: AdminPageProps) {
               </div>
 
               {!isPasskeysLoading && passkeys.length === 0 && !passkeyError ? (
-                <EmptyState icon={<KeyRound size={22} strokeWidth={1.8} />} title="暂无 Passkey" compact />
+                <EmptyState icon={<KeyRound size={22} strokeWidth={1.8} />} title={t("暂无 Passkey")} compact />
               ) : null}
             </section>
 
             <section className="admin-panel" aria-labelledby="admin-risk-title">
               <PanelHeader
                 icon={<ShieldAlert size={19} strokeWidth={1.8} />}
-                title="登录风险"
+                title={t("登录风险")}
                 action={(
-                  <select aria-label="风险状态" className="admin-select" onChange={(event) => setRiskStatus(event.target.value)} value={riskStatus}>
+                  <select aria-label={t("风险状态")} className="admin-select" onChange={(event) => setRiskStatus(event.target.value)} value={riskStatus}>
                     {RISK_STATUS_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>{option.label}</option>
+                      <option key={option.value} value={option.value}>{t(option.label)}</option>
                     ))}
                   </select>
                 )}
@@ -510,13 +514,13 @@ export function AdminPage({ onNavigateToLogin, onNotice }: AdminPageProps) {
                       <strong>{bucket.scope}</strong>
                       <small>{describeContext(bucket.context)}</small>
                     </div>
-                    <span>{bucket.failureCount ?? 0} 次</span>
+                    <span>{t("{{count}} 次", { count: bucket.failureCount ?? 0 })}</span>
                   </div>
                 ))}
               </div>
 
               {!isLoading && riskBuckets.length === 0 ? (
-                <EmptyState icon={<ShieldAlert size={22} strokeWidth={1.8} />} title="暂无风险桶" compact />
+                <EmptyState icon={<ShieldAlert size={22} strokeWidth={1.8} />} title={t("暂无风险桶")} compact />
               ) : null}
             </section>
 
@@ -527,11 +531,11 @@ export function AdminPage({ onNavigateToLogin, onNotice }: AdminPageProps) {
         <section className="admin-panel" aria-labelledby="admin-qr-title">
           <PanelHeader
             icon={<QrCode size={19} strokeWidth={1.8} />}
-            title="二维码会话"
+            title={t("二维码会话")}
             action={(
-              <select aria-label="二维码状态" className="admin-select" onChange={(event) => setQrStatus(event.target.value)} value={qrStatus}>
+              <select aria-label={t("二维码状态")} className="admin-select" onChange={(event) => setQrStatus(event.target.value)} value={qrStatus}>
                 {QR_STATUS_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
+                  <option key={option.value} value={option.value}>{t(option.label)}</option>
                 ))}
               </select>
             )}
@@ -541,12 +545,12 @@ export function AdminPage({ onNavigateToLogin, onNotice }: AdminPageProps) {
             <table className="admin-table">
               <thead>
                 <tr>
-                  <th>会话</th>
-                  <th>状态</th>
-                  <th>应用</th>
-                  <th>安全级别</th>
-                  <th>过期时间</th>
-                  <th>上下文</th>
+                  <th>{t("会话")}</th>
+                  <th>{t("状态")}</th>
+                  <th>{t("应用")}</th>
+                  <th>{t("安全级别")}</th>
+                  <th>{t("过期时间")}</th>
+                  <th>{t("上下文")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -556,8 +560,8 @@ export function AdminPage({ onNavigateToLogin, onNotice }: AdminPageProps) {
                       <span className="admin-mono">{shortId(item.sessionId)}</span>
                     </td>
                     <td><StatusBadge label={formatQrStatus(item.status)} tone={getQrStatusTone(item.status)} /></td>
-                    <td>{item.appId || "默认应用"}</td>
-                    <td>{item.securityLevel === null ? "未判定" : `L${item.securityLevel}`}</td>
+                    <td>{item.appId || t("默认应用")}</td>
+                    <td>{item.securityLevel === null ? t("未判定") : `L${item.securityLevel}`}</td>
                     <td>{formatDateTime(item.expiresAt)}</td>
                     <td>{describeContext(item.phoneContext || item.pcContext)}</td>
                   </tr>
@@ -567,7 +571,7 @@ export function AdminPage({ onNavigateToLogin, onNotice }: AdminPageProps) {
           </div>
 
           {!isLoading && qrSessions.length === 0 ? (
-            <EmptyState icon={<QrCode size={22} strokeWidth={1.8} />} title="暂无二维码会话" />
+            <EmptyState icon={<QrCode size={22} strokeWidth={1.8} />} title={t("暂无二维码会话")} />
           ) : null}
         </section>
           </>
@@ -578,12 +582,12 @@ export function AdminPage({ onNavigateToLogin, onNotice }: AdminPageProps) {
                 <LockKeyhole size={24} strokeWidth={1.8} />
               </span>
               <div>
-                <h2 id="admin-login-title">管理员登录</h2>
-                <p>使用 Phainon 管理密码建立 HttpOnly 管理会话。</p>
+                <h2 id="admin-login-title">{t("管理员登录")}</h2>
+                <p>{t("使用 Phainon 管理密码建立 HttpOnly 管理会话。")}</p>
               </div>
               <form className="admin-login-form" onSubmit={submitAdminLogin}>
                 <label className="admin-password-field">
-                  <span>管理员密码</span>
+                  <span>{t("管理员密码")}</span>
                   <input
                     autoComplete="current-password"
                     name="admin-password"
@@ -597,7 +601,7 @@ export function AdminPage({ onNavigateToLogin, onNotice }: AdminPageProps) {
                 {adminLoginError ? <div className="admin-inline-error">{adminLoginError}</div> : null}
                 <button className="admin-button admin-button--primary" disabled={isLoggingIn} type="submit">
                   <LockKeyhole aria-hidden="true" size={17} strokeWidth={1.8} />
-                  <span>{isLoggingIn ? "登录中" : "登录管理台"}</span>
+                  <span>{isLoggingIn ? t("登录中") : t("登录 Manage")}</span>
                 </button>
               </form>
             </div>
@@ -657,23 +661,24 @@ function EmptyState({ compact = false, icon, title }: { compact?: boolean; icon:
 }
 
 function PasswordResetRequestsPanel({ requests }: { requests: AdminPasswordResetRequest[] }) {
+  const { t } = usePriestessTranslation("admin");
   return (
     <section className="admin-panel" aria-labelledby="admin-password-reset-title">
-      <PanelHeader icon={<LockKeyhole size={19} strokeWidth={1.8} />} title="密码重置" />
+      <PanelHeader icon={<LockKeyhole size={19} strokeWidth={1.8} />} title={t("密码重置")} />
       <div className="admin-list">
         {requests.map((request) => (
           <div className="admin-list-row admin-list-row--reset" key={request.requestId}>
             <div>
               <strong>{request.username || request.userId}</strong>
               <small>{request.email || shortId(request.requestId)}</small>
-              <small>{formatDateTime(request.createdAt)} · 过期 {formatDateTime(request.expiresAt)}</small>
+              <small>{formatDateTime(request.createdAt)} · {t("过期 {{date}}", { date: formatDateTime(request.expiresAt) })}</small>
             </div>
             <StatusBadge label={formatPasswordResetStatus(request)} tone={getPasswordResetStatusTone(request)} />
           </div>
         ))}
       </div>
       {requests.length === 0 ? (
-        <EmptyState icon={<LockKeyhole size={22} strokeWidth={1.8} />} title="暂无重置申请" compact />
+        <EmptyState icon={<LockKeyhole size={22} strokeWidth={1.8} />} title={t("暂无重置申请")} compact />
       ) : null}
     </section>
   );
@@ -681,13 +686,13 @@ function PasswordResetRequestsPanel({ requests }: { requests: AdminPasswordReset
 
 function formatPasswordResetStatus(request: AdminPasswordResetRequest) {
   if (request.usedAt || request.status === "used") {
-    return "已使用";
+    return translatePriestess("admin:已使用");
   }
   if (request.status === "email_sent") {
-    return "已发信";
+    return translatePriestess("admin:已发信");
   }
 
-  return "待处理";
+  return translatePriestess("admin:待处理");
 }
 
 function getPasswordResetStatusTone(request: AdminPasswordResetRequest): "danger" | "good" | "neutral" | "warn" {
@@ -703,24 +708,24 @@ function getPasswordResetStatusTone(request: AdminPasswordResetRequest): "danger
 
 function formatPasskeySummary(passkeys: AdminPasskey[], activeCount: number, backedUpCount: number, selectedUser: AdminUser | null) {
   if (!selectedUser) {
-    return "无用户数据";
+    return translatePriestess("admin:无用户数据");
   }
   if (passkeys.length === 0) {
-    return selectedUser.email || selectedUser.username || "暂无 Passkey";
+    return selectedUser.email || selectedUser.username || translatePriestess("admin:暂无 Passkey");
   }
 
-  return `${activeCount} 个可用 · ${backedUpCount} 个已备份`;
+  return translatePriestess("admin:{{activeCount}} 个可用 · {{backedUpCount}} 个已备份", { activeCount, backedUpCount });
 }
 
 function formatPasskeyStatus(passkey: AdminPasskey) {
   if (passkey.disabledAt) {
-    return "已禁用";
+    return translatePriestess("admin:已禁用");
   }
   if (passkey.backedUp === true) {
-    return "可用";
+    return translatePriestess("admin:可用");
   }
 
-  return "需关注";
+  return translatePriestess("admin:需关注");
 }
 
 function getPasskeyStatusTone(passkey: AdminPasskey): "danger" | "good" | "neutral" | "warn" {
@@ -736,18 +741,18 @@ function getPasskeyStatusTone(passkey: AdminPasskey): "danger" | "good" | "neutr
 
 function formatPasskeyDevice(value: string) {
   if (value === "singleDevice") {
-    return "单设备";
+    return translatePriestess("admin:单设备");
   }
   if (value === "multiDevice") {
-    return "多设备";
+    return translatePriestess("admin:多设备");
   }
 
-  return value || "平台凭据";
+  return value || translatePriestess("admin:平台凭据");
 }
 
 function formatPasskeyTransports(values: string[]) {
   if (values.length === 0) {
-    return "未提供";
+    return translatePriestess("admin:未提供");
   }
 
   return values.join(" · ");
@@ -755,15 +760,15 @@ function formatPasskeyTransports(values: string[]) {
 
 function formatEnabled(enabled: boolean | null) {
   if (enabled === false) {
-    return "停用";
+    return translatePriestess("admin:停用");
   }
 
-  return "启用";
+  return translatePriestess("admin:启用");
 }
 
 function formatDateTime(value: string) {
   if (!value) {
-    return "未提供";
+    return translatePriestess("admin:未提供");
   }
 
   const numericValue = Number(value);
@@ -779,12 +784,12 @@ function formatDateTime(value: string) {
 
 function formatQrStatus(status: string) {
   const labels: Record<string, string> = {
-    confirmed: "已确认",
-    expired: "已过期",
-    pending: "等待",
-    pre_confirmed: "二次确认",
-    rejected: "已拒绝",
-    scanned: "已扫码",
+    confirmed: translatePriestess("admin:已确认"),
+    expired: translatePriestess("admin:已过期"),
+    pending: translatePriestess("admin:等待"),
+    pre_confirmed: translatePriestess("admin:二次确认"),
+    rejected: translatePriestess("admin:已拒绝"),
+    scanned: translatePriestess("admin:已扫码"),
   };
 
   return labels[status] ?? status;
@@ -806,7 +811,7 @@ function getQrStatusTone(status: string): "danger" | "good" | "neutral" | "warn"
 
 function formatStatusSummary(items: AdminQrSession[]) {
   const activeCount = items.filter((item) => ["pending", "scanned", "pre_confirmed"].includes(item.status)).length;
-  return `${activeCount} 个进行中`;
+  return translatePriestess("admin:{{count}} 个进行中", { count: activeCount });
 }
 
 function shortId(value: string) {
@@ -829,7 +834,7 @@ function getInitial(value: string) {
 function describeContext(value: unknown) {
   const parsedValue = parseContext(value);
   if (!parsedValue) {
-    return "无上下文";
+    return translatePriestess("admin:无上下文");
   }
 
   if (typeof parsedValue === "string") {
@@ -841,7 +846,7 @@ function describeContext(value: unknown) {
     .slice(0, 4)
     .map(([key, entryValue]) => `${key}: ${String(entryValue)}`);
 
-  return parts.length > 0 ? parts.join(" · ") : "无上下文";
+  return parts.length > 0 ? parts.join(" · ") : translatePriestess("admin:无上下文");
 }
 
 function parseContext(value: unknown): Record<string, unknown> | string | null {

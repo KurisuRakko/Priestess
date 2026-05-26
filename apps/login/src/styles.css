@@ -25,6 +25,7 @@
   --font-sans: "HarmonyOS Sans SC", "HarmonyOS Sans", "PingFang SC", "Noto Sans SC", "Microsoft YaHei", Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   /* 登录页背景使用压缩后的多档图片，避免把 4.5M 原图直接打进首屏资源。 */
   --dwall-background-image: url("./assets/dwall-960.jpg");
+  --login-lockout-background-image: url("./assets/login-lockout-bg.jpg");
   color: var(--color-text);
   background: var(--color-page);
   font-family: var(--font-sans);
@@ -58,6 +59,9 @@ button {
   -webkit-tap-highlight-color: transparent;
 }
 
+button:disabled,
+input:disabled { cursor: not-allowed; }
+
 button:focus-visible,
 input:focus-visible {
   outline: 2px solid rgba(198, 95, 114, 0.42);
@@ -73,13 +77,36 @@ input:focus-visible {
   position: relative;
   display: grid;
   min-height: 100svh;
-  overflow-x: hidden;
+  overflow: hidden;
   padding: 34px clamp(18px, 4vw, 58px);
   background-color: var(--color-page);
+}
+
+/* 壁纸层：用真实 DOM 元素承载背景图，通过 transform 实现 GPU 加速的缩放平移过渡。
+ * 登录态和注册态分别对应不同的 scale/translate，切换时自然过渡。 */
+.dwall-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
   background-image: var(--dwall-background-image);
   background-position: center;
   background-repeat: no-repeat;
   background-size: cover;
+  transform: scale(1) translate(0, 0);
+  transform-origin: center center;
+  transition: transform 680ms var(--ease-out);
+  will-change: transform;
+}
+
+.dwall-bg--register {
+  transform: scale(1.12) translate(2%, -3%);
+}
+
+.dwall-bg--lockout {
+  /* 冷却态图片自带多语言提示，只切换背景，不再叠加额外 UI。 */
+  background-image: var(--login-lockout-background-image);
+  transform: scale(1) translate(0, 0);
 }
 
 .floating-backdrop {
@@ -141,7 +168,7 @@ input:focus-visible {
 
 .brand-mark__symbol {
   color: var(--color-accent);
-  overflow: visible;
+  overflow: hidden;
 }
 
 .brand-mark__symbol path {
@@ -173,12 +200,13 @@ input:focus-visible {
   z-index: 1;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: center;
   min-height: calc(100svh - 92px);
   padding: 18px 0 24px;
 }
 
 .auth-grid {
+  --auth-login-offset: clamp(0px, calc((100vw - clamp(36px, 8vw, 116px) - 940px) / 2), 900px);
   display: flex;
   align-items: stretch;
   justify-content: flex-end;
@@ -187,6 +215,22 @@ input:focus-visible {
   overflow: visible;
   border-radius: var(--radius-card);
   isolation: isolate;
+  transform: translateX(var(--auth-login-offset));
+  transition: width 680ms var(--ease-out), min-height 680ms var(--ease-out), transform 680ms var(--ease-out);
+}
+
+.auth-grid.auth-grid--register {
+  justify-content: center;
+  width: min(100%, 430px);
+  min-height: clamp(336px, calc(100svh - 300px), 420px);
+  transform: translateX(0);
+}
+
+/* 首屏登录的中间停顿是保留的视觉节奏，随后默认 .auth-grid 再偏移并展开二维码抽屉。 */
+.auth-grid.auth-grid--login-centered {
+  justify-content: center;
+  width: min(100%, 500px);
+  transform: translateX(0);
 }
 
 .login-card-shell {
@@ -195,15 +239,52 @@ input:focus-visible {
   display: flex;
   width: min(500px, 100%);
   min-width: 390px;
+  transition: width 680ms var(--ease-out), min-width 680ms var(--ease-out);
 }
 
-.qr-drawer {
+.auth-grid--register .login-card-shell {
+  width: min(430px, 100%);
+  min-width: 0;
+}
+
+.auth-card-content {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  transition: opacity 180ms var(--ease-out), filter 180ms var(--ease-out);
+}
+
+.login-card--submit-stage .auth-card-content {
+  /* 提交阶段保留表单占位，避免卡片高度跳动；只把可见内容让位给状态层。 */
+  opacity: 0 !important;
+  filter: blur(2px) !important;
+  pointer-events: none;
+  transition-delay: 560ms;
+}
+
+.qr-drawer-slot {
+  --qr-drawer-width: clamp(340px, 31vw, 390px);
   position: relative;
   z-index: 1;
   display: flex;
-  flex: 0 0 clamp(340px, 31vw, 390px);
+  flex: 0 0 var(--qr-drawer-width);
+  max-width: var(--qr-drawer-width);
   min-width: 0;
   margin-left: -1px;
+  overflow: hidden;
+  transition: flex-basis 680ms var(--ease-out), max-width 680ms var(--ease-out), margin-left 680ms var(--ease-out);
+}
+
+.auth-grid--register .qr-drawer-slot { flex-basis: 0; height: 0; max-width: 0; min-height: 0; margin-left: 0; pointer-events: none; }
+.auth-grid--login-centered .qr-drawer-slot { flex-basis: 0; max-width: 0; margin-left: 0; pointer-events: none; }
+.auth-grid--register-drawer .qr-drawer-slot { overflow: visible; }
+/* 二维码可视层只保留外观，transform / opacity / clip-path 交给 Motion 抽屉动画。 */
+.qr-drawer-surface {
+  position: relative;
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-width: var(--qr-drawer-width);
   overflow: hidden;
   border: 1px solid var(--color-border);
   border-left: 0;
@@ -212,6 +293,14 @@ input:focus-visible {
   box-shadow: 0 28px 72px rgba(36, 35, 31, 0.12);
   backdrop-filter: blur(22px);
   transform-origin: left center;
+  transition: border-width 520ms var(--ease-out), box-shadow 520ms var(--ease-out);
+  will-change: transform, opacity, clip-path;
+}
+
+.auth-grid--register .qr-drawer-surface {
+  height: clamp(336px, calc(100svh - 300px), 420px);
+  border-width: 0;
+  box-shadow: none;
 }
 
 .qr-panel,
@@ -291,6 +380,34 @@ input:focus-visible {
   box-shadow: var(--shadow-soft);
 }
 
+.qr-frame--blurred {
+  border-color: rgba(198, 95, 114, 0.28);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.84), rgba(246, 244, 239, 0.88)),
+    var(--color-surface-solid);
+}
+
+.qr-frame--inactive {
+  opacity: 0.82;
+}
+
+.qr-frame__code {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 178px;
+  height: 178px;
+  border-radius: 8px;
+  overflow: hidden;
+  transition: filter 220ms var(--ease-out), opacity 220ms var(--ease-out), transform 220ms var(--ease-out);
+}
+
+.qr-frame--blurred .qr-frame__code {
+  filter: blur(7px);
+  opacity: 0.34;
+  transform: scale(0.98);
+}
+
 .qr-frame__corners {
   position: absolute;
   inset: 18px;
@@ -298,6 +415,61 @@ input:focus-visible {
   border-radius: 9px;
   clip-path: polygon(0 0, 28% 0, 28% 7%, 7% 7%, 7% 28%, 0 28%, 0 0, 72% 0, 100% 0, 100% 28%, 93% 28%, 93% 7%, 72% 7%, 72% 0, 100% 72%, 100% 100%, 72% 100%, 72% 93%, 93% 93%, 93% 72%, 100% 72%, 28% 100%, 0 100%, 0 72%, 7% 72%, 7% 93%, 28% 93%, 28% 100%);
   pointer-events: none;
+}
+
+.qr-frame__overlay {
+  position: absolute;
+  inset: 34px;
+  z-index: 2;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid rgba(198, 95, 114, 0.22);
+  border-radius: 10px;
+  color: var(--color-heading);
+  background: rgba(252, 251, 248, 0.74);
+  text-align: center;
+  backdrop-filter: blur(10px);
+}
+
+.qr-frame__overlay svg {
+  color: var(--color-accent);
+}
+
+.qr-frame__overlay strong {
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.25;
+}
+
+.qr-frame__overlay span {
+  color: var(--color-muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.qr-frame__empty {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 178px;
+  height: 178px;
+  gap: 10px;
+  border: 1px dashed rgba(36, 35, 31, 0.18);
+  border-radius: 8px;
+  color: var(--color-muted);
+  background: rgba(255, 255, 255, 0.34);
+  font-size: 14px;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.qr-frame__empty svg {
+  color: var(--color-accent);
+  opacity: 0.76;
 }
 
 .qr-panel__status {
@@ -342,6 +514,12 @@ input:focus-visible {
   transform: translateY(-1px);
 }
 
+.ghost-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.68;
+  transform: none;
+}
+
 .login-card {
   display: flex;
   flex-direction: column;
@@ -353,17 +531,63 @@ input:focus-visible {
   background: rgba(252, 251, 248, 0.92);
   box-shadow: 0 28px 72px rgba(36, 35, 31, 0.14);
   backdrop-filter: blur(22px);
+  transition: padding 250ms var(--ease-out);
+}
+@media (min-width: 821px) { .auth-grid:not(.auth-grid--login-centered):not(.auth-grid--register) .login-card { border-radius: var(--radius-card) 0 0 var(--radius-card); } }
+.auth-grid--register .login-card {
+  padding: 30px 34px 32px;
 }
 
-.login-card.is-login-transition-origin {
-  visibility: hidden;
-}
+.auth-grid--register-drawer .login-card,
+.auth-grid--register .login-card { background: rgba(252, 251, 248, 0.98); }
+
+.auth-grid--register .login-card h1 { font-size: 34px; }
 
 .login-card__mark {
   width: 38px;
   height: 38px;
   margin-bottom: 20px;
   color: var(--color-accent);
+}
+
+.login-card__back-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  margin: -8px 0 14px -8px;
+  border: 1px solid rgba(36, 35, 31, 0.12);
+  border-radius: 50%;
+  color: var(--color-text);
+  background: rgba(255, 255, 255, 0.38);
+  cursor: pointer;
+  transition: border-color 160ms var(--ease-out), background-color 160ms var(--ease-out), box-shadow 160ms var(--ease-out), color 160ms var(--ease-out), transform 160ms var(--ease-out);
+}
+
+.login-card__back-button:hover {
+  border-color: var(--color-border-strong);
+  color: var(--color-accent-deep);
+  background: rgba(255, 255, 255, 0.64);
+  transform: translateY(-1px);
+}
+
+.login-card__back-button:focus-visible {
+  outline: 2px solid rgba(198, 95, 114, 0.42);
+  outline-offset: 3px;
+}
+
+.login-card__back-button:disabled {
+  color: var(--color-faint);
+  cursor: not-allowed;
+  opacity: 0.62;
+  transform: none;
+}
+
+.login-card__back-button:disabled:hover {
+  border-color: rgba(36, 35, 31, 0.12);
+  color: var(--color-faint);
+  background: rgba(255, 255, 255, 0.38);
 }
 
 .login-card__mark svg {
@@ -463,6 +687,24 @@ input:focus-visible {
   color: var(--color-faint);
 }
 
+.text-field--totp input {
+  border-radius: 0 calc(var(--radius-control) - 1px) calc(var(--radius-control) - 1px) 0;
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.text-field--totp:focus-within {
+  background: #fff;
+}
+
+.text-field--totp input:focus,
+.text-field--totp input:-webkit-autofill {
+  /* 认证器验证码会触发浏览器 one-time-code/autofill 底色，这里固定为白底以保持登录卡片视觉稳定。 */
+  background: #fff;
+  box-shadow: 0 0 0 1000px #fff inset;
+  caret-color: var(--color-text);
+  -webkit-text-fill-color: var(--color-text);
+}
+
 .field-error {
   color: var(--color-danger);
   font-size: 12px;
@@ -507,6 +749,11 @@ input:focus-visible {
   cursor: pointer;
 }
 
+.checkbox-line--disabled {
+  cursor: not-allowed;
+  opacity: 0.64;
+}
+
 .checkbox-line__input {
   position: absolute;
   width: 1px;
@@ -537,6 +784,26 @@ input:focus-visible {
   outline-offset: 3px;
 }
 
+.terms-disclaimer {
+  margin: -4px 0 0;
+  color: var(--color-muted);
+  font-size: 12px;
+  line-height: 1.55;
+  text-align: center;
+}
+
+.terms-disclaimer a {
+  color: var(--color-accent-deep);
+  text-decoration: none;
+  transition: color 160ms var(--ease-out);
+}
+
+.terms-disclaimer a:hover {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .text-link {
   display: inline-flex;
   align-items: center;
@@ -554,6 +821,19 @@ input:focus-visible {
 
 .text-link:hover {
   color: var(--color-accent);
+}
+
+.text-link:disabled,
+.icon-button:disabled {
+  color: var(--color-faint);
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.text-link:disabled:hover,
+.icon-button:disabled:hover {
+  color: var(--color-faint);
+  background: transparent;
 }
 
 .primary-button,
@@ -585,22 +865,20 @@ input:focus-visible {
   background: var(--color-accent-deep);
 }
 
-.divider {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  align-items: center;
-  gap: 18px;
-  margin: 20px 0 16px;
-  color: var(--color-muted);
+.primary-button:disabled,
+.secondary-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+  transform: none;
 }
 
-.divider span {
-  height: 1px;
-  background: var(--color-border);
+.primary-button:disabled:hover {
+  background: var(--color-accent);
 }
 
-.divider small {
-  font-size: 14px;
+.secondary-button:disabled:hover {
+  border-color: var(--color-border);
+  background: rgba(255, 255, 255, 0.36);
 }
 
 .secondary-button {
@@ -629,8 +907,11 @@ input:focus-visible {
 }
 
 .signup-line__button {
+  color: var(--color-muted);
   font-size: 15px;
 }
+
+.signup-line__button:hover { color: var(--color-accent); }
 
 .toast {
   position: fixed;
@@ -663,6 +944,7 @@ input:focus-visible {
   }
 
   .auth-grid {
+    transform: none;
     width: min(100%, 500px);
     min-height: auto;
   }
@@ -672,7 +954,7 @@ input:focus-visible {
     min-width: 0;
   }
 
-  .qr-drawer {
+  .qr-drawer-slot {
     display: none;
   }
 
@@ -690,6 +972,42 @@ input:focus-visible {
   }
 }
 
+@media (min-width: 821px) and (max-width: 1100px) {
+  .app-shell {
+    padding-inline: clamp(16px, 3vw, 32px);
+  }
+
+  .login-stage {
+    padding: 16px 0 22px;
+  }
+
+  .auth-grid {
+    --auth-login-offset: clamp(0px, calc((100vw - clamp(32px, 6vw, 64px) - 900px) / 2), 72px);
+    width: min(100%, 900px);
+    min-height: clamp(548px, calc(100svh - 132px), 620px);
+  }
+
+  .auth-grid:not(.auth-grid--login-centered):not(.auth-grid--register) .login-card-shell {
+    width: min(500px, calc(100% - 318px));
+    min-width: 390px;
+  }
+
+  .qr-drawer-slot {
+    --qr-drawer-width: clamp(300px, 33vw, 350px);
+  }
+
+  .qr-panel {
+    gap: 24px;
+    padding: 32px 28px;
+  }
+
+  .qr-frame,
+  .qr-panel__status,
+  .ghost-button {
+    width: min(100%, 236px);
+  }
+}
+
 @media (min-width: 900px) {
   :root {
     --dwall-background-image: url("./assets/dwall-1600.jpg");
@@ -704,121 +1022,65 @@ input:focus-visible {
 
 @media (max-height: 720px) and (min-width: 821px) {
   .app-shell {
-    padding-top: 8px;
-    padding-bottom: 12px;
+    min-height: auto;
+    overflow-y: auto;
+    padding-top: 12px;
+    padding-bottom: 14px;
   }
 
   .login-stage {
-    min-height: calc(100svh - 72px);
-    padding: 0;
+    min-height: auto;
+    padding: 8px 0 10px;
   }
 
   .auth-grid {
-    min-height: 508px;
+    min-height: min(540px, calc(100svh - 76px));
   }
 
-  .qr-drawer {
-    flex-basis: 320px;
-  }
-
+  /* 小桌面短屏只收紧留白，不把表单压成难读的微型控件。 */
   .qr-panel {
-    gap: 13px;
-    padding: 20px 36px;
+    gap: 18px;
+    padding: 24px 30px;
   }
 
-  .qr-panel h2 {
-    font-size: 22px;
-  }
-
-  .qr-frame {
-    width: min(100%, 194px);
-  }
-
+  .qr-frame,
   .qr-panel__status,
   .ghost-button {
-    width: min(100%, 194px);
+    width: min(100%, 224px);
   }
 
   .login-card {
-    padding: 14px 34px;
+    padding: 20px 34px;
   }
 
   .login-card__mark {
-    width: 20px;
-    height: 20px;
-    margin-bottom: 4px;
-  }
-
-  .login-card h1 {
-    font-size: 28px;
+    margin-bottom: 10px;
   }
 
   .login-card__heading {
-    margin-bottom: 8px;
+    margin-bottom: 14px;
   }
 
   .login-card__heading p {
-    margin-top: 5px;
-    font-size: 13px;
-    line-height: 1.35;
+    margin-top: 8px;
+    line-height: 1.5;
   }
 
   .login-form {
-    gap: 8px;
+    gap: 10px;
   }
 
   .field-group {
-    gap: 4px;
-  }
-
-  .field-group__label {
-    font-size: 12px;
-  }
-
-  .text-field {
-    min-height: 36px;
-  }
-
-  .text-field > svg {
-    margin-left: 14px;
-  }
-
-  .text-field input {
-    height: 34px;
-  }
-
-  .icon-button {
-    width: 34px;
-    height: 34px;
-  }
-
-  .form-row {
-    min-height: 24px;
-    font-size: 14px;
+    gap: 6px;
   }
 
   .primary-button,
   .secondary-button {
-    min-height: 38px;
-  }
-
-  .primary-button {
-    margin-top: 2px;
-  }
-
-  .divider {
-    margin: 5px 0 5px;
+    min-height: 48px;
   }
 
   .signup-line {
-    margin-top: 2px;
-    font-size: 13px;
-    line-height: 1.25;
-  }
-
-  .signup-line__button,
-  .text-link {
-    font-size: 13px;
+    margin-top: 10px;
   }
 }
 
@@ -835,6 +1097,12 @@ input:focus-visible {
     padding: 28px 20px 30px;
   }
 
+  .login-card__back-button {
+    width: 36px;
+    height: 36px;
+    margin: -4px 0 12px -4px;
+  }
+
   .form-row {
     align-items: flex-start;
     flex-direction: column;
@@ -849,6 +1117,11 @@ input:focus-visible {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .login-card--submit-stage .auth-card-content {
+    filter: none;
+    transition-delay: 0ms;
+  }
+
   *,
   *::before,
   *::after {

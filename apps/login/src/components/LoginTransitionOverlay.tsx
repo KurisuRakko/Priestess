@@ -1,5 +1,6 @@
 import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { translatePriestess } from "@priestess/shared";
 import "./LoginTransitionOverlay.css";
 
 const DEFAULT_DURATION_MS = 2200;
@@ -12,13 +13,10 @@ const PHASE_SUCCESS = "success";
 const PHASE_FAILURE = "failure";
 const PHASE_CLOSING = "closing";
 const DEFAULT_PRIMARY_COLOR = "#c65f72";
-const ORIGIN_EXPAND_MS = 220;
-const ORIGIN_SHRINK_MS = 180;
-const ORIGIN_SHRINK_DELAY_MS = 0;
 const ORIGIN_CONTENT_IN_DELAY_MS = 100;
 const ORIGIN_CONTENT_IN_MS = 150;
 const ORIGIN_CONTENT_OUT_MS = 90;
-const ORIGIN_SHRINK_FALLBACK_MS = ORIGIN_SHRINK_MS + ORIGIN_SHRINK_DELAY_MS + 180;
+const SPINNER_ROTATE_MS = 900;
 
 type LoginTransitionPhase =
   | typeof PHASE_LOADING
@@ -43,7 +41,6 @@ type Timeline = {
   spinnerDelayMs: number;
   spinnerStopMs: number;
   spinnerRotateMs: number;
-  spinnerArcMs: number;
   spinnerFadeMs: number;
   markDelayMs: number;
   markDrawMs: number;
@@ -88,15 +85,15 @@ type CssVars = CSSProperties & Record<`--${string}`, string>;
 let currentOverlayController: LoginTransitionOverlayController | null = null;
 
 function getDefaultLoadingTitle() {
-  return "正在登录...";
+  return translatePriestess("login:正在登录...");
 }
 
 function getDefaultSuccessTitle() {
-  return "登录成功";
+  return translatePriestess("login:登录成功");
 }
 
 function getDefaultFailureTitle() {
-  return "登录失败";
+  return translatePriestess("login:登录失败");
 }
 
 function normalizeText(value: unknown) {
@@ -136,8 +133,7 @@ function buildOutcomeTimeline(durationMs?: number, postAnimationDelayMs?: number
     overlayFadeInMs: scaled(150, 90),
     spinnerDelayMs: scaled(70),
     spinnerStopMs: scaled(520, 250),
-    spinnerRotateMs: scaled(420, 280),
-    spinnerArcMs: scaled(820, 520),
+    spinnerRotateMs: SPINNER_ROTATE_MS,
     spinnerFadeMs: scaled(160, 100),
     markDelayMs: scaled(380, 220),
     markDrawMs: scaled(220, 120),
@@ -309,38 +305,23 @@ function LoginTransitionOverlayInner(props: RenderState & { onFinish: () => void
   } = props;
   const prefersReducedMotion = usePrefersReducedMotion();
   const [isExiting, setIsExiting] = useState(false);
-  const shellRef = useRef<HTMLDivElement | null>(null);
   const hasTriggeredVisualCompleteRef = useRef(false);
 
-  // 计算 shell 从原卡片矩形到整屏的起始变换。仅在 originRect 变化时重新计算。
+  // originRect 只用来识别登录卡片提交态，让结果层走轻量状态内容，避免整张白色遮罩盖住表单。
   const originStyleVars = useMemo<CssVars | null>(() => {
     const rect = normalizeOriginRect(originRect);
-    if (!rect || typeof window === "undefined") {
+    if (!rect) {
       return null;
     }
 
-    const vw = window.innerWidth || 1;
-    const vh = window.innerHeight || 1;
-    const parsedRadius = parseFloat(rect.borderRadius);
-    const borderRadius = Number.isFinite(parsedRadius) && parsedRadius > 0 ? parsedRadius : 0;
-
     return {
-      "--lso-origin-inset-top": `${Math.max(rect.top, 0)}px`,
-      "--lso-origin-inset-right": `${Math.max(vw - rect.left - rect.width, 0)}px`,
-      "--lso-origin-inset-bottom": `${Math.max(vh - rect.top - rect.height, 0)}px`,
-      "--lso-origin-inset-left": `${Math.max(rect.left, 0)}px`,
-      "--lso-origin-radius": `${borderRadius}px`,
-      "--lso-expand-ms": `${ORIGIN_EXPAND_MS}ms`,
-      "--lso-shrink-ms": `${ORIGIN_SHRINK_MS}ms`,
-      "--lso-shrink-delay-ms": `${ORIGIN_SHRINK_DELAY_MS}ms`,
       "--lso-origin-content-in-delay-ms": `${ORIGIN_CONTENT_IN_DELAY_MS}ms`,
       "--lso-origin-content-in-ms": `${ORIGIN_CONTENT_IN_MS}ms`,
       "--lso-origin-content-out-ms": `${ORIGIN_CONTENT_OUT_MS}ms`,
     };
   }, [originRect]);
 
-  const hasOriginMorph = originStyleVars !== null && !prefersReducedMotion;
-  const isShrinking = hasOriginMorph && phase === PHASE_FAILURE && isExiting;
+  const hasOriginStatusCard = originStyleVars !== null;
   const loadingTitleText = normalizeText(loadingTitle) || getDefaultLoadingTitle();
   const titleText = normalizeText(title) || (phase === PHASE_FAILURE ? getDefaultFailureTitle() : getDefaultSuccessTitle());
   const cleanOrganizationName = normalizeText(organizationName);
@@ -362,14 +343,13 @@ function LoginTransitionOverlayInner(props: RenderState & { onFinish: () => void
     "--lso-spinner-delay-ms": `${timeline.spinnerDelayMs}ms`,
     "--lso-spinner-stop-ms": `${timeline.spinnerStopMs}ms`,
     "--lso-spinner-rotate-ms": `${timeline.spinnerRotateMs}ms`,
-    "--lso-spinner-arc-ms": `${timeline.spinnerArcMs}ms`,
     "--lso-spinner-fade-ms": `${timeline.spinnerFadeMs}ms`,
     "--lso-mark-delay-ms": `${timeline.markDelayMs}ms`,
     "--lso-mark-draw-ms": `${prefersReducedMotion ? 1 : timeline.markDrawMs}ms`,
     "--lso-text-in-ms": `${prefersReducedMotion ? 180 : timeline.textInMs}ms`,
     "--lso-loading-title-in-ms": `${prefersReducedMotion ? 140 : timeline.loadingTitleInMs}ms`,
     "--lso-primary-color": normalizeText(primaryColor) || DEFAULT_PRIMARY_COLOR,
-    ...(hasOriginMorph ? originStyleVars : {}),
+    ...(hasOriginStatusCard ? originStyleVars : {}),
   };
 
   useEffect(() => {
@@ -383,51 +363,11 @@ function LoginTransitionOverlayInner(props: RenderState & { onFinish: () => void
     }
 
     const timerIds: number[] = [];
-    const frameIds: number[] = [];
-    const cleanupCallbacks: Array<() => void> = [];
     let isCancelled = false;
 
     const waitFor = (delayMs: number) => new Promise<void>((resolve) => {
       const timerId = window.setTimeout(resolve, delayMs);
       timerIds.push(timerId);
-    });
-
-    const waitForNextPaint = () => new Promise<void>((resolve) => {
-      // 失败回收前给底层登录卡片一帧绘制时间，避免恢复卡片和 shell 收缩挤在同一帧。
-      const firstFrame = window.requestAnimationFrame(() => {
-        const secondFrame = window.requestAnimationFrame(() => resolve());
-        frameIds.push(secondFrame);
-      });
-      frameIds.push(firstFrame);
-    });
-
-    const waitForShrinkAnimation = () => new Promise<void>((resolve) => {
-      const shell = shellRef.current;
-      if (!shell) {
-        void waitFor(ORIGIN_SHRINK_FALLBACK_MS).then(resolve);
-        return;
-      }
-
-      let isResolved = false;
-      const finish = () => {
-        if (isResolved) {
-          return;
-        }
-        isResolved = true;
-        shell.removeEventListener("animationend", handleAnimationEnd);
-        window.clearTimeout(fallbackTimerId);
-        resolve();
-      };
-      const handleAnimationEnd = (event: AnimationEvent) => {
-        if (event.target === shell && event.animationName === "lso-shell-shrink") {
-          finish();
-        }
-      };
-      const fallbackTimerId = window.setTimeout(finish, ORIGIN_SHRINK_FALLBACK_MS);
-
-      timerIds.push(fallbackTimerId);
-      shell.addEventListener("animationend", handleAnimationEnd);
-      cleanupCallbacks.push(() => shell.removeEventListener("animationend", handleAnimationEnd));
     });
 
     const runOutcomeSequence = async() => {
@@ -454,19 +394,8 @@ function LoginTransitionOverlayInner(props: RenderState & { onFinish: () => void
         return;
       }
 
-      if (phase === PHASE_FAILURE && hasOriginMorph) {
-        await waitForNextPaint();
-        if (isCancelled) {
-          return;
-        }
-
-        const shrinkCompletion = waitForShrinkAnimation();
-        setIsExiting(true);
-        await shrinkCompletion;
-      } else {
-        setIsExiting(true);
-        await waitFor(timeline.fadeOutMs);
-      }
+      setIsExiting(true);
+      await waitFor(timeline.fadeOutMs);
 
       if (isCancelled) {
         return;
@@ -479,10 +408,8 @@ function LoginTransitionOverlayInner(props: RenderState & { onFinish: () => void
     return () => {
       isCancelled = true;
       timerIds.forEach((timerId) => window.clearTimeout(timerId));
-      frameIds.forEach((frameId) => window.cancelAnimationFrame(frameId));
-      cleanupCallbacks.forEach((cleanup) => cleanup());
     };
-  }, [hasOriginMorph, onFinish, onVisualComplete, outcomeAnimationCompletionMs, phase, phaseKey, timeline.fadeOutMs, timeline.postAnimationDelayMs]);
+  }, [onFinish, onVisualComplete, outcomeAnimationCompletionMs, phase, phaseKey, timeline.fadeOutMs, timeline.postAnimationDelayMs]);
 
   return (
     <div
@@ -493,14 +420,12 @@ function LoginTransitionOverlayInner(props: RenderState & { onFinish: () => void
         phase === PHASE_FAILURE ? "is-failure" : null,
         isExiting ? "is-exiting" : null,
         prefersReducedMotion ? "is-reduced-motion" : null,
-        hasOriginMorph ? "has-origin" : null,
-        isShrinking ? "is-shrinking" : null,
+        hasOriginStatusCard ? "has-origin" : null,
       ].filter(Boolean).join(" ")}
       style={styleVars}
       role="status"
       aria-live="polite"
     >
-      {hasOriginMorph ? <div ref={shellRef} className="login-success-overlay-shell" aria-hidden="true" /> : null}
       <div className="login-success-overlay-content">
         <div className="login-success-overlay-icon" aria-hidden="true">
           <svg className="login-success-overlay-icon-svg" viewBox="0 0 80 80">

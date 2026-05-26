@@ -1,0 +1,203 @@
+.account-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(36, 35, 31, 0.26);
+  backdrop-filter: blur(12px);
+  will-change: opacity;
+}
+
+.account-dialog {
+  position: relative;
+  display: grid;
+  gap: 16px;
+  width: min(440px, 100%);
+  border: 1px solid rgba(36, 35, 31, 0.12);
+  border-radius: var(--radius-card);
+  padding: 22px;
+  color: var(--color-text);
+  background: rgba(252, 251, 248, 0.94);
+  box-shadow: var(--shadow-soft);
+  transform-origin: center;
+  will-change: opacity, transform;
+}
+
+.account-dialog--wide {
+  width: min(640px, 100%);
+}
+
+.account-dialog__close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid rgba(36, 35, 31, 0.1);
+  border-radius: 8px;
+  color: var(--color-muted);
+  background: rgba(252, 251, 248, 0.72);
+  cursor: pointer;
+}
+
+.account-dialog__close:disabled {
+  cursor: not-allowed;
+  opacity: 0.56;
+}
+
+.account-dialog__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  border: 1px solid rgba(185, 75, 75, 0.2);
+  border-radius: 50%;
+  color: var(--color-danger);
+  background: rgba(185, 75, 75, 0.08);
+}
+
+.account-dialog__icon--secure {
+  border-color: rgba(198, 95, 114, 0.22);
+  color: var(--color-accent);
+  background: rgba(198, 95, 114, 0.08);
+}
+
+.account-dialog p,
+.account-dialog h3,
+.account-dialog span {
+  margin: 0;
+}
+
+.account-dialog p {
+  color: var(--color-danger);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.account-dialog h3 {
+  margin-top: 5px;
+  color: var(--color-heading);
+  font-size: 22px;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.account-dialog div > span {
+  display: block;
+  margin-top: 7px;
+  color: var(--color-muted);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.account-dialog__facts {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  overflow: hidden;
+  background: rgba(240, 239, 235, 0.46);
+}
+
+.account-dialog-fact {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid rgba(36, 35, 31, 0.09);
+  padding: 11px 12px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.account-dialog-fact:last-child {
+  border-bottom: 0;
+}
+
+.account-dialog-fact span {
+  color: var(--color-muted);
+}
+
+.account-dialog-fact strong {
+  color: var(--color-heading);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.account-dialog-form {
+  display: grid;
+  gap: 11px;
+}
+
+.account-dialog-form label {
+  display: grid;
+  gap: 6px;
+}
+
+.account-dialog-form label > span {
+  color: var(--color-muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.account-dialog-form input,
+.account-dialog-form select,
+.account-dialog-form textarea {
+  min-height: 38px;
+  border: 1px solid rgba(36, 35, 31, 0.12);
+  border-radius: 8px;
+  padding: 0 11px;
+  color: var(--color-text);
+  background: rgba(252, 251, 248, 0.78);
+  font: inherit;
+}
+
+.account-dialog-form textarea {
+  min-height: 76px;
+  padding: 9px 11px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.account-dialog-form select {
+  cursor: pointer;
+}
+
+.account-dialog-form input:focus,
+.account-dialog-form select:focus,
+.account-dialog-form textarea:focus {
+  border-color: rgba(198, 95, 114, 0.34);
+  outline: 2px solid rgba(198, 95, 114, 0.12);
+  outline-offset: 1px;
+}
+
+.account-dialog-form__error {
+  border: 1px solid rgba(185, 75, 75, 0.2);
+  border-radius: 8px;
+  padding: 10px 11px;
+  color: var(--color-danger);
+  background: rgba(185, 75, 75, 0.07);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.account-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+@media (max-width: 520px) {
+  .account-dialog {
+    padding: 20px;
+  }
+
+  .account-dialog__actions {
+    display: grid;
+  }
+}

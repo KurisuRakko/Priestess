@@ -1,0 +1,306 @@
+.account-picker__mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(198, 95, 114, 0.22);
+  border-radius: 50%;
+  background: rgba(198, 95, 114, 0.08);
+}
+
+.account-picker__heading {
+  margin-bottom: 18px;
+}
+
+.account-picker__heading p {
+  display: grid;
+  gap: 3px;
+}
+
+.account-picker__heading strong {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-heading);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-picker__heading span {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-picker {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.account-picker__list {
+  display: grid;
+  gap: 9px;
+  min-width: 0;
+}
+
+.account-picker__row,
+.account-picker__other {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  color: var(--color-text);
+  background: rgba(255, 255, 255, 0.36);
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 160ms var(--ease-out), border-color 160ms var(--ease-out), transform 160ms var(--ease-out);
+}
+
+.account-picker__row {
+  gap: 13px;
+  min-height: 76px;
+  padding: 12px 13px;
+}
+
+.account-picker__row:hover,
+.account-picker__other:hover {
+  border-color: var(--color-border-strong);
+  background: rgba(255, 255, 255, 0.62);
+  transform: translateY(-1px);
+}
+
+.account-picker__row:disabled,
+.account-picker__other:disabled {
+  cursor: not-allowed;
+  opacity: 0.64;
+  transform: none;
+}
+
+.account-picker__avatar {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  overflow: hidden;
+  border: 1px solid rgba(36, 35, 31, 0.1);
+  border-radius: 50%;
+  background: rgba(240, 239, 235, 0.82);
+}
+
+.account-picker__avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.account-picker__avatar--fallback {
+  color: var(--color-accent-deep);
+  font-size: 17px;
+  font-weight: 500;
+}
+
+.account-picker__identity {
+  display: grid;
+  flex: 1 1 auto;
+  gap: 2px;
+  min-width: 0;
+}
+
+.account-picker__name,
+.account-picker__meta,
+.account-picker__state {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-picker__name {
+  color: var(--color-heading);
+  font-size: 17px;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.account-picker__meta {
+  color: var(--color-muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.account-picker__state {
+  color: var(--color-faint);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.account-picker__action {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  min-width: 48px;
+  color: var(--color-accent-deep);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.account-picker__other {
+  justify-content: flex-start;
+  gap: 12px;
+  min-height: 54px;
+  padding: 0 15px;
+  font-size: 15px;
+}
+
+.account-picker__other-icon {
+  display: inline-grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  color: var(--color-heading);
+  background: rgba(240, 239, 235, 0.86);
+}
+
+.account-picker__other > svg {
+  margin-left: auto;
+  color: var(--color-faint);
+}
+
+.account-picker__notice {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  border: 1px solid rgba(198, 95, 114, 0.2);
+  border-radius: var(--radius-control);
+  background: rgba(198, 95, 114, 0.08);
+  padding: 14px;
+}
+
+.account-picker__notice strong {
+  color: var(--color-heading);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.account-picker__notice span {
+  color: var(--color-muted);
+  font-size: 13px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.account-picker__retry {
+  min-height: 42px;
+  margin-top: 2px;
+  font-size: 15px;
+}
+
+.account-picker__row--skeleton {
+  cursor: progress;
+  pointer-events: none;
+}
+
+.account-picker__skeleton {
+  position: relative;
+  overflow: hidden;
+  border: 0;
+  background: rgba(36, 35, 31, 0.08);
+}
+
+.account-picker__skeleton::after {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.46), transparent);
+  content: "";
+  transform: translateX(-100%);
+  animation: account-picker-shimmer 1.2s infinite;
+}
+
+.account-picker__skeleton-name,
+.account-picker__skeleton-meta {
+  display: block;
+  height: 14px;
+  border-radius: 999px;
+}
+
+.account-picker__skeleton-name {
+  width: min(68%, 220px);
+}
+
+.account-picker__skeleton-meta {
+  width: min(48%, 170px);
+}
+
+@keyframes account-picker-shimmer {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@media (max-width: 440px) {
+  .account-picker__row {
+    gap: 11px;
+    min-height: 72px;
+    padding: 11px;
+  }
+
+  .account-picker__avatar {
+    width: 40px;
+    height: 40px;
+  }
+
+  .account-picker__name {
+    font-size: 16px;
+  }
+}
+
+@media (max-height: 720px) and (min-width: 821px) {
+  .account-picker__heading {
+    margin-bottom: 8px;
+  }
+
+  .account-picker {
+    gap: 8px;
+  }
+
+  .account-picker__list {
+    gap: 7px;
+  }
+
+  .account-picker__row {
+    min-height: 58px;
+    padding: 8px 10px;
+  }
+
+  .account-picker__avatar {
+    width: 34px;
+    height: 34px;
+  }
+
+  .account-picker__name {
+    font-size: 15px;
+  }
+
+  .account-picker__other {
+    min-height: 40px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .account-picker__skeleton::after {
+    animation: none;
+  }
+}

@@ -6,13 +6,16 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 5173 --strictPort",
     "build": "tsc -b && vite build",
-    "preview": "vite preview --host 127.0.0.1 --port 4173"
+    "preview": "vite preview --host 127.0.0.1 --port 4173",
+    "test:account-picker": "node scripts/account-picker-smoke.mjs"
   },
   "dependencies": {
     "@priestess/shared": "0.1.0",
+    "@simplewebauthn/browser": "^13.3.0",
     "@vitejs/plugin-react": "^5.2.0",
     "lucide-react": "^0.546.0",
     "motion": "^12.38.0",
+    "pinyin-pro": "^3.28.1",
     "qrcode.react": "^4.2.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",

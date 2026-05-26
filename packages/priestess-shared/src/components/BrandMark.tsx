@@ -1,12 +1,15 @@
+import { usePriestessTranslation } from "../lib/i18n";
+
 type BrandMarkProps = {
   size?: "sm" | "md";
 };
 
 export function BrandMark({ size = "md" }: BrandMarkProps) {
+  const { t } = usePriestessTranslation("common");
   const markSize = size === "sm" ? 28 : 36;
 
   return (
-    <a className={`brand-mark brand-mark--${size}`} href="/" aria-label="Priestess 首页">
+    <a className={`brand-mark brand-mark--${size}`} href="/" aria-label={t("Priestess 首页")}>
       <svg
         aria-hidden="true"
         className="brand-mark__symbol"

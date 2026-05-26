@@ -1,0 +1,212 @@
+/* 注册向导的进度只表达当前步骤，不参与登录/注册一镜到底布局动画。 */
+.register-step-viewport {
+  overflow: hidden;
+}
+
+.register-step-panel {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  will-change: opacity, transform, filter;
+}
+
+.register-progress {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 2px 0 20px;
+  padding: 0;
+  list-style: none;
+}
+
+.register-progress__item {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-faint);
+  font-size: 12px;
+  line-height: 1.2;
+  transition: color 220ms var(--ease-out);
+}
+
+.register-progress__dot {
+  display: inline-grid;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.5);
+  color: var(--color-muted);
+  font-size: 12px;
+  transition: border-color 220ms var(--ease-out), background 220ms var(--ease-out), color 220ms var(--ease-out), box-shadow 220ms var(--ease-out);
+}
+
+.register-progress__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.register-progress__item--done,
+.register-progress__item--current {
+  color: var(--color-ink);
+}
+
+.register-progress__item--done .register-progress__dot {
+  border-color: rgba(190, 89, 111, 0.34);
+  color: var(--color-accent-deep);
+}
+
+.register-progress__item--current .register-progress__dot {
+  border-color: rgba(190, 89, 111, 0.48);
+  background: rgba(190, 89, 111, 0.12);
+  box-shadow: 0 0 0 4px rgba(190, 89, 111, 0.08);
+  color: var(--color-accent-deep);
+}
+
+.register-inline-note {
+  display: block;
+  margin-top: -4px;
+  color: var(--color-muted);
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.register-phone-field {
+  min-width: 0;
+}
+
+.register-phone-field select {
+  width: 136px;
+  max-width: 42%;
+  height: 52px;
+  flex: 0 0 136px;
+  border: 0;
+  border-right: 1px solid rgba(36, 35, 31, 0.12);
+  color: var(--color-text);
+  background: transparent;
+  padding: 0 10px;
+  outline: 0;
+}
+
+.register-phone-field input {
+  padding-left: 12px;
+}
+
+.register-identity-switch {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: -6px;
+}
+
+.register-identity-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  color: var(--color-accent-deep);
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.4;
+  padding: 0;
+}
+
+.register-identity-toggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+}
+
+.register-identity-toggle:not(:disabled):hover {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.register-terms-consent {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 8px 10px;
+  margin-top: -4px;
+  color: var(--color-muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.register-terms-consent--disabled {
+  opacity: 0.64;
+}
+
+.register-terms-consent__control {
+  display: inline-flex;
+  margin-top: 1px;
+  cursor: pointer;
+}
+
+.register-terms-consent--disabled .register-terms-consent__control {
+  cursor: not-allowed;
+}
+
+.register-terms-consent .checkbox-line__input:focus-visible + .register-terms-consent__control .checkbox-line__box {
+  outline: 2px solid rgba(198, 95, 114, 0.42);
+  outline-offset: 3px;
+}
+
+.register-terms-consent__text {
+  min-width: 0;
+}
+
+.register-terms-consent__text a {
+  color: var(--color-accent-deep);
+  text-decoration: none;
+  transition: color 160ms var(--ease-out);
+}
+
+.register-terms-consent__text a:hover {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.register-terms-consent__error {
+  grid-column: 2;
+  margin-top: -2px;
+}
+
+@media (max-width: 480px) {
+  .register-progress {
+    gap: 4px;
+    margin-bottom: 16px;
+  }
+
+  .register-progress__item {
+    justify-content: center;
+  }
+
+  .register-progress__label {
+    display: none;
+  }
+
+  .register-phone-field select {
+    width: 118px;
+    flex-basis: 118px;
+    font-size: 13px;
+    padding: 0 8px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .register-progress__dot,
+  .register-progress__item {
+    transition-duration: 0ms;
+  }
+}

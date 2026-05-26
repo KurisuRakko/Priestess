@@ -2,7 +2,7 @@
 
 ## 目标
 
-Priestess v1 实现 OIDC 扫码登录、本地用户会话和 Passkey 主登录能力，后续按 Phainon 的 Worker/Hono/D1 结构合并到 `/Users/rakko/Documents/GitHub/Phainon`。当前目标不是复刻完整 Kita/Casdoor IAM，而是做一个稳定、可迁移、可测试的最小登录平台。
+Priestess v1 实现 OIDC 扫码登录、本地用户会话、账号资料、头像、Passkey 主登录和 TOTP 自助能力，后续按 Phainon 的 Worker/Hono/D1 结构合并到 `/Users/rakko/Documents/GitHub/Phainon`。当前目标不是复刻完整 Kita/Casdoor IAM，而是做一个稳定、可迁移、可测试的最小登录平台。
 
 ## 参考来源
 
@@ -22,16 +22,19 @@ Priestess v1 实现 OIDC 扫码登录、本地用户会话和 Passkey 主登录�
 - `session.ts`：本地用户登录 cookie、peppered bcrypt 密码校验、会话读写。
 - `request-context.ts`：可信请求上下文读取；生产只信 Cloudflare 请求信息，本地/私网调试才接受 `X-Forwarded-For` / `X-Real-IP`。
 - `login-risk.ts`：本地密码登录软锁策略、风险 bucket hash 和脱敏上下文。
+- `profile.ts`：本地用户资料更新、PNG 头像上传到 R2、上传日志和审计。
 - `passkeys.ts`：Passkey options、verification、credential 管理和审计。
+- `registration.ts`：邮箱/手机号注册路由、Turnstile 校验和验证码发送编排。
+- `registration-repository.ts`：注册验证码请求 repository 接口和 D1 实现。
 - `routes.ts`：公开登录接口、二维码接口和管理员用户管理接口。
 
-`src/features/oidc/routes.ts` 保留现有外部 OIDC 流程；新增 `AUTH_LOGIN_MODE=external_oidc|local_qr`。默认值为 `external_oidc`，未开启时生产行为不变。开启 `local_qr` 后，`/auth/login?app_id=...&return_to=...` 会跳转到 `/auth-ui/login` 的二维码页面。
+`src/features/oidc/routes.ts` 保留现有外部 OIDC 流程；`AUTH_LOGIN_MODE=external_oidc|priestess_native` 中 `priestess_native` 是生产主路径和缺省值，只有显式 `external_oidc` 才进入旧外部 OIDC 兼容模式。历史值 `local_qr` 仅作为后端兼容别名接受，文档、示例和状态响应统一使用 `priestess_native`。外部 OIDC 兼容配置统一使用 `EXTERNAL_OIDC_*` 和 `EXTERNAL_OIDC_TRANSACTION_TTL_SECONDS` 主名，旧 `OIDC_*` / `AUTH_TRANSACTION_TTL_SECONDS` 只作为 legacy alias fallback。新的主路径把原本 OIDC 中转能力收口到 `/auth/priestess/oidc/*`：`/auth/priestess/oidc/login?app_id=...&return_to=...` 仍由 Phainon Worker 校验 app/return URL，再跳转到 Priestess 前端 `/login`；旧 `/auth/login`、`/auth/exchange`、`/auth/refresh`、`/auth/logout`、`/auth/me` 仅作为兼容别名。
 
 ## Phainon 兼容基线
 
 - Priestess 仓库内若临时加入后端、mock server、API proxy 或本地调试服务，只能作为 Phainon 兼容层使用；真实生产后端以 Phainon Worker/Hono/D1 实现为准。
 - API path、HTTP method、Cookie 名称、JSON 字段、错误码、QR 状态机、Passkey 校验约束和审计事件必须能直接映射到 Phainon 的实现，避免前端和后端各自形成一套协议。
-- `src/lib/priestessApi.ts` 可以兼容 Phainon 迁移过程中的 response envelope 差异，但不能依赖只存在于本项目 mock 里的特殊字段；新增兼容分支时要在本文档同步说明真实后端含义。
+- `packages/priestess-shared/src/lib/priestessApi.ts` 可以兼容 Phainon 迁移过程中的 response envelope 差异，但不能依赖只存在于本项目 mock 里的特殊字段；新增兼容分支时要在本文档同步说明真实后端含义。
 - 本地联调使用 `VITE_PRIESTESS_API_BASE_URL` 指向 Phainon 兼容后端。没有显式 API base 时，请求只能落到同源生产部署或受控预览环境，不能静默请求 Vite dev server 假装成功。
 - 密码 pepper、管理员密码、session secret、Passkey 配置和长期 token 只允许通过 1Password CLI、Wrangler secret 或运行时环境变量注入，不进入 Priestess 仓库。
 - 如果某个页面流程必须依赖 Phainon 尚未实现的能力，应把缺口记录为后端接入事项；前端只能做清晰失败态或受控 mock，不做会掩盖生产缺口的永久绕行。
@@ -40,12 +43,12 @@ Priestess v1 实现 OIDC 扫码登录、本地用户会话和 Passkey 主登录�
 
 ### PC 端二维码流程
 
-- `POST /auth/qr/sessions`
+- `POST /auth/priestess/qr/sessions`
   - 输入：`app_id`、`return_to`
   - 行为：校验 Phainon 现有 OIDC app 和 return URL，创建 QR session。
   - 输出：`session_id`、`qr_url`、`expires_in`、`expires_at`
 
-- `GET /auth/qr/sessions/:sessionId/status`
+- `GET /auth/priestess/qr/sessions/:sessionId/status`
   - 行为：PC 轮询二维码状态。
   - 安全约束：创建 QR session 时服务端同时下发 HttpOnly `phainon_priestess_qr_poll` cookie；状态轮询必须带同一会话的 cookie，避免只凭二维码里的 `sessionId` 窃取 `login_code`。
   - 输出：`pending`、`scanned`、`pre_confirmed`、`confirmed`、`rejected`、`expired`
@@ -54,12 +57,13 @@ Priestess v1 实现 OIDC 扫码登录、本地用户会话和 Passkey 主登录�
 
 ### 手机端确认流程
 
-- `GET /auth/qr/sessions/:sessionId`
+- `GET /auth/priestess/qr/sessions/:sessionId`
   - 需要本地用户 session cookie。
   - 需要可信 `Origin` 或 `Referer`，因为该读取会把状态推进到 `scanned`。
   - 首次读取会把状态从 `pending` 推进到 `scanned`。
+  - 响应使用统一手机确认 envelope：`session`、`user`、`requires_confirmation`、`requires_totp=false`、`can_confirm`、`can_reject`、`can_final_confirm`、`security_level`、`security_reason`、`server_time`。`session` 内包含 `app_id`、`app_name`、`return_to`、`return_to_origin`、脱敏 `pc_context`、脱敏 `phone_context`、`created_at`、`updated_at`、`expires_at`、`expires_in` 和 `status`。
 
-- `POST /auth/qr/sessions/:sessionId/confirm`
+- `POST /auth/priestess/qr/sessions/:sessionId/confirm`
   - 需要本地用户 session cookie。
   - 输入：`action=confirm|reject`
   - `reject` 直接进入 `rejected`。
@@ -67,16 +71,68 @@ Priestess v1 实现 OIDC 扫码登录、本地用户会话和 Passkey 主登录�
     - 同 IP、本地/私网、或同 `CF-IPCountry` 且同 `CF-Ray` colo，判定 Level 1，直接 `confirmed`。
     - 其它情况判定 Level 2，进入 `pre_confirmed`，需要二次确认。
   - 响应额外返回 `security_reason`：`same_ip`、`local_network`、`same_region`、`unknown_context`、`different_region`。
+  - 手机扫码确认不额外追加 TOTP challenge；即使当前用户已启用 TOTP，也直接进入 Level 1/Level 2 判断。
 
-- `POST /auth/qr/sessions/:sessionId/confirm-final`
+- `POST /auth/priestess/qr/sessions/:sessionId/confirm-final`
   - 需要本地用户 session cookie。
   - 只允许最初点击确认的同一用户完成二次确认。
+  - 成功后返回同一套手机确认 envelope，`requires_confirmation=false`，PC 端随后通过 poll cookie 读取一次性 `login_code`。
+  - 高风险 `pre_confirmed` 状态仍允许同一手机端拒绝本次登录；拒绝和最终确认都会写入低噪声安全审计。
 
 ### 本地用户登录
 
-- `GET /auth/local/session`：读取当前本地用户会话。
-- `POST /auth/local/session`：用户名密码登录，设置 HttpOnly cookie。
-- `DELETE /auth/local/session`：撤销当前本地用户会话。
+- `GET /auth/priestess/session`：读取当前本地用户会话。
+- `POST /auth/priestess/session`：用户名密码登录，设置 HttpOnly cookie。
+- `DELETE /auth/priestess/session`：撤销当前本地用户会话。
+- `GET /auth/priestess/devices/sessions`：读取当前用户所有未过期、未撤销的本地浏览器会话，返回简化 UA、IP、创建时间、最近使用时间和过期时间。
+- `DELETE /auth/priestess/devices/sessions/:sessionId`：撤销当前用户的指定本地浏览器会话；后端必须同时校验 `session_id` 和当前 `user_id`，若撤销当前浏览器则清除 HttpOnly cookie。
+- `GET /auth/priestess/services/sessions`：读取当前用户仍保持登录的 Rakko OIDC 服务，后端按 `subject` 聚合活跃 refresh session，只返回应用名称、`app_id`、会话数量和时间字段，不返回 refresh token hash 或完整 claims。
+- `DELETE /auth/priestess/services/sessions/:appId`：撤销当前用户在指定 Rakko 服务下仍活跃的 refresh session；后端必须同时约束 `app_id` 和当前 `user_id`，不能按 app 全局撤销其它用户会话。已签发的 access token 等 TTL 自然过期。
+
+### 应用授权账号选择
+
+- `GET /auth/priestess/account-choices?app_id=...&return_to=...`
+  - 行为：在第三方应用发起 `/login?app_id=...&return_to=...` 时读取当前浏览器信任范围内可用于本次授权的 Priestess 本地账号。
+  - 输出：`accounts` 和 `app`。`accounts[]` 至少包含 `choice_id`、`user_id`、`username`、`display_name`、`email`、`avatar_url`、`current`、`last_used_at`、`expires_at`；`app` 第一版只要求 `app_id` 和 `return_to_origin`。
+  - `choice_id` 必须是短时、不可猜、只对当前浏览器和本次授权上下文有效的 opaque id；不能使用裸 `user_id`、session id、cookie 值或 refresh token hash。
+  - 后端只返回未过期、未撤销、属于当前浏览器信任范围的账号。没有可用账号时返回空数组，而不是让前端伪造账号列表。
+  - `app_id` 和 `return_to` 仍由 Phainon 后端按现有 OIDC app/return URL 规则校验；前端展示 `return_to_origin` 只用于说明目标应用，不能替代服务端校验。
+  - 如果该接口暂未上线，Priestess 前端会兼容退回 `GET /auth/priestess/session`，只把当前已认证会话展示为一个账号选择项；正式多账号验收必须以后端返回多个 `choice_id` 为准。
+
+- `POST /auth/priestess/authorize`
+  - 现有输入 `{ "app_id": string, "return_to": string }` 保持“当前本地会话授权”的语义。
+  - 新增可选输入 `{ "choice_id": string }`。传入时后端必须校验该选择项属于同一 `app_id` / `return_to` 授权请求、同一浏览器信任上下文且仍未过期。
+  - 账号选择本身不额外强制 TOTP 或 Passkey step-up；如果后端风险策略需要重新验证，应返回明确错误码或 challenge，再由前端复用现有 TOTP/登录路径。
+  - 输出继续兼容 `redirect_url` / `redirectUrl`，由后端签发最终回跳地址；前端不得自行拼接 `login_code` 或信任未校验的 `return_to`。
+
+### 本地账号资料与头像
+
+- `PATCH /auth/priestess/profile`
+  - 需要当前本地用户 session。
+  - 输入：`display_name`、`email`、`phone`、`address`、`birthday`、`avatar_url`、`password_manager`，均为可选字段；`email` 必须是非空合法邮箱，后端会 trim 并转小写，当前用户个人中心不开放清空邮箱，重复邮箱返回 `local_user_exists`；`phone=null` 或空字符串表示清除电话号，非空值按注册链路手机号规则规范化并保持唯一；`address=null` 或空字符串表示清除地址，非空值最多 200 字符；`birthday=null` 或空字符串表示清除生日，非空值必须是合法 `YYYY-MM-DD` 且不能晚于当前日期；`avatar_url=null` 或空字符串表示清除 R2 头像，非空头像值必须是当前用户已有的 Priestess R2 头像读取 URL，不能写入 GitHub/raw/CDN 等外部图床地址；`password_manager=null` 表示清除用户偏好的第三方密码管理器。
+  - `password_manager` 只保存 `{ provider, label }` 这类偏好元数据，不保存主密码、token、私钥或第三方保险库凭证，也不默认进入 OIDC claims。
+  - `address` 和 `birthday` 只作为 Priestess 个人资料返回，不默认进入 OIDC claims；`phone` 继续作为 `phone_number` claim 输出。
+  - 输出：最新 `user`，其中 `avatar_url` 会在后续 `login_code`、`refresh` 和 `/auth/priestess/oidc/me` 中传播为 OIDC `picture` claim。
+
+- `POST /auth/priestess/profile/avatar`
+  - 需要当前本地用户 session 和 multipart PNG 文件。
+  - 行为：写入 Phainon `PRIESTESS_AVATARS` R2 bucket，并返回 Worker 公开读取 URL；后端固定 Priestess 头像 key 前缀，避免前端覆盖其它业务对象。
+  - 输出：`avatar_url`、上传文件元信息和最新 `user`。
+
+### 本地用户注册
+
+- `POST /auth/priestess/register/verification-requests`
+  - 输入：`identity`、`identity_type=email|phone`、`turnstile_token`。
+  - 行为：需要可信 `Origin` 或 `Referer`；服务端用 `PRIESTESS_TURNSTILE_SECRET_KEY` 校验 Turnstile，通过后规范化身份并检查该邮箱或手机号是否已存在。
+  - 邮箱注册复用 Phainon 邮件 provider；手机号验证码复用 `PRIESTESS_VERIFICATION_SMS_TOKEN_ID` 指向的 SMS API token/provider/webhook 链路，旧 `PRIESTESS_REGISTRATION_SMS_TOKEN_ID` 只作为迁移期 fallback。
+  - 输出：`accepted`、`request_id`、`delivery=email|sms`、`expires_at`。本地开发请求可额外返回 `dev_verification_code`，生产不返回验证码。
+
+- `POST /auth/priestess/register/confirm`
+  - 输入：`identity`、`identity_type`、`password`、`verification_code`、`display_name`、`username`。
+  - 行为：验证码 10 分钟有效，最多 5 次确认尝试；成功后创建本地用户，`username` 使用前端提交并经后端校验的用户名，后端仍需检查格式、唯一性和保留名，邮箱注册写入 `email`，手机号注册写入规范化 `phone`。
+  - 成功后复用本地登录 session 逻辑写入 `phainon_priestess_session` HttpOnly cookie，并返回 `LocalSession` 兼容 payload。
+
+注册验证码请求只保存 `identity_hash`、`identity_mask`、`code_hash` 和发送状态，不保存明文验证码、Turnstile token、密码或完整手机号。前端应把 `local_user_exists`、`invalid_register_username`、`register_username_reserved`、`register_username_exists`、`registration_verification_invalid`、`registration_turnstile_failed`、`registration_*_not_configured` 等后端错误映射到对应步骤，不在 URL、日志或本地存储里保存敏感字段。前端的用户名保留表、密码强度和冷却提示只能改善体验，服务端校验始终是最终事实。
 
 密码保存策略：
 
@@ -87,33 +143,40 @@ Priestess v1 实现 OIDC 扫码登录、本地用户会话和 Passkey 主登录�
 - 新密码长度要求 12 到 4096 字符，管理员创建和重置使用同一策略。
 - 不存在用户仍执行固定假 bcrypt 校验，避免用户名枚举侧信道。
 - 密码登录失败会写入 `auth_local_login_risk_buckets` 软锁 bucket：
-  - 同一用户名+IP 10 分钟内 8 次失败，锁定密码登录 10 分钟。
+  - 同一用户名+IP 10 分钟内 10 次失败，锁定密码登录 10 分钟。
   - 同一用户名 30 分钟内 20 次失败，锁定密码登录 30 分钟。
   - bucket key、username 和 IP 都只保存加盐 hash；上下文只保存国家、colo、masked IP 和 UA。
   - 成功密码登录会清理对应风险 bucket；Passkey 登录不受密码软锁影响。
+- `PATCH /auth/priestess/password`
+  - 需要当前本地用户 session；请求体为 `{ "current_password": string, "password": string }`。
+  - 后端校验当前密码，用现有 pepper+bcrypt 规则写入新密码，撤销旧 session 并签发新的 `phainon_priestess_session` cookie。
 
 ### Passkey 登录
 
-- `POST /auth/local/passkeys/registration/options`
+- `POST /auth/priestess/passkeys/registration/options`
   - 需要本地用户 session。
+  - 输入：可选 `name`，作为用户在个人中心设定的 Passkey 显示名称，后端校验长度并绑定到本次 registration challenge。
   - 生成 WebAuthn registration options，默认 `residentKey=required`、`userVerification=required`。
 
-- `POST /auth/local/passkeys/registration/verify`
+- `POST /auth/priestess/passkeys/registration/verify`
   - 需要本地用户 session。
-  - 校验 challenge、expected origin、RP ID 和用户验证；成功后保存 credential。
+  - 校验 challenge、expected origin、RP ID 和用户验证；成功后保存 credential，名称优先使用 registration options 阶段绑定到 challenge 的值。
 
-- `POST /auth/local/passkeys/authentication/options`
+- `POST /auth/priestess/passkeys/authentication/options`
   - 无需用户名，生成 discoverable credential 登录 options。
   - 服务端只保存 `challenge_hash`，不保存明文 challenge。
 
-- `POST /auth/local/passkeys/authentication/verify`
+- `POST /auth/priestess/passkeys/authentication/verify`
   - 校验 challenge、expected origin、RP ID、user verification 和 counter。
   - 成功后更新 credential counter / `last_used_at`，并创建现有 `phainon_priestess_session` cookie。
 
-- `GET /auth/local/passkeys`
+- `GET /auth/priestess/passkeys`
   - 当前用户列出自己的 Passkey，不返回 public key。
 
-- `DELETE /auth/local/passkeys/:credentialId`
+- `PATCH /auth/priestess/passkeys/:credentialId`
+  - 当前用户重命名自己的可用 Passkey，请求体为 `{ "name": string }`。
+
+- `DELETE /auth/priestess/passkeys/:credentialId`
   - 当前用户禁用自己的 Passkey；密码回退仍作为 v1 可用恢复路径。
 
 默认配置：
@@ -141,13 +204,17 @@ Passkey 私钥永远只在用户设备或平台 authenticator 内；服务端只
 
 ## D1 表
 
-新增 migration：`0033_priestess_qr_login.sql`、`0034_priestess_login_risk.sql`。
+新增 migration：`0033_priestess_qr_login.sql`、`0034_priestess_login_risk.sql`、`0035_priestess_password_reset.sql`、`0037_priestess_totp_factors.sql`、`0038_priestess_registration.sql`、`0039_priestess_profile.sql`、`0040_priestess_user_phone.sql`、`0041_priestess_password_manager.sql`、`0042_priestess_profile_contact.sql`。
 
 - `auth_local_users`
   - `user_id`
   - `username`
   - `display_name`
   - `email`
+  - `phone`
+  - `address`
+  - `birthday`
+  - `avatar_url`
   - `password_hash`
   - `enabled`
   - `created_at`
@@ -220,6 +287,42 @@ Passkey 私钥永远只在用户设备或平台 authenticator 内；服务端只
   - `created_at`
   - `updated_at`
 
+- `auth_local_registration_verification_requests`
+  - `request_id`
+  - `identity_type`
+  - `identity_hash`
+  - `identity_mask`
+  - `code_hash`
+  - `status`
+  - `attempt_count`
+  - `delivery`
+  - `delivery_status`
+  - `expires_at`
+  - `consumed_at`
+  - `context_json`
+  - `created_at`
+  - `updated_at`
+
+- `auth_local_totp_factors`
+  - `factor_id`
+  - `user_id`
+  - `secret_encrypted`
+  - `enabled`
+  - `last_used_at`
+  - `disabled_at`
+  - `created_at`
+  - `updated_at`
+
+- `auth_local_auth_challenges`
+  - `challenge_id`
+  - `user_id`
+  - `purpose`
+  - `secret_encrypted`
+  - `expires_at`
+  - `consumed_at`
+  - `created_at`
+  - `updated_at`
+
 ## 状态机
 
 ```text
@@ -256,9 +359,13 @@ registration challenge 绑定当前本地用户；authentication challenge 不�
 - `priestess.passkey.create`
 - `priestess.passkey.delete`
 - `priestess.passkey.admin_delete`
+- `priestess.profile.update`
+- `priestess.profile.avatar_upload`
+- `priestess.session.revoke`
 - `priestess.qr.cleanup`
 - `priestess.qr.admin_expire`
 - `priestess.qr.level2`
+- `priestess.qr.final_confirm`
 - `priestess.qr.reject`
 - `priestess.qr.login_code_issued`
 - `priestess.login.locked`
@@ -268,14 +375,22 @@ registration challenge 绑定当前本地用户；authentication challenge 不�
 
 ## 前端页面
 
-- `/auth-ui/login`
+- `/login`
   - 展示二维码、倒计时、刷新按钮和状态。
-  - 成功后跳转到后端返回的 `redirect_url`。
+  - 带 `app_id` / `return_to` 时进入应用授权入口，成功后仍由后端返回的 `redirect_url` 完成应用回跳。
+  - 不带应用授权参数时作为 Priestess 本地登录入口，已登录浏览器直接进入 `/manage`，登录成功后跳转到安全 `next`，没有 `next` 时默认进入 `/manage`。
+  - `next` 只接受 Priestess 前端本地个人中心相对路径，例如 `/manage#devices`；它不替代 OIDC `return_to`，也不能携带外部 URL。
 
 - `/qr-login`
   - 兼容 `sessionId` 和旧 `id` 参数。
   - 未登录时显示本地账号登录。
   - 已登录后展示应用名称、风险提示、拒绝/允许按钮。
+  - 启用 TOTP 的用户扫码登录时不再额外输入动态验证码；Level 2 风险继续走最终确认。
+
+- `/manage`
+  - 账号中心展示头像、昵称、账号资料、已登录浏览器、已登录 Rakko 服务、Passkey 和 TOTP 状态。
+  - 支持编辑昵称、上传或清除 R2 PNG 头像、新增/重命名/停用 Passkey、启用/停用 TOTP。
+  - 未登录时跳转到 `/login?next=...`，登录后回到原个人中心分区；`/Manage` 和 `/auth-ui/account` 只作为兼容入口规范化到 `/manage`。
 
 这两个页面是公开页面，不能被 Phainon admin gate 包裹。
 
@@ -285,11 +400,10 @@ registration challenge 绑定当前本地用户；authentication challenge 不�
 
 ```bash
 npm test -- tests/oidc.test.ts tests/oidc-qr-login.test.ts tests/admin.test.ts
-npm test -- tests/priestess-passkey.test.ts
-npm test -- tests/priestess-login-risk.test.ts
-npm test -- tests/oidc.test.ts tests/oidc-qr-login.test.ts tests/admin.test.ts tests/priestess-passkey.test.ts tests/priestess-login-risk.test.ts tests/security.test.ts
+npm test -- tests/priestess-profile.test.ts tests/priestess-passkey.test.ts tests/priestess-totp.test.ts tests/image-hosting.test.ts
+npm test -- tests/oidc.test.ts tests/oidc-qr-login.test.ts tests/admin.test.ts tests/priestess-profile.test.ts tests/priestess-passkey.test.ts tests/priestess-totp.test.ts tests/priestess-login-risk.test.ts tests/security.test.ts
 npm run frontend:typecheck
 npm run build
 ```
 
-部署前必须先运行 D1 migration，并确认 `AUTH_LOGIN_MODE`、`PRIESTESS_PASSWORD_PEPPER`、Passkey RP 配置、管理员密码哈希、本地用户初始密码等配置已通过安全渠道设置。
+部署前必须先运行 D1 migration，并确认 `AUTH_LOGIN_MODE`、必要的 `EXTERNAL_OIDC_*` 兼容配置、`PRIESTESS_PASSWORD_PEPPER`、`PRIESTESS_AUTH_ENCRYPTION_KEY`、`PRIESTESS_AVATARS` R2 binding、Passkey RP 配置、管理员密码哈希、本地用户初始密码等配置已通过安全渠道设置。

@@ -1,0 +1,335 @@
+.account-dialog--avatar {
+  width: min(472px, 100%);
+  gap: 18px;
+  padding: 24px;
+}
+
+.account-dialog--avatar .account-dialog__close {
+  top: 18px;
+  right: auto;
+  left: 18px;
+  border-color: transparent;
+  background: transparent;
+}
+
+.account-dialog--avatar .account-dialog__close:not(:disabled):hover {
+  color: var(--color-heading);
+  background: rgba(240, 239, 235, 0.72);
+}
+
+.account-avatar-dialog__header {
+  display: grid;
+  min-height: 36px;
+  align-items: center;
+  padding: 0 44px;
+  text-align: center;
+}
+
+.account-avatar-dialog__header h3 {
+  margin: 0;
+  color: var(--color-heading);
+  font-size: 24px;
+  font-weight: 500;
+  line-height: 1.28;
+  overflow-wrap: anywhere;
+}
+
+.account-avatar-dialog__preview {
+  display: grid;
+  place-items: center;
+  padding: 22px 0 10px;
+}
+
+.account-avatar-dialog__avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: clamp(154px, 42vw, 194px);
+  height: clamp(154px, 42vw, 194px);
+  border: 8px solid rgba(36, 35, 31, 0.08);
+  border-radius: 50%;
+  color: var(--color-muted);
+  background:
+    linear-gradient(180deg, rgba(252, 251, 248, 0.92), rgba(240, 239, 235, 0.84));
+  box-shadow:
+    inset 0 0 0 1px rgba(36, 35, 31, 0.08),
+    0 18px 38px rgba(36, 35, 31, 0.1);
+  overflow: hidden;
+}
+
+.account-avatar-dialog__avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.account-avatar-dialog__avatar--image {
+  background: rgba(252, 251, 248, 0.9);
+}
+
+.account-avatar-dialog__crop-frame {
+  position: relative;
+  width: clamp(154px, 42vw, 194px);
+  height: clamp(154px, 42vw, 194px);
+  border: 8px solid rgba(36, 35, 31, 0.08);
+  border-radius: 50%;
+  background: rgba(240, 239, 235, 0.88);
+  box-shadow:
+    inset 0 0 0 1px rgba(36, 35, 31, 0.08),
+    0 18px 38px rgba(36, 35, 31, 0.1);
+  cursor: grab;
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+}
+
+.account-avatar-dialog__crop-frame::before,
+.account-avatar-dialog__crop-frame::after {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  content: "";
+  pointer-events: none;
+}
+
+.account-avatar-dialog__crop-frame::before {
+  box-shadow:
+    inset 0 0 0 1px rgba(252, 251, 248, 0.72),
+    inset 0 0 0 999px rgba(36, 35, 31, 0.02);
+}
+
+.account-avatar-dialog__crop-frame::after {
+  opacity: 0.38;
+  background-image:
+    linear-gradient(90deg, transparent 33%, rgba(252, 251, 248, 0.58) 33%, rgba(252, 251, 248, 0.58) calc(33% + 1px), transparent calc(33% + 1px), transparent 66%, rgba(252, 251, 248, 0.58) 66%, rgba(252, 251, 248, 0.58) calc(66% + 1px), transparent calc(66% + 1px)),
+    linear-gradient(0deg, transparent 33%, rgba(252, 251, 248, 0.58) 33%, rgba(252, 251, 248, 0.58) calc(33% + 1px), transparent calc(33% + 1px), transparent 66%, rgba(252, 251, 248, 0.58) 66%, rgba(252, 251, 248, 0.58) calc(66% + 1px), transparent calc(66% + 1px));
+}
+
+.account-avatar-dialog__crop-frame:active {
+  cursor: grabbing;
+}
+
+.account-avatar-dialog__crop-frame:focus-visible {
+  outline: 2px solid rgba(198, 95, 114, 0.22);
+  outline-offset: 4px;
+}
+
+.account-avatar-dialog__crop-image {
+  position: absolute;
+  z-index: 0;
+  top: 50%;
+  left: 50%;
+  max-width: none;
+  object-fit: cover;
+  pointer-events: none;
+  user-select: none;
+}
+
+.account-avatar-dialog__file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  clip: rect(0 0 0 0);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.account-avatar-dialog__upload {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 58px;
+  border: 1px solid rgba(36, 35, 31, 0.1);
+  border-radius: var(--radius-control);
+  padding: 0 18px;
+  color: var(--color-accent-deep);
+  background: rgba(198, 95, 114, 0.08);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.45;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 160ms var(--ease-out),
+    background-color 160ms var(--ease-out),
+    color 160ms var(--ease-out);
+}
+
+.account-avatar-dialog__upload:not(:disabled):hover {
+  border-color: rgba(198, 95, 114, 0.24);
+  color: var(--color-accent);
+  background: rgba(198, 95, 114, 0.12);
+}
+
+.account-avatar-dialog__upload:disabled {
+  cursor: not-allowed;
+  opacity: 0.64;
+}
+
+.account-avatar-dialog__upload:focus-visible {
+  outline: 2px solid rgba(198, 95, 114, 0.22);
+  outline-offset: 3px;
+}
+
+.account-avatar-dialog__error {
+  margin-top: -4px;
+}
+
+.account-avatar-dialog__crop-controls {
+  display: grid;
+  gap: 14px;
+}
+
+.account-avatar-dialog__zoom {
+  display: grid;
+  gap: 8px;
+}
+
+.account-avatar-dialog__zoom span {
+  color: var(--color-muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.account-avatar-dialog__zoom input[type="range"] {
+  width: 100%;
+  accent-color: var(--color-accent);
+}
+
+.account-avatar-dialog__crop-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.account-profile-upload input[type="file"] {
+  min-height: 42px;
+  padding: 9px 11px;
+}
+
+.account-profile-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  border: 1px solid rgba(36, 35, 31, 0.1);
+  border-radius: 8px;
+  padding: 9px 11px;
+  color: var(--color-muted);
+  background: rgba(240, 239, 235, 0.48);
+  font-size: 13px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.account-profile-clear {
+  display: flex !important;
+  align-items: center;
+  gap: 8px !important;
+  border: 1px solid rgba(36, 35, 31, 0.1);
+  border-radius: 8px;
+  padding: 10px 11px;
+  background: rgba(240, 239, 235, 0.36);
+}
+
+.account-profile-clear input[type="checkbox"] {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  min-height: 0;
+  padding: 0;
+  accent-color: var(--color-accent);
+}
+
+.account-profile-clear span {
+  color: var(--color-text) !important;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.account-profile-preview {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid rgba(36, 35, 31, 0.1);
+  border-radius: var(--radius-control);
+  padding: 11px;
+  background: rgba(240, 239, 235, 0.42);
+}
+
+.account-profile-preview__avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 54px;
+  height: 54px;
+  border-radius: 14px;
+  color: var(--color-muted);
+  background: rgba(252, 251, 248, 0.82);
+  overflow: hidden;
+}
+
+.account-profile-preview__avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.account-profile-preview strong,
+.account-profile-preview span {
+  display: block;
+}
+
+.account-profile-preview strong {
+  color: var(--color-heading);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.account-profile-preview span {
+  margin-top: 3px;
+  color: var(--color-muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+@media (max-width: 520px) {
+  .account-dialog--avatar {
+    padding: 20px;
+  }
+
+  .account-dialog--avatar .account-dialog__close {
+    top: 14px;
+    left: 14px;
+  }
+
+  .account-avatar-dialog__header {
+    padding: 0 38px;
+  }
+
+  .account-avatar-dialog__header h3 {
+    font-size: 21px;
+  }
+
+  .account-avatar-dialog__preview {
+    padding-top: 16px;
+  }
+
+  .account-avatar-dialog__upload {
+    min-height: 54px;
+    font-size: 15px;
+  }
+
+  .account-avatar-dialog__crop-actions {
+    display: grid;
+  }
+}

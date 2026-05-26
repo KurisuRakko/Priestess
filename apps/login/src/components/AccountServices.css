@@ -1,0 +1,145 @@
+.account-service-session-panel {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  padding: 16px;
+  background: rgba(252, 251, 248, 0.72);
+}
+
+.account-service-session-panel__header,
+.account-service-session-card__top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.account-service-session-panel__header h3,
+.account-service-session-panel__header p,
+.account-service-session-card h4,
+.account-service-session-card p {
+  margin: 0;
+}
+
+.account-service-session-panel__header h3,
+.account-service-session-card h4 {
+  color: var(--color-heading);
+  font-size: 17px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.account-service-session-panel__header p,
+.account-service-session-card p {
+  margin-top: 4px;
+  color: var(--color-muted);
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.account-service-session-empty {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid rgba(36, 35, 31, 0.1);
+  border-radius: var(--radius-control);
+  padding: 10px 12px;
+  color: var(--color-muted);
+  background: rgba(240, 239, 235, 0.54);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.account-service-session-list {
+  display: grid;
+  gap: 12px;
+}
+
+.account-service-session-card {
+  display: grid;
+  gap: 14px;
+  border: 1px solid rgba(36, 35, 31, 0.09);
+  border-radius: var(--radius-control);
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.36);
+  transition:
+    border-color 160ms var(--ease-out),
+    background-color 160ms var(--ease-out),
+    box-shadow 160ms var(--ease-out);
+}
+
+.account-service-session-card:hover {
+  border-color: rgba(198, 95, 114, 0.18);
+  background: rgba(255, 255, 255, 0.5);
+  box-shadow: 0 14px 32px rgba(36, 35, 31, 0.07);
+}
+
+.account-service-session-card__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  border-radius: 8px;
+  color: var(--color-accent);
+  background: rgba(198, 95, 114, 0.1);
+}
+
+.account-service-session-card__top > div {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.account-service-session-card__facts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px 14px;
+  margin: 0;
+}
+
+.account-service-session-card__facts div {
+  min-width: 0;
+}
+
+.account-service-session-card__facts dt,
+.account-service-session-card__facts dd {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.account-service-session-card__facts dt {
+  color: var(--color-muted);
+}
+
+.account-service-session-card__facts dd {
+  color: var(--color-heading);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .account-service-session-card:hover {
+    box-shadow: none;
+  }
+}
+
+@media (max-width: 840px) {
+  .account-service-session-card__facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  .account-service-session-panel__header,
+  .account-service-session-card__top {
+    display: grid;
+  }
+
+  .account-service-session-card__facts {
+    grid-template-columns: 1fr;
+  }
+}

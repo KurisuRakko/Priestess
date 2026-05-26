@@ -14,7 +14,7 @@
   animation: lso-overlay-fade-out var(--lso-overlay-fade-out-ms, 220ms) cubic-bezier(0.2, 0, 0, 1) forwards;
 }
 
-/* 卡片放大动画：根容器不再自绘白色背景，由 shell 负责几何形变。 */
+/* 有 origin 的登录提交态不再铺满白底，只把状态内容放回居中的登录卡片上。 */
 .login-success-overlay.has-origin {
   background: transparent;
   opacity: 1;
@@ -23,34 +23,6 @@
 
 .login-success-overlay.has-origin.is-exiting {
   animation: none;
-}
-
-/* 白色 shell：从登录卡片矩形变换到全屏，GPU 合成。 */
-.login-success-overlay-shell {
-  position: absolute;
-  inset: 0;
-  background: #fff;
-  clip-path:
-    inset(
-      var(--lso-origin-inset-top, 0)
-      var(--lso-origin-inset-right, 0)
-      var(--lso-origin-inset-bottom, 0)
-      var(--lso-origin-inset-left, 0)
-      round var(--lso-origin-radius, 0)
-    );
-  pointer-events: none;
-}
-
-.login-success-overlay.has-origin .login-success-overlay-shell {
-  contain: paint;
-  will-change: clip-path, opacity;
-  animation: lso-shell-expand var(--lso-expand-ms, 360ms) cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
-}
-
-.login-success-overlay.has-origin.is-shrinking .login-success-overlay-shell {
-  animation:
-    lso-shell-shrink var(--lso-shrink-ms, 320ms) var(--lso-shrink-delay-ms, 80ms)
-    cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
 }
 
 .login-success-overlay-content {
@@ -68,8 +40,17 @@
   animation: lso-content-fade-up var(--lso-overlay-fade-out-ms, 220ms) cubic-bezier(0.2, 0, 0, 1) forwards;
 }
 
-/* has-origin 时内容独立淡入，不与 root 透明度绑定，避免 shell 未覆盖区域提前泄露。 */
+/* 提交态不再生成第二层小卡片，避免 spinner 背后又叠一块窗口背景。 */
 .login-success-overlay.has-origin .login-success-overlay-content {
+  box-sizing: border-box;
+  width: min(320px, calc(100vw - 56px));
+  min-height: 148px;
+  padding: 0 24px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
   opacity: 0;
   transform: translateY(8px);
   animation:
@@ -77,8 +58,13 @@
     cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
 }
 
-.login-success-overlay.has-origin.is-shrinking .login-success-overlay-content {
+.login-success-overlay.has-origin.is-exiting .login-success-overlay-content {
   animation: lso-origin-content-out var(--lso-origin-content-out-ms, 160ms) cubic-bezier(0.4, 0, 0.6, 1) forwards;
+}
+
+.login-success-overlay.has-origin .login-success-overlay-icon {
+  width: 58px;
+  height: 58px;
 }
 
 .login-success-overlay-icon {
@@ -97,13 +83,13 @@
 }
 
 .login-success-overlay.is-loading .login-success-overlay-spinner-layer {
-  animation: lso-spinner-rotate var(--lso-spinner-rotate-ms, 560ms) var(--lso-spinner-delay-ms, 100ms) linear infinite;
+  animation: lso-spinner-rotate var(--lso-spinner-rotate-ms, 900ms) var(--lso-spinner-delay-ms, 100ms) linear infinite;
 }
 
 .login-success-overlay.is-success .login-success-overlay-spinner-layer,
 .login-success-overlay.is-failure .login-success-overlay-spinner-layer {
   animation:
-    lso-spinner-rotate var(--lso-spinner-rotate-ms, 560ms) var(--lso-spinner-delay-ms, 100ms) linear infinite,
+    lso-spinner-rotate var(--lso-spinner-rotate-ms, 900ms) var(--lso-spinner-delay-ms, 100ms) linear infinite,
     lso-spinner-fade-out var(--lso-spinner-fade-ms, 260ms) var(--lso-spinner-stop-ms, 700ms)
     cubic-bezier(0.4, 0, 0.2, 1) forwards;
 }
@@ -119,10 +105,9 @@
   stroke: var(--lso-primary-color, #5734d3);
   stroke-width: 5;
   stroke-linecap: round;
-  stroke-dasharray: 92 164;
-  stroke-dashoffset: 0;
-  transform-origin: 40px 40px;
-  animation: lso-spinner-arc var(--lso-spinner-arc-ms, 1200ms) ease-in-out infinite;
+  /* 固定弧长，只旋转外层容器，避免 dash 循环每轮回到起点时跳帧。 */
+  stroke-dasharray: 108 164;
+  stroke-dashoffset: -18;
 }
 
 .login-success-overlay-check {
@@ -170,6 +155,12 @@
   animation: lso-loading-title-in var(--lso-loading-title-in-ms, 220ms) cubic-bezier(0.2, 0, 0, 1) forwards;
 }
 
+.login-success-overlay.has-origin .login-success-overlay-loading-title {
+  margin-top: 14px;
+  font-size: 16px;
+  line-height: 1.35;
+}
+
 .login-success-overlay-line {
   opacity: 0;
   transform: translateY(6px);
@@ -184,6 +175,12 @@
   font-size: 24px;
   font-weight: 600;
   line-height: 1.25;
+}
+
+.login-success-overlay.has-origin .login-success-overlay-title {
+  margin-top: 14px;
+  font-size: 18px;
+  font-weight: 600;
 }
 
 .login-success-overlay-organization {
@@ -202,25 +199,31 @@
   line-height: 1.4;
 }
 
-/* 减少动画偏好下，跳过 shell 的 transform/border-radius 变化，退回简单淡入/淡出。 */
+.login-success-overlay.has-origin .login-success-overlay-organization,
+.login-success-overlay.has-origin .login-success-overlay-username {
+  font-size: 13px;
+}
+
+/* 减少动画偏好下保留小状态卡片，但不做位移和绘制动画。 */
 .login-success-overlay.has-origin.is-reduced-motion {
-  background: #fff;
-  opacity: 0;
-  animation: lso-overlay-fade-in var(--lso-overlay-fade-in-ms, 150ms) cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  background: transparent;
+  opacity: 1;
+  animation: none;
 }
 
 .login-success-overlay.has-origin.is-reduced-motion.is-exiting {
-  animation: lso-overlay-fade-out var(--lso-overlay-fade-out-ms, 220ms) cubic-bezier(0.2, 0, 0, 1) forwards;
-}
-
-.login-success-overlay.has-origin.is-reduced-motion .login-success-overlay-shell {
-  display: none;
+  animation: none;
 }
 
 .login-success-overlay.has-origin.is-reduced-motion .login-success-overlay-content {
   opacity: 1;
   transform: none;
   animation: none;
+  transition: opacity var(--lso-overlay-fade-out-ms, 220ms) linear;
+}
+
+.login-success-overlay.has-origin.is-reduced-motion.is-exiting .login-success-overlay-content {
+  opacity: 0;
 }
 
 .login-success-overlay.is-reduced-motion.is-loading .login-success-overlay-spinner-layer {
@@ -293,27 +296,23 @@
   }
 
   .login-success-overlay.has-origin {
-    background: #fff !important;
-    opacity: 0 !important;
-    animation:
-      lso-overlay-fade-in var(--lso-overlay-fade-in-ms, 150ms)
-      cubic-bezier(0.4, 0, 0.2, 1) forwards !important;
+    background: transparent !important;
+    opacity: 1 !important;
+    animation: none !important;
   }
 
   .login-success-overlay.has-origin.is-exiting {
-    animation:
-      lso-overlay-fade-out var(--lso-overlay-fade-out-ms, 220ms)
-      cubic-bezier(0.2, 0, 0, 1) forwards !important;
-  }
-
-  .login-success-overlay.has-origin .login-success-overlay-shell {
-    display: none !important;
+    animation: none !important;
   }
 
   .login-success-overlay.has-origin .login-success-overlay-content {
     opacity: 1 !important;
     transform: none !important;
     animation: none !important;
+  }
+
+  .login-success-overlay.has-origin.is-exiting .login-success-overlay-content {
+    opacity: 0 !important;
   }
 }
 
@@ -356,23 +355,6 @@
 
   to {
     transform: rotate(360deg);
-  }
-}
-
-@keyframes lso-spinner-arc {
-  0% {
-    stroke-dasharray: 76 164;
-    stroke-dashoffset: 0;
-  }
-
-  50% {
-    stroke-dasharray: 116 164;
-    stroke-dashoffset: -22;
-  }
-
-  100% {
-    stroke-dasharray: 76 164;
-    stroke-dashoffset: -44;
   }
 }
 
@@ -449,50 +431,6 @@
 
   to {
     opacity: 1;
-  }
-}
-
-/* 卡片到整屏 shell 展开。 */
-@keyframes lso-shell-expand {
-  from {
-    clip-path:
-      inset(
-        var(--lso-origin-inset-top, 0)
-        var(--lso-origin-inset-right, 0)
-        var(--lso-origin-inset-bottom, 0)
-        var(--lso-origin-inset-left, 0)
-        round var(--lso-origin-radius, 0)
-      );
-    opacity: 1;
-  }
-
-  to {
-    clip-path: inset(0 0 0 0 round 0);
-    opacity: 1;
-  }
-}
-
-/* 失败时 shell 反向缩回卡片。 */
-@keyframes lso-shell-shrink {
-  from {
-    clip-path: inset(0 0 0 0 round 0);
-    opacity: 1;
-  }
-
-  72% {
-    opacity: 1;
-  }
-
-  to {
-    clip-path:
-      inset(
-        var(--lso-origin-inset-top, 0)
-        var(--lso-origin-inset-right, 0)
-        var(--lso-origin-inset-bottom, 0)
-        var(--lso-origin-inset-left, 0)
-        round var(--lso-origin-radius, 0)
-      );
-    opacity: 0;
   }
 }
 

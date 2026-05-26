@@ -1,0 +1,5 @@
+/manage /Manage 301
+/manage/* /Manage/:splat 301
+/Manage /index.html 200
+/Manage/* /index.html 200
+/* /index.html 200

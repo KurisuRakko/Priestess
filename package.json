@@ -12,6 +12,7 @@
     "dev:admin": "npm run dev -w @priestess/admin",
     "build:login": "npm run build -w @priestess/login",
     "build:admin": "npm run build -w @priestess/admin",
-    "build": "npm run build:login && npm run build:admin"
+    "build": "npm run build:login && npm run build:admin",
+    "test:account-picker": "npm run test:account-picker -w @priestess/login"
   }
 }
