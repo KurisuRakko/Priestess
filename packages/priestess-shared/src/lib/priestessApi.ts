@@ -84,6 +84,7 @@ export type AdminSession = {
 
 export type AdminUser = {
   address: string;
+  avatarUrl: string;
   birthday: string;
   userId: string;
   username: string;
@@ -692,6 +693,7 @@ function normalizeAdminUser(payload: unknown, index: number): AdminUser {
 
   return {
     address,
+    avatarUrl: readString(record, ["avatar_url", "avatarUrl", "picture"]),
     birthday,
     createdAt: readDateTimeString(record, ["created_at", "createdAt"]),
     displayName,

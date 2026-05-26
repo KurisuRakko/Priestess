@@ -177,7 +177,7 @@ export const accountTextResources: PriestessI18nResources = {
       "昵称": "Display name",
       "当前头像预览": "Current avatar preview",
       "当前头像由 Priestess R2 托管": "Current avatar is hosted by Priestess R2",
-      "当前没有设置头像": "No avatar is currently set",
+      "当前使用默认头像": "Using the default avatar",
       "上传 PNG 头像": "Upload PNG avatar",
       "清除当前头像": "Clear current avatar",
       "取消": "Cancel",

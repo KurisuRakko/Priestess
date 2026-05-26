@@ -1,7 +1,9 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { ImageUp, Pencil, UserRound, X } from "lucide-react";
+import { ImageUp, Pencil, X } from "lucide-react";
 import {
+  getPriestessDisplayAvatarUrl,
   getPriestessApiErrorMessage,
+  getSafePriestessAvatarUrl,
   updateLocalProfile,
   uploadLocalProfileAvatar,
   usePriestessTranslation,
@@ -134,6 +136,9 @@ export function ProfileEditDialog({ onChanged, onClose, onNotice, open, user }: 
   };
 
   const cleanAvatarUrl = user.avatarUrl?.trim() ?? "";
+  const hasStoredAvatar = Boolean(cleanAvatarUrl);
+  const hasDisplayCustomAvatar = Boolean(getSafePriestessAvatarUrl(user.avatarUrl)) && !clearAvatar;
+  const previewAvatarUrl = getPriestessDisplayAvatarUrl(clearAvatar ? "" : user.avatarUrl);
 
   return (
     <AccountDialogShell labelledBy="account-profile-title" open={open}>
@@ -167,11 +172,11 @@ export function ProfileEditDialog({ onChanged, onClose, onNotice, open, user }: 
           </label>
           <div className="account-profile-preview" aria-label={t("当前头像预览")}>
             <span className="account-profile-preview__avatar" aria-hidden="true">
-              {cleanAvatarUrl ? <img alt="" src={cleanAvatarUrl} /> : <UserRound size={28} strokeWidth={1.8} />}
+              <img alt="" src={previewAvatarUrl} />
             </span>
             <div>
               <strong>{user.displayName || user.username || t("Priestess 用户")}</strong>
-              <span>{cleanAvatarUrl ? t("当前头像由 Priestess R2 托管") : t("当前没有设置头像")}</span>
+              <span>{hasDisplayCustomAvatar ? t("当前头像由 Priestess R2 托管") : t("当前使用默认头像")}</span>
             </div>
           </div>
           <label className="account-profile-upload">
@@ -188,7 +193,7 @@ export function ProfileEditDialog({ onChanged, onClose, onNotice, open, user }: 
             />
           </label>
           {avatarFile ? <div className="account-profile-file"><ImageUp size={15} strokeWidth={1.8} />{avatarFile.name}</div> : null}
-          {cleanAvatarUrl ? (
+          {hasStoredAvatar ? (
             <label className="account-profile-clear">
               <input
                 checked={clearAvatar}

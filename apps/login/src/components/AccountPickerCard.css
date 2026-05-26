@@ -101,12 +101,6 @@
   object-fit: cover;
 }
 
-.account-picker__avatar--fallback {
-  color: var(--color-accent-deep);
-  font-size: 17px;
-  font-weight: 500;
-}
-
 .account-picker__identity {
   display: grid;
   flex: 1 1 auto;

@@ -325,8 +325,10 @@ function testAccountPickerMarkup({ AccountPickerCard, getAccountKey, getAccountS
     })],
     status: "ready",
   });
-  assert.doesNotMatch(unsafeAvatarHtml, /<img /);
-  assert.match(unsafeAvatarHtml, />U</);
+  assert.match(unsafeAvatarHtml, /<img /);
+  assert.match(unsafeAvatarHtml, /priestess-default-avatar\.png/);
+  assert.doesNotMatch(unsafeAvatarHtml, /data:image/);
+  assert.doesNotMatch(unsafeAvatarHtml, />U</);
 }
 
 function testLoginFormBackButton({ LoginForm }) {

@@ -1,5 +1,10 @@
 import { ArrowRight, MoreVertical, Plus, RefreshCw, UserRound } from "lucide-react";
-import { usePriestessTranslation, type LocalAccountChoiceApp } from "@priestess/shared";
+import {
+  getPriestessDisplayAvatarUrl,
+  getSafePriestessAvatarUrl,
+  usePriestessTranslation,
+  type LocalAccountChoiceApp,
+} from "@priestess/shared";
 import type { AuthAccountChoice, AuthAccountChoicesStatus } from "../lib/useAuthAccountChoices";
 import "./AccountPickerCard.css";
 
@@ -137,37 +142,17 @@ function interpolateSourceText(key: string, options: Record<string, unknown> = {
 }
 
 function AccountAvatar({ account }: { account: AuthAccountChoice }) {
-  const { t } = usePriestessTranslation("login");
-  const fallbackText = getAccountDisplayLabel(account, t).trim().slice(0, 1).toUpperCase();
-  const avatarUrl = getSafeAvatarUrl(account.avatarUrl);
+  const avatarUrl = getPriestessDisplayAvatarUrl(account.avatarUrl);
 
-  if (avatarUrl) {
-    return (
-      <span className="account-picker__avatar">
-        <img alt="" src={avatarUrl} />
-      </span>
-    );
-  }
-
-  return <span className="account-picker__avatar account-picker__avatar--fallback">{fallbackText}</span>;
+  return (
+    <span className="account-picker__avatar">
+      <img alt="" src={avatarUrl} />
+    </span>
+  );
 }
 
 export function getSafeAvatarUrl(value: string) {
-  const trimmedValue = value.trim();
-  if (!trimmedValue || trimmedValue.startsWith("//")) {
-    return "";
-  }
-  if (trimmedValue.startsWith("/")) {
-    return trimmedValue;
-  }
-
-  try {
-    const url = new URL(trimmedValue);
-    // 头像只渲染普通 Web 资源；其它 scheme 使用首字母兜底，避免把不可信展示字段交给浏览器处理。
-    return url.protocol === "http:" || url.protocol === "https:" ? url.toString() : "";
-  } catch {
-    return "";
-  }
+  return getSafePriestessAvatarUrl(value);
 }
 
 function getAccountDisplayLabel(account: AuthAccountChoice, translate: (key: string, options?: Record<string, unknown>) => string = interpolateSourceText) {

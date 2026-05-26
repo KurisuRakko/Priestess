@@ -5,6 +5,7 @@ import {
   confirmQrPhoneSession,
   finalConfirmQrPhoneSession,
   getLocalSession,
+  getPriestessDisplayAvatarUrl,
   getPriestessApiErrorMessage,
   getQrPhoneSession,
   translatePriestess,
@@ -17,8 +18,6 @@ import {
 import prtsBlack from "../assets/qr-mobile/prtsblack.png";
 import prtsWhite from "../assets/qr-mobile/prtswhite.png";
 import "./QrLoginConfirmPage.css";
-
-const avatarFallback = new URL("../assets/qr-mobile/Greet.PNG", import.meta.url).href;
 
 type QrLoginConfirmPageProps = {
   onNavigateToLogin: () => void;
@@ -47,7 +46,7 @@ export function QrLoginConfirmPage({ onNavigateToLogin, onNotice }: QrLoginConfi
   const currentUser = session?.user ?? qrResult?.user ?? null;
   const applicationName = qrSession?.appName || qrSession?.appId || "Priestess";
   const applicationLogo = readApplicationLogo(qrResult) || (isDark ? prtsBlack : prtsWhite);
-  const avatarUrl = currentUser?.avatarUrl || avatarFallback;
+  const avatarUrl = getPriestessDisplayAvatarUrl(currentUser?.avatarUrl);
   const accountLabel = currentUser?.displayName || currentUser?.username || t("Priestess 账号");
   const pcLocation = formatContextLocation(qrSession?.pcContext ?? null);
   const phoneLocation = formatContextLocation(qrSession?.phoneContext ?? null);

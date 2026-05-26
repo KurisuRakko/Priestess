@@ -19,6 +19,7 @@ import {
   BrandMark,
   FloatingBackdrop,
   getAdminSession,
+  getPriestessDisplayAvatarUrl,
   getPriestessApiBaseLabel,
   getPriestessApiErrorMessage,
   detectPriestessLanguage,
@@ -404,7 +405,7 @@ export function AdminPage({ onNavigateToLogin, onNotice }: AdminPageProps) {
                       <td>
                         <button className="admin-row-button" onClick={() => setSelectedUserId(user.userId)} type="button">
                           <span className="admin-avatar" aria-hidden="true">
-                            {getInitial(user.displayName || user.username)}
+                            <img alt="" src={getPriestessDisplayAvatarUrl(user.avatarUrl)} />
                           </span>
                           <span>
                             <strong>{user.displayName}</strong>
@@ -820,15 +821,6 @@ function shortId(value: string) {
   }
 
   return `${value.slice(0, 6)}...${value.slice(-4)}`;
-}
-
-function getInitial(value: string) {
-  const cleanValue = value.trim();
-  if (!cleanValue) {
-    return "P";
-  }
-
-  return cleanValue.slice(0, 1).toUpperCase();
 }
 
 function describeContext(value: unknown) {

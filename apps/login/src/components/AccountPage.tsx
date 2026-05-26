@@ -20,8 +20,10 @@ import {
   BrandMark,
   FloatingBackdrop,
   getLocalSession,
+  getPriestessDisplayAvatarUrl,
   getPriestessApiErrorMessage,
   logoutLocalSession,
+  PRIESTESS_DEFAULT_AVATAR_URL,
   usePriestessTranslation,
   type LocalSession,
 } from "@priestess/shared";
@@ -346,23 +348,27 @@ function DisplayNameInfoCard({ avatarUrl, displayName, onEditAvatar, onEditDispl
   onEditDisplayName: () => void;
 }) {
   const { t } = usePriestessTranslation("account");
-  const cleanAvatarUrl = avatarUrl.trim();
   const [avatarLoadFailed, setAvatarLoadFailed] = useState(false);
-  const shouldShowAvatar = Boolean(cleanAvatarUrl) && !avatarLoadFailed;
+  const displayAvatarUrl = getPriestessDisplayAvatarUrl(avatarUrl);
+  const avatarImageUrl = avatarLoadFailed ? PRIESTESS_DEFAULT_AVATAR_URL : displayAvatarUrl;
 
   useEffect(() => {
     setAvatarLoadFailed(false);
-  }, [cleanAvatarUrl]);
+  }, [avatarUrl]);
 
   return (
     <article className="account-info-card account-info-card--neutral account-info-card--editable">
       <button aria-label={t("修改头像")} className="account-info-card__avatar-button" onClick={onEditAvatar} type="button">
-        <span className={`account-info-card__icon account-info-card__avatar${shouldShowAvatar ? " account-info-card__avatar--image" : ""}`} aria-hidden="true">
-          {shouldShowAvatar ? (
-            <img alt="" onError={() => setAvatarLoadFailed(true)} src={cleanAvatarUrl} />
-          ) : (
-            <UserRound size={26} strokeWidth={1.8} />
-          )}
+        <span className="account-info-card__icon account-info-card__avatar account-info-card__avatar--image" aria-hidden="true">
+          <img
+            alt=""
+            onError={() => {
+              if (avatarImageUrl !== PRIESTESS_DEFAULT_AVATAR_URL) {
+                setAvatarLoadFailed(true);
+              }
+            }}
+            src={avatarImageUrl}
+          />
         </span>
       </button>
       <button aria-label={t("修改显示名称")} className="account-info-card__text-button" onClick={onEditDisplayName} type="button">

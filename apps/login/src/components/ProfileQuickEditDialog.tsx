@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent, type PointerEvent, type WheelEvent } from "react";
-import { CalendarDays, ImageUp, Mail, MapPin, Pencil, Phone, UserRound, X } from "lucide-react";
+import { CalendarDays, ImageUp, Mail, MapPin, Pencil, Phone, X } from "lucide-react";
 import {
+  getPriestessDisplayAvatarUrl,
   getPriestessApiErrorMessage,
   updateLocalProfile,
   uploadLocalProfileAvatar,
@@ -176,7 +177,7 @@ export function ProfileQuickEditDialog({ mode, onChanged, onClose, onNotice, use
   const isBirthdayMode = mode === "birthday";
   const isAddressMode = mode === "address";
   const titleId = isAvatarMode ? "account-avatar-title" : isEmailMode ? "account-email-title" : isPhoneMode ? "account-phone-title" : isBirthdayMode ? "account-birthday-title" : isAddressMode ? "account-address-title" : "account-display-name-title";
-  const cleanAvatarUrl = user.avatarUrl?.trim() ?? "";
+  const currentAvatarUrl = getPriestessDisplayAvatarUrl(user.avatarUrl);
   const title = isAvatarMode ? t("修改头像") : isEmailMode ? t("修改邮箱") : isPhoneMode ? t("修改登录手机号") : isBirthdayMode ? t("修改生日") : isAddressMode ? t("修改地址") : t("修改显示名称");
   const avatarCropGeometry = avatarDraft ? getAvatarCropGeometry(avatarDraft, avatarCropFrameSize, avatarCropScale, avatarCropOffset) : null;
 
@@ -359,8 +360,8 @@ export function ProfileQuickEditDialog({ mode, onChanged, onClose, onNotice, use
               />
             </div>
           ) : (
-            <span className={`account-avatar-dialog__avatar${cleanAvatarUrl ? " account-avatar-dialog__avatar--image" : ""}`} aria-hidden="true">
-              {cleanAvatarUrl ? <img alt="" src={cleanAvatarUrl} /> : <UserRound size={58} strokeWidth={1.65} />}
+            <span className="account-avatar-dialog__avatar account-avatar-dialog__avatar--image" aria-hidden="true">
+              <img alt="" src={currentAvatarUrl} />
             </span>
           )}
         </div>
