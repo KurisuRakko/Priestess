@@ -30,9 +30,10 @@ export function shouldShowAuthAccountPicker(params: {
   showLoginFormForAuthRequest: boolean;
   status: AuthAccountChoicesStatus;
 }) {
+  // 空账号直接回到登录表单，避免把尚未登录的用户带进账号选择确认态。
   return params.hasAuthRequest
     && params.authMode === "login"
     && !params.showLoginFormForAuthRequest
     && !params.hasTotpChallenge
-    && ["empty", "error", "loading", "ready"].includes(params.status);
+    && ["error", "loading", "ready"].includes(params.status);
 }

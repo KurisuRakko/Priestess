@@ -21,12 +21,9 @@ import {
   REGISTER_PHONE_REGIONS,
 } from "./registerIdentityOptions";
 import { getStepCopy, REGISTER_STEP_LABELS, REGISTER_STEPS, type RegisterStep, STEP_PANEL_EASE, STEP_PANEL_VARIANTS } from "./registerStepConfig";
+import { readTurnstileSiteKey, TurnstileWidget } from "./TurnstileWidget";
 import "./RegisterFirstStepForm.css";
 
-const TURNSTILE_SCRIPT_SRC = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
-const TURNSTILE_SCRIPT_TIMEOUT_MS = 8000;
-const TURNSTILE_WIDGET_RENDER_TIMEOUT_MS = 10000;
-const TURNSTILE_TEST_SITE_KEY = "1x00000000000000000000AA";
 const SUCCESS_REDIRECT_DELAY_MS = 700;
 const CJK_CHARACTER_PATTERN = /[\u3400-\u9FFF]/u;
 const USERNAME_PATTERN = /^[A-Za-z][A-Za-z0-9_]{2,31}$/;
@@ -49,80 +46,6 @@ type FieldErrors = {
   turnstile?: string;
   username?: string;
 };
-
-type TurnstileRenderOptions = {
-  callback: (token: string) => void;
-  "error-callback": () => void;
-  "expired-callback": () => void;
-  sitekey: string;
-  theme?: "light";
-};
-
-declare global {
-  interface Window {
-    __PRIESTESS_CONFIG__?: {
-      turnstileSiteKey?: string;
-    };
-    turnstile?: {
-      render: (container: HTMLElement, options: TurnstileRenderOptions) => string;
-      remove: (widgetId: string) => void;
-      reset: (widgetId: string) => void;
-    };
-  }
-}
-
-let turnstileScriptPromise: Promise<void> | null = null;
-
-function readTurnstileSiteKey() {
-  const configuredSiteKey = import.meta.env.VITE_PRIESTESS_TURNSTILE_SITE_KEY?.trim()
-    || window.__PRIESTESS_CONFIG__?.turnstileSiteKey?.trim()
-    || "";
-
-  // 本地开发可使用 Cloudflare 官方测试 site key；生产必须显式配置真实 key，避免测试凭证进入线上注册链路。
-  if (!configuredSiteKey && import.meta.env.DEV) return TURNSTILE_TEST_SITE_KEY;
-  return configuredSiteKey;
-}
-
-function loadTurnstileScript() {
-  if (typeof window === "undefined") return Promise.reject(new Error(translatePriestess("login:当前环境无法加载验证码")));
-  if (window.turnstile) return Promise.resolve();
-  if (turnstileScriptPromise) return turnstileScriptPromise;
-
-  turnstileScriptPromise = new Promise((resolve, reject) => {
-    let settled = false;
-    let timer = 0;
-    const finish = (error?: Error) => {
-      if (settled) return;
-      settled = true;
-      window.clearTimeout(timer);
-      if (error) {
-        turnstileScriptPromise = null;
-        reject(error);
-        return;
-      }
-      resolve();
-    };
-    timer = window.setTimeout(() => finish(new Error(translatePriestess("login:验证码组件加载超时"))), TURNSTILE_SCRIPT_TIMEOUT_MS);
-    const bindScriptEvents = (script: HTMLScriptElement) => {
-      script.addEventListener("load", () => finish(), { once: true });
-      script.addEventListener("error", () => finish(new Error(translatePriestess("login:验证码组件加载失败"))), { once: true });
-    };
-
-    const existingScript = document.querySelector<HTMLScriptElement>(`script[src="${TURNSTILE_SCRIPT_SRC}"]`);
-    if (existingScript) {
-      bindScriptEvents(existingScript);
-      return;
-    }
-    const script = document.createElement("script");
-    script.async = true;
-    script.defer = true;
-    script.src = TURNSTILE_SCRIPT_SRC;
-    bindScriptEvents(script);
-    document.head.appendChild(script);
-  });
-
-  return turnstileScriptPromise;
-}
 
 function normalizeUsernameInput(rawValue: string) {
   return rawValue.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9_]/g, "").slice(0, USERNAME_MAX_LENGTH);
@@ -171,89 +94,6 @@ function getDeliveryLabel(delivery: string) {
   if (delivery === "email") return translatePriestess("login:邮箱");
   if (delivery === "sms") return translatePriestess("login:手机");
   return delivery;
-}
-
-function TurnstileWidget({
-  disabled,
-  onError,
-  onExpire,
-  onToken,
-  resetSignal,
-  siteKey,
-}: {
-  disabled: boolean;
-  onError: () => void;
-  onExpire: () => void;
-  onToken: (token: string) => void;
-  resetSignal: number;
-  siteKey: string;
-}) {
-  const { t } = usePriestessTranslation("login");
-  const containerRef = useRef<HTMLSpanElement | null>(null);
-  const widgetIdRef = useRef("");
-  const widgetStatusTimerRef = useRef<number | null>(null);
-  const tokenResolvedRef = useRef(false);
-  const callbacksRef = useRef({ onError, onExpire, onToken });
-  callbacksRef.current = { onError, onExpire, onToken };
-
-  useEffect(() => {
-    if (!siteKey || disabled) return;
-
-    let active = true;
-    void loadTurnstileScript()
-      .then(() => {
-        if (!active || !containerRef.current) return;
-        if (!window.turnstile) {
-          // Turnstile 脚本偶尔会被浏览器策略或自动化环境中断；这里显式报错，避免留下空白验证框。
-          callbacksRef.current.onError();
-          return;
-        }
-
-        containerRef.current.innerHTML = "";
-        tokenResolvedRef.current = false;
-        widgetIdRef.current = window.turnstile.render(containerRef.current, {
-          sitekey: siteKey,
-          theme: "light",
-          callback: (token) => {
-            tokenResolvedRef.current = true;
-            callbacksRef.current.onToken(token);
-          },
-          "expired-callback": () => callbacksRef.current.onExpire(),
-          "error-callback": () => {
-            tokenResolvedRef.current = true;
-            callbacksRef.current.onError();
-          },
-        });
-        widgetStatusTimerRef.current = window.setTimeout(() => {
-          if (!active || tokenResolvedRef.current || containerRef.current?.querySelector("iframe")) return;
-          // 某些环境会让 Turnstile 脚本记录错误但不回调，显式兜底能让用户看到可操作的失败状态。
-          callbacksRef.current.onError();
-        }, TURNSTILE_WIDGET_RENDER_TIMEOUT_MS);
-      })
-      .catch(() => callbacksRef.current.onError());
-
-    return () => {
-      active = false;
-      if (widgetStatusTimerRef.current !== null) {
-        window.clearTimeout(widgetStatusTimerRef.current);
-        widgetStatusTimerRef.current = null;
-      }
-      if (widgetIdRef.current && window.turnstile) {
-        window.turnstile.remove(widgetIdRef.current);
-      }
-      widgetIdRef.current = "";
-    };
-  }, [disabled, resetSignal, siteKey]);
-
-  return (
-    <span className="text-field" style={{ justifyContent: "center", minHeight: 84, padding: "10px 12px" }}>
-      {siteKey ? (
-        <span ref={containerRef} style={{ minHeight: 64, width: "100%" }} />
-      ) : (
-        <span style={{ color: "var(--color-muted)", fontSize: 14 }}>{t("验证码组件未配置，请联系管理员。")}</span>
-      )}
-    </span>
-  );
 }
 
 export function RegisterFirstStepForm({

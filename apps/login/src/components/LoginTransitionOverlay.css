@@ -82,7 +82,8 @@
   transform-origin: 40px 40px;
 }
 
-.login-success-overlay.is-loading .login-success-overlay-spinner-layer {
+.login-success-overlay.is-loading .login-success-overlay-spinner-layer,
+.login-success-overlay.is-challenge .login-success-overlay-spinner-layer {
   animation: lso-spinner-rotate var(--lso-spinner-rotate-ms, 900ms) var(--lso-spinner-delay-ms, 100ms) linear infinite;
 }
 
@@ -202,6 +203,30 @@
 .login-success-overlay.has-origin .login-success-overlay-organization,
 .login-success-overlay.has-origin .login-success-overlay-username {
   font-size: 13px;
+}
+
+.login-success-overlay-challenge {
+  width: min(320px, calc(100vw - 56px));
+}
+
+.login-success-overlay-turnstile {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  min-height: 86px;
+  margin-top: 16px;
+  padding: 8px 0;
+}
+
+.login-success-overlay-turnstile-container {
+  display: flex;
+  justify-content: center;
+  min-height: 66px;
+  width: 100%;
+}
+
+.login-success-overlay.has-origin .login-success-overlay-challenge {
+  width: min(300px, calc(100vw - 72px));
 }
 
 /* 减少动画偏好下保留小状态卡片，但不做位移和绘制动画。 */

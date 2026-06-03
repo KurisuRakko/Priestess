@@ -12,6 +12,7 @@ import {
   loginLocalSession,
   Toast,
   usePriestessTranslation,
+  type LocalLoginCredentials,
   type LocalSession,
   type QrSession,
   type QrSessionPollStatus,
@@ -28,6 +29,7 @@ import { QrLoginConfirmPage } from "./components/QrLoginConfirmPage";
 import { ResetPasswordPage } from "./components/ResetPasswordPage";
 import { buildAuthAccountAuthorizeParams, getAuthAccountAuthorizeBlocker, shouldShowAuthAccountPicker } from "./lib/accountAuthorization";
 import { getAuthRequestKey, readAuthRequest, type AuthRequest } from "./lib/authRequest";
+import { loginLocalSessionWithTurnstileRetry } from "./lib/localLoginTurnstileRetry";
 import {
   AUTH_MODE_DRAWER_IN_MS,
   AUTH_MODE_TRANSITION_MS,
@@ -47,6 +49,7 @@ import { buildLoginPathWithNext, getCurrentAccountNextPath, readLoginNext } from
 import { resolveLoginLayoutState, type LoginLayoutAuthMode } from "./lib/loginLayoutState";
 import { getCurrentRoute, LOGIN_ROUTE_PATH, LEGACY_LOGIN_ROUTE_PATH, matchesRoutePath, type AppRoute } from "./lib/routes";
 import { getAuthAccountChoiceErrorMessage, type AuthAccountChoice, useAuthAccountChoices } from "./lib/useAuthAccountChoices";
+import { readTurnstileSiteKey } from "./components/TurnstileWidget";
 
 type AuthMode = LoginLayoutAuthMode;
 
@@ -500,8 +503,7 @@ export function App() {
     const abortController = new AbortController();
     loginAbortControllerRef.current = abortController;
 
-    try {
-      const session = await loginLocalSession(credentials, { signal: abortController.signal });
+    const finishPasswordLoginSession = async(session: LocalSession) => {
       resetLocalLoginFailureState();
       if (session.mfaRequired && session.challengeId) {
         setTotpChallenge(buildTotpChallenge(session, credentials.username));
@@ -518,6 +520,23 @@ export function App() {
         session,
         signal: abortController.signal,
       });
+    };
+    const runPasswordLogin = (nextCredentials: LocalLoginCredentials) => loginLocalSession(nextCredentials, { signal: abortController.signal });
+
+    try {
+      const session = await loginLocalSessionWithTurnstileRetry({
+        credentials,
+        login: runPasswordLogin,
+        readSiteKey: readTurnstileSiteKey,
+        requestChallenge: ({ description, siteKey, title }) => controller.challenge({
+          challengeDescription: description,
+          challengeSiteKey: siteKey,
+          challengeTitle: title,
+        }),
+        signal: abortController.signal,
+        t,
+      });
+      await finishPasswordLoginSession(session);
     } catch (error) {
       if (abortController.signal.aborted) {
         return;

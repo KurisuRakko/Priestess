@@ -13,6 +13,7 @@
     "build:login": "npm run build -w @priestess/login",
     "build:admin": "npm run build -w @priestess/admin",
     "build": "npm run build:login && npm run build:admin",
-    "test:account-picker": "npm run test:account-picker -w @priestess/login"
+    "test:account-picker": "npm run test:account-picker -w @priestess/login",
+    "test:login-turnstile-browser": "npm run test:login-turnstile-browser -w @priestess/login"
   }
 }

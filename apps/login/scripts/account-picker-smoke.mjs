@@ -27,6 +27,7 @@ try {
   const loginI18nModule = await server.ssrLoadModule("/src/i18n/index.ts");
   const loginNextModule = await server.ssrLoadModule("/src/lib/loginNext.ts");
   const loginLayoutStateModule = await server.ssrLoadModule("/src/lib/loginLayoutState.ts");
+  const localLoginTurnstileRetryModule = await server.ssrLoadModule("/src/lib/localLoginTurnstileRetry.ts");
   const sharedI18nModule = await server.ssrLoadModule("/@fs/Users/rakko/GitHub/priestess/packages/priestess-shared/src/lib/i18n.tsx");
   const sharedApiModule = await server.ssrLoadModule("/@fs/Users/rakko/GitHub/priestess/packages/priestess-shared/src/lib/priestessApi.ts");
   const { AccountPickerCard, getAccountKey, getAccountSelectLabel, getSafeAvatarUrl } = accountPickerModule;
@@ -35,10 +36,11 @@ try {
   const { getAuthAccountChoiceErrorMessage, readAuthAccountChoicesForRequest, redactSensitiveAuthText } = authAccountChoicesModule;
   const { LoginForm } = loginFormModule;
   const { buildLoginPathWithNext, getCurrentAccountNextPath, normalizePriestessNextPath, readLoginNext } = loginNextModule;
+  const { loginLocalSessionWithTurnstileRetry } = localLoginTurnstileRetryModule;
   ({ loginI18nResources } = loginI18nModule);
   const { resolveLoginLayoutState } = loginLayoutStateModule;
   ({ PriestessI18nProvider } = sharedI18nModule);
-  const { authorizeLocalSession, listLocalAccountChoices } = sharedApiModule;
+  const { authorizeLocalSession, listLocalAccountChoices, loginLocalSession, PriestessApiError } = sharedApiModule;
 
   testAuthRequestHelpers({ getAuthRequestAppLabel, getAuthRequestReturnToOrigin, readAuthRequest });
   testAccountAuthorizationHelpers({ buildAuthAccountAuthorizeParams, getAuthAccountAuthorizeBlocker, shouldShowAuthAccountPicker });
@@ -46,7 +48,8 @@ try {
   testLoginLayoutState({ resolveLoginLayoutState });
   testAccountPickerMarkup({ AccountPickerCard, getAccountKey, getAccountSelectLabel, getSafeAvatarUrl });
   testLoginFormBackButton({ LoginForm });
-  await testSharedApiContract({ authorizeLocalSession, listLocalAccountChoices });
+  await testSharedApiContract({ authorizeLocalSession, listLocalAccountChoices, loginLocalSession });
+  await testLocalLoginTurnstileRetry({ loginLocalSessionWithTurnstileRetry, PriestessApiError });
   testAccountChoiceErrorRedaction({ getAuthAccountChoiceErrorMessage, redactSensitiveAuthText });
   await testAccountChoiceFallback({ readAuthAccountChoicesForRequest });
 
@@ -106,7 +109,7 @@ function testAccountAuthorizationHelpers({ buildAuthAccountAuthorizeParams, getA
   assert.equal(shouldShowAuthAccountPicker({ ...basePickerState, status: "loading" }), true);
   assert.equal(shouldShowAuthAccountPicker({ ...basePickerState, status: "ready" }), true);
   assert.equal(shouldShowAuthAccountPicker({ ...basePickerState, status: "error" }), true);
-  assert.equal(shouldShowAuthAccountPicker({ ...basePickerState, status: "empty" }), true);
+  assert.equal(shouldShowAuthAccountPicker({ ...basePickerState, status: "empty" }), false);
   assert.equal(shouldShowAuthAccountPicker({ ...basePickerState, status: "idle" }), false);
   assert.equal(shouldShowAuthAccountPicker({ ...basePickerState, authMode: "register", status: "ready" }), false);
   assert.equal(shouldShowAuthAccountPicker({ ...basePickerState, hasAuthRequest: false, status: "ready" }), false);
@@ -355,7 +358,7 @@ function testLoginFormBackButton({ LoginForm }) {
   assert.match(totpHtml, /返回密码登录/);
 }
 
-async function testSharedApiContract({ authorizeLocalSession, listLocalAccountChoices }) {
+async function testSharedApiContract({ authorizeLocalSession, listLocalAccountChoices, loginLocalSession }) {
   const originalFetch = globalThis.fetch;
   const calls = [];
   const responses = [
@@ -407,6 +410,7 @@ async function testSharedApiContract({ authorizeLocalSession, listLocalAccountCh
     },
     { redirect_url: "https://example.com/callback?login_code=mock", expires_in: 60, expires_at: 1_779_600_000 },
     { redirectUrl: "https://example.com/current", expiresIn: 30, expiresAt: 1_779_600_030 },
+    { authenticated: true, expires_at: "2026-05-24T12:00:00.000Z", user: { user_id: "user-login", username: "login-user" } },
   ];
 
   globalThis.fetch = async(url, init = {}) => {
@@ -476,9 +480,116 @@ async function testSharedApiContract({ authorizeLocalSession, listLocalAccountCh
       app_id: "canvas",
       return_to: "https://example.com/current",
     });
+
+    const login = await loginLocalSession({
+      password: "secret-password",
+      turnstileToken: "turnstile-ok",
+      username: "login-user",
+    });
+    assert.equal(login.authenticated, true);
+    assert.deepEqual(calls[4].body, {
+      password: "secret-password",
+      turnstile_token: "turnstile-ok",
+      username: "login-user",
+    });
   } finally {
     globalThis.fetch = originalFetch;
   }
+}
+
+async function testLocalLoginTurnstileRetry({ loginLocalSessionWithTurnstileRetry, PriestessApiError }) {
+  const credentials = {
+    password: "secret-password",
+    username: "login-user",
+  };
+  const requiredError = new PriestessApiError("Turnstile required", {
+    payload: { error: { code: "local_login_turnstile_required" } },
+    status: 403,
+  });
+  const successfulSession = {
+    authenticated: true,
+    expiresAt: "",
+    mfaRequired: false,
+    user: { userId: "user-login", username: "login-user" },
+  };
+  const loginCalls = [];
+  const challengeCalls = [];
+
+  const session = await loginLocalSessionWithTurnstileRetry({
+    credentials,
+    login: async(nextCredentials) => {
+      loginCalls.push(nextCredentials);
+      if (loginCalls.length === 1) throw requiredError;
+      return successfulSession;
+    },
+    readSiteKey: () => "site-key-login",
+    requestChallenge: async(params) => {
+      challengeCalls.push(params);
+      return "turnstile-ok";
+    },
+    signal: new AbortController().signal,
+    t: (key) => key,
+  });
+
+  assert.equal(session, successfulSession);
+  assert.deepEqual(loginCalls, [
+    credentials,
+    {
+      ...credentials,
+      turnstileToken: "turnstile-ok",
+    },
+  ]);
+  assert.deepEqual(challengeCalls, [{
+    description: "这次登录需要先通过 Cloudflare 验证。",
+    siteKey: "site-key-login",
+    title: "请完成人机验证",
+  }]);
+
+  const missingSiteKeyError = await rejectsWithValue(() => loginLocalSessionWithTurnstileRetry({
+    credentials,
+    login: async() => {
+      throw requiredError;
+    },
+    readSiteKey: () => "",
+    requestChallenge: async() => {
+      throw new Error("should not render challenge");
+    },
+    signal: new AbortController().signal,
+    t: (key) => key,
+  }));
+  assert.match(String(missingSiteKeyError?.message), /验证码组件未配置/);
+
+  const invalidCredentialsError = new PriestessApiError("Invalid password", {
+    payload: { error: { code: "invalid_local_credentials" } },
+    status: 401,
+  });
+  const failedRetryCalls = [];
+  const failedRetryError = await rejectsWithValue(() => loginLocalSessionWithTurnstileRetry({
+    credentials,
+    login: async(nextCredentials) => {
+      failedRetryCalls.push(nextCredentials);
+      if (failedRetryCalls.length === 1) throw requiredError;
+      throw invalidCredentialsError;
+    },
+    readSiteKey: () => "site-key-login",
+    requestChallenge: async() => "turnstile-ok",
+    signal: new AbortController().signal,
+    t: (key) => key,
+  }));
+  assert.equal(failedRetryError, invalidCredentialsError);
+  assert.deepEqual(failedRetryCalls[1], {
+    ...credentials,
+    turnstileToken: "turnstile-ok",
+  });
+}
+
+async function rejectsWithValue(run) {
+  try {
+    await run();
+  } catch (error) {
+    return error;
+  }
+  assert.fail("expected promise to reject");
 }
 
 async function testAccountChoiceFallback({ readAuthAccountChoicesForRequest }) {

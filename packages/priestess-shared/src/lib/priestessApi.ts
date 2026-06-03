@@ -13,6 +13,7 @@ const PRIESTESS_QR_BASE = `${PRIESTESS_AUTH_BASE}/qr`;
 export type LocalLoginCredentials = {
   username: string;
   password: string;
+  turnstileToken?: string;
 };
 
 export type LocalPasswordManagerPreference = {
@@ -238,6 +239,7 @@ export async function loginLocalSession(credentials: LocalLoginCredentials, opti
     body: {
       username: credentials.username,
       password: credentials.password,
+      ...(credentials.turnstileToken ? { turnstile_token: credentials.turnstileToken } : {}),
     },
     method: "POST",
     signal: options.signal,

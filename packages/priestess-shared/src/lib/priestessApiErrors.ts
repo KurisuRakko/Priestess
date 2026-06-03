@@ -57,6 +57,9 @@ export function resolveErrorMessage(payload: unknown, status: number) {
   if (apiError?.code === "admin_login_required") return translatePriestess("errors:adminLoginRequired");
   if (apiError?.code === "password_reset_invalid") return translatePriestess("errors:passwordResetInvalid");
   if (apiError?.code === "local_login_temporarily_locked") return translatePriestess("errors:localLoginTemporarilyLocked");
+  if (apiError?.code === "local_login_turnstile_required") return translatePriestess("errors:turnstileRequired");
+  if (apiError?.code === "local_login_turnstile_not_configured") return translatePriestess("errors:registrationTurnstileMissing");
+  if (apiError?.code === "local_login_turnstile_failed") return translatePriestess("errors:turnstileFailed");
   if (apiError?.code === "weak_local_password") return translatePriestess("errors:weakPassword");
   if (["local_user_exists", "register_identity_exists"].includes(apiError?.code ?? "")) return translatePriestess("errors:localUserExists");
   if (["registration_verification_invalid", "register_verification_invalid", "invalid_register_code", "invalid_registration_code"].includes(apiError?.code ?? "")) return translatePriestess("errors:registrationCodeInvalid");
