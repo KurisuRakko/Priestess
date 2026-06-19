@@ -46,6 +46,7 @@ export type LocalSession = {
 };
 
 export type LocalAccountChoice = {
+  authenticated: boolean;
   avatarUrl: string;
   choiceId: string;
   current: boolean;
@@ -54,6 +55,7 @@ export type LocalAccountChoice = {
   expiresAt: string;
   lastUsedAt: string;
   raw: unknown;
+  revoked: boolean;
   userId: string;
   username: string;
 };
@@ -68,6 +70,15 @@ export type LocalAccountChoicesResult = {
   accounts: LocalAccountChoice[];
   app: LocalAccountChoiceApp;
   raw: unknown;
+};
+
+export type LocalAccountChoiceRemovalResult = {
+  authenticated: boolean;
+  current: boolean;
+  raw: unknown;
+  removed: boolean;
+  revoked: boolean;
+  userId: string;
 };
 
 export type LocalAuthorizeResult = {
@@ -227,6 +238,23 @@ export async function listLocalAccountChoices(params: { appId: string; returnTo:
     signal: options.signal,
   });
   return normalizeLocalAccountChoices(payload);
+}
+
+export async function removeLocalAccountChoice(userId: string, options: Pick<RequestOptions, "signal"> = {}) {
+  const payload = await requestJson(`${PRIESTESS_AUTH_BASE}/account-choices/${encodeURIComponent(userId)}`, {
+    method: "DELETE",
+    signal: options.signal,
+  });
+  return normalizeLocalAccountChoiceRemoval(payload);
+}
+
+export async function activateLocalAccountChoice(userId: string, params: { choiceId?: string } = {}, options: Pick<RequestOptions, "signal"> = {}) {
+  const payload = await requestJson(`${PRIESTESS_AUTH_BASE}/account-choices/${encodeURIComponent(userId)}/activate`, {
+    body: params.choiceId ? { choice_id: params.choiceId } : {},
+    method: "POST",
+    signal: options.signal,
+  });
+  return normalizeLocalSession(payload);
 }
 
 export async function getPriestessStatus(options: Pick<RequestOptions, "signal"> = {}) {
@@ -548,6 +576,7 @@ function normalizeLocalAccountChoices(payload: unknown): LocalAccountChoicesResu
 
 function normalizeLocalAccountChoice(payload: unknown, index: number): LocalAccountChoice {
   const record = isRecord(payload) ? payload : {};
+  const sessionRecord = pickRecord(record, ["session"]) ?? {};
   const nestedUser = pickRecord(record, ["user", "local_user", "localUser", "account"]);
   const userRecord = nestedUser ?? record;
   const user = normalizeLocalSessionUser(userRecord);
@@ -555,18 +584,39 @@ function normalizeLocalAccountChoice(payload: unknown, index: number): LocalAcco
   const username = readString(userRecord, ["username", "name", "login"]) || user?.username || "";
   const email = readString(userRecord, ["email"]) || user?.email || "";
   const displayName = readString(userRecord, ["display_name", "displayName", "nickname", "name"]) || user?.displayName || username || email || userId || translatePriestess("common:账号 {{count}}", { count: index + 1 });
+  // 兼容 Phainon 迁移期里不同命名的会话状态字段，前端只关心这个浏览器还能不能安全编辑该账号。
+  const revoked = readBoolean(record, ["revoked", "is_revoked", "isRevoked", "signed_out", "signedOut", "logged_out", "loggedOut", "force_logged_out", "forceLoggedOut"])
+    ?? readBoolean(sessionRecord, ["revoked", "is_revoked", "isRevoked", "signed_out", "signedOut", "logged_out", "loggedOut", "force_logged_out", "forceLoggedOut"])
+    ?? false;
+  const authenticated = readBoolean(record, ["authenticated", "is_authenticated", "isAuthenticated", "signed_in", "signedIn", "logged_in", "loggedIn", "valid", "active"])
+    ?? readBoolean(sessionRecord, ["authenticated", "is_authenticated", "isAuthenticated", "signed_in", "signedIn", "logged_in", "loggedIn", "valid", "active"])
+    ?? !revoked;
 
   return {
+    authenticated: authenticated && !revoked,
     avatarUrl: readString(userRecord, ["avatar_url", "avatarUrl", "picture", "avatar"]) || user?.avatarUrl || "",
     choiceId: readString(record, ["choice_id", "choiceId"]),
-    current: readBoolean(record, ["current", "is_current", "isCurrent", "active"]) ?? false,
+    current: readBoolean(record, ["current", "is_current", "isCurrent", "current_session", "currentSession"]) ?? readBoolean(sessionRecord, ["current", "is_current", "isCurrent"]) ?? false,
     displayName,
     email,
-    expiresAt: readDateTimeString(record, ["expires_at", "expiresAt"]) || readDateTimeString(pickRecord(record, ["session"]), ["expires_at", "expiresAt"]),
-    lastUsedAt: readDateTimeString(record, ["last_used_at", "lastUsedAt"]),
+    expiresAt: readDateTimeString(record, ["expires_at", "expiresAt"]) || readDateTimeString(sessionRecord, ["expires_at", "expiresAt"]),
+    lastUsedAt: readDateTimeString(record, ["last_used_at", "lastUsedAt"]) || readDateTimeString(sessionRecord, ["last_used_at", "lastUsedAt"]),
     raw: payload,
+    revoked,
     userId,
     username,
+  };
+}
+
+function normalizeLocalAccountChoiceRemoval(payload: unknown): LocalAccountChoiceRemovalResult {
+  const record = isRecord(payload) ? payload : {};
+  return {
+    authenticated: readBoolean(record, ["authenticated"]) ?? true,
+    current: readBoolean(record, ["current"]) ?? false,
+    raw: payload,
+    removed: readBoolean(record, ["removed"]) ?? false,
+    revoked: readBoolean(record, ["revoked"]) ?? false,
+    userId: readString(record, ["user_id", "userId"]),
   };
 }
 

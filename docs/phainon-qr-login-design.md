@@ -82,7 +82,7 @@ Priestess v1 实现 OIDC 扫码登录、本地用户会话、账号资料、头�
 ### 本地用户登录
 
 - `GET /auth/priestess/session`：读取当前本地用户会话。
-- `POST /auth/priestess/session`：用户名密码登录，设置 HttpOnly cookie。
+- `POST /auth/priestess/session`：用户名或邮箱 + 密码登录，设置 HttpOnly cookie；请求体继续使用兼容字段 `{ "username": string, "password": string }`，其中 `username` 表示登录标识。
 - `DELETE /auth/priestess/session`：撤销当前本地用户会话。
 - `GET /auth/priestess/devices/sessions`：读取当前用户所有未过期、未撤销的本地浏览器会话，返回简化 UA、IP、创建时间、最近使用时间和过期时间。
 - `DELETE /auth/priestess/devices/sessions/:sessionId`：撤销当前用户的指定本地浏览器会话；后端必须同时校验 `session_id` 和当前 `user_id`，若撤销当前浏览器则清除 HttpOnly cookie。
@@ -93,11 +93,23 @@ Priestess v1 实现 OIDC 扫码登录、本地用户会话、账号资料、头�
 
 - `GET /auth/priestess/account-choices?app_id=...&return_to=...`
   - 行为：在第三方应用发起 `/login?app_id=...&return_to=...` 时读取当前浏览器信任范围内可用于本次授权的 Priestess 本地账号。
-  - 输出：`accounts` 和 `app`。`accounts[]` 至少包含 `choice_id`、`user_id`、`username`、`display_name`、`email`、`avatar_url`、`current`、`last_used_at`、`expires_at`；`app` 第一版只要求 `app_id` 和 `return_to_origin`。
+  - 输出：`accounts` 和 `app`。`accounts[]` 至少包含 `choice_id`、`user_id`、`username`、`display_name`、`email`、`avatar_url`、`current`、`authenticated`、`revoked`、`last_used_at`、`expires_at`；`app` 第一版只要求 `app_id` 和 `return_to_origin`。
   - `choice_id` 必须是短时、不可猜、只对当前浏览器和本次授权上下文有效的 opaque id；不能使用裸 `user_id`、session id、cookie 值或 refresh token hash。
-  - 后端只返回未过期、未撤销、属于当前浏览器信任范围的账号。没有可用账号时返回空数组，而不是让前端伪造账号列表。
+  - 后端返回属于当前浏览器信任范围的账号；如果账号对应会话已被管理员或设备管理强制撤销，应返回 `authenticated=false` 或 `revoked=true`，前端会在账号行显示已登出且不允许修改资料、密码或头像。没有可用账号时返回空数组，而不是让前端伪造账号列表。
   - `app_id` 和 `return_to` 仍由 Phainon 后端按现有 OIDC app/return URL 规则校验；前端展示 `return_to_origin` 只用于说明目标应用，不能替代服务端校验。
   - 如果该接口暂未上线，Priestess 前端会兼容退回 `GET /auth/priestess/session`，只把当前已认证会话展示为一个账号选择项；正式多账号验收必须以后端返回多个 `choice_id` 为准。
+
+- `DELETE /auth/priestess/account-choices/:userId`
+  - 行为：从当前 `phainon_priestess_browser` 容器移除一个已登录账号，并撤销该账号对应的本地用户 session；这不是永久删除 Priestess 用户、资料、Passkey 或服务授权。
+  - 鉴权：必须来自可信 Priestess 前端 Origin/Referer，并且请求携带有效的浏览器容器 cookie。后端只能操作当前浏览器容器中已经可见的 `user_id`。
+  - 输出：`removed`、`revoked`、`current`、`authenticated`、`user_id`。如果移除的是当前 `phainon_priestess_session`，后端同时清除当前 session cookie；其它浏览器账号仍留在账号选择列表里。
+  - 前端不能用一次性 `choice_id` 做删除凭证；`choice_id` 只服务本次授权，并会在授权时消费。
+
+- `POST /auth/priestess/account-choices/:userId/activate`
+  - 行为：把当前浏览器容器中某个仍有效的账号激活为当前 `phainon_priestess_session`，用于账号选择页跳转个人中心前切换到正确账号。
+  - 鉴权：必须来自可信 Priestess 前端 Origin/Referer，并且请求携带有效的浏览器容器 cookie；后端只能激活当前浏览器容器中仍有效、未撤销、未过期且用户启用的账号。
+  - 输入：可选 `{ "choice_id": string }`。后端可用它拒绝明显过期或跨 Origin 的账号选择项，但不能只信任 `choice_id`，必须同时校验浏览器容器和服务端 session 记录。
+  - 输出：`LocalSession` 兼容 payload，并设置新的 `phainon_priestess_session` HttpOnly cookie。
 
 - `POST /auth/priestess/authorize`
   - 现有输入 `{ "app_id": string, "return_to": string }` 保持“当前本地会话授权”的语义。

@@ -242,6 +242,13 @@ input:focus-visible {
   transition: width 680ms var(--ease-out), min-width 680ms var(--ease-out);
 }
 
+.login-card-shell--account-picker {
+  /* 账号选择态只收紧主登录卡片，不影响密码登录、注册和二维码抽屉布局。 */
+  align-self: center;
+  width: min(460px, 100%);
+  min-width: 360px;
+}
+
 .auth-grid--register .login-card-shell {
   width: min(430px, 100%);
   min-width: 0;
@@ -533,6 +540,12 @@ input:focus-visible {
   backdrop-filter: blur(22px);
   transition: padding 250ms var(--ease-out);
 }
+
+.login-card--account-picker {
+  justify-content: flex-start;
+  padding: clamp(28px, 3vw, 34px);
+}
+
 @media (min-width: 821px) { .auth-grid:not(.auth-grid--login-centered):not(.auth-grid--register) .login-card { border-radius: var(--radius-card) 0 0 var(--radius-card); } }
 .auth-grid--register .login-card {
   padding: 30px 34px 32px;
@@ -548,6 +561,12 @@ input:focus-visible {
   height: 38px;
   margin-bottom: 20px;
   color: var(--color-accent);
+}
+
+.login-card--account-picker .login-card__mark {
+  width: 34px;
+  height: 34px;
+  margin-bottom: 16px;
 }
 
 .login-card__back-button {
@@ -613,6 +632,10 @@ input:focus-visible {
   margin-bottom: 24px;
 }
 
+.login-card--account-picker .login-card__heading {
+  margin-bottom: 20px;
+}
+
 .login-card h1 {
   margin: 0;
   color: var(--color-heading);
@@ -623,11 +646,20 @@ input:focus-visible {
   letter-spacing: 0;
 }
 
+.login-card--account-picker h1 {
+  font-size: clamp(30px, 3.4vw, 36px);
+}
+
 .login-card__heading p {
   margin: 14px 0 0;
   color: var(--color-muted);
   font-size: 15px;
   line-height: 1.75;
+}
+
+.login-card--account-picker .login-card__heading p {
+  margin-top: 12px;
+  line-height: 1.6;
 }
 
 .login-form {
@@ -954,6 +986,11 @@ input:focus-visible {
     min-width: 0;
   }
 
+  .login-card-shell--account-picker {
+    width: 100%;
+    min-width: 0;
+  }
+
   .qr-drawer-slot {
     display: none;
   }
@@ -963,8 +1000,16 @@ input:focus-visible {
     padding: 32px 26px 34px;
   }
 
+  .login-card--account-picker {
+    padding: 28px 22px 30px;
+  }
+
   .login-card h1 {
     font-size: 32px;
+  }
+
+  .login-card--account-picker h1 {
+    font-size: 30px;
   }
 
   .signup-line {

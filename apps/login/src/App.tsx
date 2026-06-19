@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { startAuthentication } from "@simplewebauthn/browser";
 import { useReducedMotion } from "motion/react";
 import {
+  activateLocalAccountChoice,
   authorizeLocalSession,
   createLocalPasskeyAuthenticationOptions,
   createQrSession,
@@ -10,6 +11,7 @@ import {
   getPriestessApiErrorCode,
   getPriestessApiErrorMessage,
   loginLocalSession,
+  removeLocalAccountChoice,
   Toast,
   usePriestessTranslation,
   type LocalLoginCredentials,
@@ -19,7 +21,7 @@ import {
   verifyLocalPasskeyAuthentication,
   verifyLocalTotpLogin,
 } from "@priestess/shared";
-import { getAccountKey } from "./components/AccountPickerCard";
+import { getAccountKey, type AccountPickerAction } from "./components/AccountPickerCard";
 import { AccountPage } from "./components/AccountPage";
 import { LoginExperience } from "./components/LoginExperience";
 import { type LoginCredentials } from "./components/LoginForm";
@@ -28,6 +30,7 @@ import { NotFoundPage } from "./components/NotFoundPage";
 import { QrLoginConfirmPage } from "./components/QrLoginConfirmPage";
 import { ResetPasswordPage } from "./components/ResetPasswordPage";
 import { buildAuthAccountAuthorizeParams, getAuthAccountAuthorizeBlocker, shouldShowAuthAccountPicker } from "./lib/accountAuthorization";
+import { isAccountEditableInBrowser, resolveAccountManagementActionTarget } from "./lib/accountManagementAction";
 import { getAuthRequestKey, readAuthRequest, type AuthRequest } from "./lib/authRequest";
 import { loginLocalSessionWithTurnstileRetry } from "./lib/localLoginTurnstileRetry";
 import {
@@ -78,6 +81,7 @@ export function App() {
   const qrPollRef = useRef<number | null>(null);
   const qrRefreshIdRef = useRef(0);
   const [notice, setNotice] = useState("");
+  const [accountActionBusyId, setAccountActionBusyId] = useState("");
   const [accountAuthorizeError, setAccountAuthorizeError] = useState("");
   const [authorizingAccountId, setAuthorizingAccountId] = useState("");
   const [authMode, setAuthMode] = useState<AuthMode>("login");
@@ -95,6 +99,7 @@ export function App() {
   const [route, setRoute] = useState<AppRoute>(() => getCurrentRoute());
   const [localLoginCooldownUntil, setLocalLoginCooldownUntil] = useState(readLocalLoginCooldownUntil);
   const [localLoginFailureCount, setLocalLoginFailureCount] = useState(0);
+  const [removingAccountId, setRemovingAccountId] = useState("");
   const [showLoginFormForAuthRequest, setShowLoginFormForAuthRequest] = useState(false);
   const [totpChallenge, setTotpChallenge] = useState<TotpChallenge | null>(null);
   const authRequest = route === "login" ? readAuthRequest() : null;
@@ -417,7 +422,7 @@ export function App() {
 
   const chooseAuthAccount = async(account: AuthAccountChoice) => {
     const request = readAuthRequest();
-    if (!request || directAuthorizeBusy) {
+    if (!request || directAuthorizeBusy || removingAccountId) {
       return;
     }
     const blocker = getAuthAccountAuthorizeBlocker(account);
@@ -448,6 +453,74 @@ export function App() {
     } finally {
       setAuthorizingAccountId("");
       setDirectAuthorizeBusy(false);
+    }
+  };
+
+  const removeAuthAccount = async(account: AuthAccountChoice) => {
+    if (directAuthorizeBusy || removingAccountId) {
+      return;
+    }
+    if (!account.userId) {
+      const message = t("账号缺少用户标识，无法移除");
+      setAccountAuthorizeError(message);
+      showNotice(message);
+      return;
+    }
+
+    const accountKey = getAccountKey(account);
+    setAccountAuthorizeError("");
+    setRemovingAccountId(accountKey);
+
+    try {
+      const result = await removeLocalAccountChoice(account.userId);
+      showNotice(result.current ? t("当前账号已从此浏览器移除") : t("账号已从此浏览器移除"));
+      accountChoices.refresh();
+    } catch (error) {
+      const message = getAuthAccountChoiceErrorMessage(error, t("登出账号失败，请稍后重试"));
+      setAccountAuthorizeError(message);
+      showNotice(message);
+    } finally {
+      setRemovingAccountId("");
+    }
+  };
+
+  const openAuthAccountAction = async(account: AuthAccountChoice, action: AccountPickerAction) => {
+    if (directAuthorizeBusy || removingAccountId || accountActionBusyId) {
+      return;
+    }
+    if (!isAccountEditableInBrowser(account)) {
+      const message = t("这个账号已在此浏览器登出，不能修改资料、密码或头像。");
+      setAccountAuthorizeError(message);
+      showNotice(message);
+      return;
+    }
+
+    const accountKey = getAccountKey(account);
+    setAccountAuthorizeError("");
+    setAccountActionBusyId(accountKey);
+
+    try {
+      const session = await activateLocalAccountChoice(account.userId, {
+        choiceId: account.authorizeChoiceId ?? undefined,
+      });
+      const target = resolveAccountManagementActionTarget(account, action, session);
+      if (target.status !== "ready") {
+        const message = t("当前账号状态已变化，请重新选择账号");
+        setAccountAuthorizeError(message);
+        showNotice(message);
+        accountChoices.refresh();
+        return;
+      }
+
+      // 编辑动作统一交给个人中心处理，避免登录授权页维护另一套资料/密码弹窗状态。
+      navigateTo(target.path);
+    } catch (error) {
+      const message = getAuthAccountActivationErrorMessage(error, t);
+      setAccountAuthorizeError(message);
+      showNotice(message);
+      accountChoices.refresh();
+    } finally {
+      setAccountActionBusyId("");
     }
   };
 
@@ -775,8 +848,10 @@ export function App() {
   }, [authMode, authRequestKey, isLocalLoginCooldownActive, route]);
 
   useEffect(() => {
+    setAccountActionBusyId("");
     setAccountAuthorizeError("");
     setAuthorizingAccountId("");
+    setRemovingAccountId("");
     setShowLoginFormForAuthRequest(false);
   }, [authRequestKey, route]);
 
@@ -836,7 +911,7 @@ export function App() {
     isRegisterDrawerStage,
     shouldShowAccountPicker,
   });
-  const authUiLocked = isAuthModeTransitioning || isLoginSubmitStage || directAuthorizeBusy;
+  const authUiLocked = isAuthModeTransitioning || isLoginSubmitStage || directAuthorizeBusy || Boolean(removingAccountId || accountActionBusyId);
   const qrStatusText = hasQrRequest ? getQrStatusText(qrStatus, qrError, t) : t("等待应用发起登录");
   const qrRefreshLabel = hasQrRequest ? t("刷新二维码") : t("等待应用");
   const qrVisualState = qrError
@@ -891,7 +966,9 @@ export function App() {
       onForgotPassword={openForgotPassword}
       onPasskeyLogin={startPasskeyLogin}
       onQrRefresh={refreshQrFromPanel}
+      onOpenAuthAccountAction={openAuthAccountAction}
       onRegisterNotice={showNotice}
+      onRemoveAuthAccount={removeAuthAccount}
       onRegistered={finishRegisteredSession}
       onReturnToAuthAccountPicker={returnToAuthAccountPicker}
       onTotpCancel={() => setTotpChallenge(null)}
@@ -905,6 +982,7 @@ export function App() {
       qrStatusText={qrStatusText}
       qrValue={qrValue}
       qrVisualState={qrVisualState}
+      removingAccountId={removingAccountId}
       shouldReduceMotion={shouldReduceMotion}
       shouldShowAccountPicker={shouldShowAccountPicker}
       shouldUseCenteredWallpaper={shouldUseCenteredWallpaper}
@@ -914,14 +992,14 @@ export function App() {
     />
   );
 
-	  return (
-	    <>
-	      {route === "account" ? (
-	        <AccountPage
-	          onNavigateToLogin={() => navigateTo(LOGIN_ROUTE_PATH)}
-	          onRequireLogin={() => navigateTo(buildLoginPathWithNext(getCurrentAccountNextPath()), { replace: true })}
-	          onNotice={showNotice}
-	        />
+  return (
+    <>
+      {route === "account" ? (
+        <AccountPage
+          onNavigateToLogin={() => navigateTo(LOGIN_ROUTE_PATH)}
+          onRequireLogin={() => navigateTo(buildLoginPathWithNext(getCurrentAccountNextPath()), { replace: true })}
+          onNotice={showNotice}
+        />
       ) : route === "qr-login" ? (
         <QrLoginConfirmPage
           onNavigateToLogin={() => navigateTo(LOGIN_ROUTE_PATH)}
@@ -938,4 +1016,13 @@ export function App() {
       <Toast message={notice} />
     </>
   );
+}
+
+function getAuthAccountActivationErrorMessage(error: unknown, t: (key: string, options?: Record<string, unknown>) => string) {
+  const code = getPriestessApiErrorCode(error);
+  // 这些错误都表示浏览器账号容器或短时选择项已经过期，统一回到账号选择刷新流程。
+  if (["account_choice_invalid", "account_choice_not_found", "local_browser_required"].includes(code)) {
+    return t("当前账号状态已变化，请重新选择账号");
+  }
+  return getPriestessApiErrorMessage(error, t("当前账号状态已变化，请重新选择账号"));
 }

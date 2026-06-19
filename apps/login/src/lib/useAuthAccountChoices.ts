@@ -161,6 +161,7 @@ function accountFromCurrentSession(session: LocalSession): AuthAccountChoice {
   const email = user?.email ?? "";
 
   return {
+    authenticated: true,
     avatarUrl: user?.avatarUrl ?? "",
     authorizeChoiceId: null,
     choiceId: "",
@@ -170,6 +171,7 @@ function accountFromCurrentSession(session: LocalSession): AuthAccountChoice {
     expiresAt: session.expiresAt,
     lastUsedAt: "",
     raw: session.raw,
+    revoked: false,
     source: "current-session",
     userId: user?.userId || username || email,
     username,

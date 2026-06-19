@@ -36,6 +36,12 @@ import "./AccountPage.css";
 import { PasswordChangeDialog } from "./PasswordChangeDialog";
 import { ProfileEditDialog } from "./ProfileEditDialog";
 import { ProfileQuickEditDialog, type ProfileQuickEditMode } from "./ProfileQuickEditDialog";
+import {
+  getAccountManagementActionSection,
+  readAccountManagementAction,
+  removeAccountManagementActionFromSearch,
+  type AccountManagementActionSection,
+} from "../lib/accountManagementAction";
 
 type AccountPageProps = {
   onNavigateToLogin: () => void;
@@ -146,6 +152,26 @@ export function AccountPage({ onNavigateToLogin, onRequireLogin, onNotice }: Acc
     // 个人中心只允许已确认的登录会话进入；无会话或会话检查失败都回登录页，避免泄露受保护页面。
     onRequireLogin();
   }, [onRequireLogin, shouldRedirectToLogin]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const accountAction = readAccountManagementAction();
+    if (!accountAction) return;
+
+    const actionSection = getAccountManagementActionSection(accountAction);
+    setActiveSection(actionSection);
+    if (accountAction === "password") {
+      setIsPasswordChangeOpen(true);
+    } else if (accountAction === "profile") {
+      setIsProfileEditOpen(true);
+    } else {
+      setProfileQuickEditMode("avatar");
+    }
+
+    // action 只负责首次打开窗口，消费后从 URL 移除，避免刷新或切换 hash 时重复弹出。
+    clearAccountManagementActionFromUrl(actionSection);
+  }, [isAuthenticated]);
 
   if (shouldRedirectToLogin) {
     return null;
@@ -423,4 +449,14 @@ function writeSectionToHash(section: AccountSection) {
   const hash = section === "overview" ? "" : `#${section}`;
   const nextUrl = `${window.location.pathname}${window.location.search}${hash}`;
   window.history.replaceState(null, "", nextUrl);
+}
+
+function clearAccountManagementActionFromUrl(section: AccountManagementActionSection) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const nextSearch = removeAccountManagementActionFromSearch(window.location.search);
+  const nextHash = section === "overview" ? "" : `#${section}`;
+  window.history.replaceState(null, "", `${window.location.pathname}${nextSearch}${nextHash}`);
 }

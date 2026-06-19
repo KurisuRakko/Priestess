@@ -1,7 +1,7 @@
 import { type ComponentProps, type RefObject } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { BrandMark, FloatingBackdrop } from "@priestess/shared";
-import { AccountPickerCard } from "./AccountPickerCard";
+import { AccountPickerCard, type AccountPickerAction } from "./AccountPickerCard";
 import { ForgotPasswordForm } from "./ForgotPasswordForm";
 import { LoginForm, type LoginCredentials, type LoginTotpChallenge } from "./LoginForm";
 import { QrPanel } from "./QrPanel";
@@ -33,9 +33,11 @@ type LoginExperienceProps = {
   onChooseAuthAccount: (account: AuthAccountChoice) => void;
   onCreateAccount: () => void;
   onForgotPassword: (identity: string) => void;
+  onOpenAuthAccountAction: (account: AuthAccountChoice, action: AccountPickerAction) => Promise<void> | void;
   onPasskeyLogin: () => void;
   onQrRefresh: () => void;
   onRegisterNotice: (message: string) => void;
+  onRemoveAuthAccount: (account: AuthAccountChoice) => Promise<void> | void;
   onRegistered: ComponentProps<typeof RegisterFirstStepForm>["onRegistered"];
   onReturnToAuthAccountPicker: () => void;
   onTotpCancel: () => void;
@@ -49,6 +51,7 @@ type LoginExperienceProps = {
   qrStatusText: string;
   qrValue: string;
   qrVisualState: ComponentProps<typeof QrPanel>["visualState"];
+  removingAccountId: string;
   shouldReduceMotion: boolean | null;
   shouldShowAccountPicker: boolean;
   shouldUseCenteredWallpaper: boolean;
@@ -78,9 +81,11 @@ export function LoginExperience({
   onChooseAuthAccount,
   onCreateAccount,
   onForgotPassword,
+  onOpenAuthAccountAction,
   onPasskeyLogin,
   onQrRefresh,
   onRegisterNotice,
+  onRemoveAuthAccount,
   onRegistered,
   onReturnToAuthAccountPicker,
   onTotpCancel,
@@ -94,6 +99,7 @@ export function LoginExperience({
   qrStatusText,
   qrValue,
   qrVisualState,
+  removingAccountId,
   shouldReduceMotion,
   shouldShowAccountPicker,
   shouldUseCenteredWallpaper,
@@ -121,6 +127,7 @@ export function LoginExperience({
     "dwall-bg",
     isLocalLoginCooldownActive ? "dwall-bg--lockout" : shouldUseCenteredWallpaper ? "dwall-bg--register" : "",
   ].filter(Boolean).join(" ");
+  const isAccountPickerCardMode = shouldShowAccountPicker && !isRegisterMode && !isForgotPasswordMode;
 
   return (
     <main className="app-shell">
@@ -144,7 +151,10 @@ export function LoginExperience({
               transition={shouldReduceMotion ? { duration: 0 } : { duration: 0.16 }}
             >
               <motion.div
-                className="login-card-shell"
+                className={[
+                  "login-card-shell",
+                  isAccountPickerCardMode ? "login-card-shell--account-picker" : "",
+                ].filter(Boolean).join(" ")}
                 initial={loginEnter}
                 animate={{ opacity: 1, x: 0, y: 0, scale: 1, filter: "blur(0px)" }}
                 transition={shouldReduceMotion
@@ -155,6 +165,7 @@ export function LoginExperience({
                   ref={loginCardRef}
                   className={[
                     "login-card",
+                    isAccountPickerCardMode ? "login-card--account-picker" : "",
                     isLoginSubmitCardStage ? "login-card--submit-stage" : "",
                   ].filter(Boolean).join(" ")}
                   style={{ width: "100%", display: "flex", flexDirection: "column" }}
@@ -211,6 +222,9 @@ export function LoginExperience({
                             busyAccountId={authorizingAccountId}
                             disabled={authUiLocked}
                             error={accountPickerError}
+                            removingAccountId={removingAccountId}
+                            onOpenAccountAction={onOpenAuthAccountAction}
+                            onRemoveAccount={onRemoveAuthAccount}
                             onRetry={accountChoices.refresh}
                             onSelectAccount={onChooseAuthAccount}
                             onUseAnotherAccount={onUseAnotherAuthAccount}

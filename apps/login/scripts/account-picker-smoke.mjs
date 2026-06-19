@@ -20,6 +20,7 @@ const server = await createServer({
 
 try {
   const accountPickerModule = await server.ssrLoadModule("/src/components/AccountPickerCard.tsx");
+  const accountManagementActionModule = await server.ssrLoadModule("/src/lib/accountManagementAction.ts");
   const accountAuthorizationModule = await server.ssrLoadModule("/src/lib/accountAuthorization.ts");
   const authRequestModule = await server.ssrLoadModule("/src/lib/authRequest.ts");
   const authAccountChoicesModule = await server.ssrLoadModule("/src/lib/useAuthAccountChoices.ts");
@@ -30,7 +31,8 @@ try {
   const localLoginTurnstileRetryModule = await server.ssrLoadModule("/src/lib/localLoginTurnstileRetry.ts");
   const sharedI18nModule = await server.ssrLoadModule("/@fs/Users/rakko/GitHub/priestess/packages/priestess-shared/src/lib/i18n.tsx");
   const sharedApiModule = await server.ssrLoadModule("/@fs/Users/rakko/GitHub/priestess/packages/priestess-shared/src/lib/priestessApi.ts");
-  const { AccountPickerCard, getAccountKey, getAccountSelectLabel, getSafeAvatarUrl } = accountPickerModule;
+  const { AccountPickerActionsDialog, AccountPickerCard, getAccountKey, getAccountMoreActionsLabel, getAccountRemoveDescription, getAccountRemoveLabel, getAccountSelectLabel, getSafeAvatarUrl } = accountPickerModule;
+  const { buildAccountManagementActionPath, getAccountManagementActionSection, readAccountManagementAction, removeAccountManagementActionFromSearch, resolveAccountManagementActionTarget } = accountManagementActionModule;
   const { buildAuthAccountAuthorizeParams, getAuthAccountAuthorizeBlocker, shouldShowAuthAccountPicker } = accountAuthorizationModule;
   const { getAuthRequestAppLabel, getAuthRequestReturnToOrigin, readAuthRequest } = authRequestModule;
   const { getAuthAccountChoiceErrorMessage, readAuthAccountChoicesForRequest, redactSensitiveAuthText } = authAccountChoicesModule;
@@ -40,15 +42,16 @@ try {
   ({ loginI18nResources } = loginI18nModule);
   const { resolveLoginLayoutState } = loginLayoutStateModule;
   ({ PriestessI18nProvider } = sharedI18nModule);
-  const { authorizeLocalSession, listLocalAccountChoices, loginLocalSession, PriestessApiError } = sharedApiModule;
+  const { activateLocalAccountChoice, authorizeLocalSession, listLocalAccountChoices, loginLocalSession, removeLocalAccountChoice, PriestessApiError } = sharedApiModule;
 
   testAuthRequestHelpers({ getAuthRequestAppLabel, getAuthRequestReturnToOrigin, readAuthRequest });
   testAccountAuthorizationHelpers({ buildAuthAccountAuthorizeParams, getAuthAccountAuthorizeBlocker, shouldShowAuthAccountPicker });
+  testAccountManagementActionHelpers({ buildAccountManagementActionPath, getAccountManagementActionSection, normalizePriestessNextPath, readAccountManagementAction, removeAccountManagementActionFromSearch, resolveAccountManagementActionTarget });
   testLoginNextHelpers({ buildLoginPathWithNext, getCurrentAccountNextPath, normalizePriestessNextPath, readLoginNext });
   testLoginLayoutState({ resolveLoginLayoutState });
-  testAccountPickerMarkup({ AccountPickerCard, getAccountKey, getAccountSelectLabel, getSafeAvatarUrl });
+  testAccountPickerMarkup({ AccountPickerActionsDialog, AccountPickerCard, getAccountKey, getAccountMoreActionsLabel, getAccountRemoveDescription, getAccountRemoveLabel, getAccountSelectLabel, getSafeAvatarUrl });
   testLoginFormBackButton({ LoginForm });
-  await testSharedApiContract({ authorizeLocalSession, listLocalAccountChoices, loginLocalSession });
+  await testSharedApiContract({ activateLocalAccountChoice, authorizeLocalSession, listLocalAccountChoices, loginLocalSession, removeLocalAccountChoice });
   await testLocalLoginTurnstileRetry({ loginLocalSessionWithTurnstileRetry, PriestessApiError });
   testAccountChoiceErrorRedaction({ getAuthAccountChoiceErrorMessage, redactSensitiveAuthText });
   await testAccountChoiceFallback({ readAuthAccountChoicesForRequest });
@@ -115,6 +118,48 @@ function testAccountAuthorizationHelpers({ buildAuthAccountAuthorizeParams, getA
   assert.equal(shouldShowAuthAccountPicker({ ...basePickerState, hasAuthRequest: false, status: "ready" }), false);
   assert.equal(shouldShowAuthAccountPicker({ ...basePickerState, hasTotpChallenge: true, status: "ready" }), false);
   assert.equal(shouldShowAuthAccountPicker({ ...basePickerState, showLoginFormForAuthRequest: true, status: "ready" }), false);
+}
+
+function testAccountManagementActionHelpers({ buildAccountManagementActionPath, getAccountManagementActionSection, normalizePriestessNextPath, readAccountManagementAction, removeAccountManagementActionFromSearch, resolveAccountManagementActionTarget }) {
+  assert.equal(buildAccountManagementActionPath("password"), "/manage?account_action=password#security");
+  assert.equal(buildAccountManagementActionPath("profile"), "/manage?account_action=profile");
+  assert.equal(buildAccountManagementActionPath("avatar"), "/manage?account_action=avatar");
+  assert.equal(normalizePriestessNextPath(buildAccountManagementActionPath("password")), "/manage?account_action=password#security");
+  assert.equal(normalizePriestessNextPath(buildAccountManagementActionPath("profile")), "/manage?account_action=profile");
+  assert.equal(normalizePriestessNextPath(buildAccountManagementActionPath("avatar")), "/manage?account_action=avatar");
+  assert.equal(readAccountManagementAction("?account_action=password"), "password");
+  assert.equal(readAccountManagementAction("?account_action=profile"), "profile");
+  assert.equal(readAccountManagementAction("?account_action=avatar"), "avatar");
+  assert.equal(readAccountManagementAction("?account_action=devices"), null);
+  assert.equal(getAccountManagementActionSection("password"), "security");
+  assert.equal(getAccountManagementActionSection("profile"), "overview");
+  assert.equal(getAccountManagementActionSection("avatar"), "overview");
+  assert.equal(removeAccountManagementActionFromSearch("?account_action=password&next=1"), "?next=1");
+  assert.equal(removeAccountManagementActionFromSearch("?account_action=avatar"), "");
+
+  const editableAccount = buildAccount({
+    authenticated: true,
+    email: "alice@example.com",
+    userId: "u-alice",
+    username: "alice",
+  });
+  const matchingSession = buildLocalSession({
+    email: "alice@example.com",
+    userId: "u-alice",
+    username: "alice",
+  });
+  assert.deepEqual(resolveAccountManagementActionTarget(editableAccount, "profile", matchingSession), {
+    path: "/manage?account_action=profile",
+    status: "ready",
+  });
+  assert.deepEqual(resolveAccountManagementActionTarget(editableAccount, "password", buildLocalSession({ userId: "u-bob", username: "bob" })), {
+    path: "",
+    status: "session-mismatch",
+  });
+  assert.deepEqual(resolveAccountManagementActionTarget({ ...editableAccount, authenticated: false, revoked: true }, "avatar", matchingSession), {
+    path: "",
+    status: "signed-out",
+  });
 }
 
 function testLoginNextHelpers({ buildLoginPathWithNext, getCurrentAccountNextPath, normalizePriestessNextPath, readLoginNext }) {
@@ -200,7 +245,7 @@ function testAuthRequestHelpers({ getAuthRequestAppLabel, getAuthRequestReturnTo
   assert.equal(getAuthRequestAppLabel({ appId: "", returnTo: "javascript:alert(1)" }), "当前应用");
 }
 
-function testAccountPickerMarkup({ AccountPickerCard, getAccountKey, getAccountSelectLabel, getSafeAvatarUrl }) {
+function testAccountPickerMarkup({ AccountPickerActionsDialog, AccountPickerCard, getAccountKey, getAccountMoreActionsLabel, getAccountRemoveDescription, getAccountRemoveLabel, getAccountSelectLabel, getSafeAvatarUrl }) {
   const accounts = [
     buildAccount({
       choiceId: "choice-bowen",
@@ -234,6 +279,19 @@ function testAccountPickerMarkup({ AccountPickerCard, getAccountKey, getAccountS
     getAccountSelectLabel(accounts[1], "canvas", true),
     "正在使用 KurisuRakko，y@rakko.cn 继续访问 canvas",
   );
+  assert.equal(
+    getAccountRemoveLabel(accounts[0]),
+    "移除 Bowen Yang 的登录状态",
+  );
+  assert.equal(
+    getAccountRemoveDescription(accounts[0]),
+    "这会从当前浏览器移除 Bowen Yang（z5717379@ad.unsw.edu.au），不会删除 Priestess 用户资料。",
+  );
+  assert.equal(
+    getAccountMoreActionsLabel(accounts[0]),
+    "打开 Bowen Yang 的更多操作",
+  );
+  assert.equal(loginI18nResources["en-US"].login["选择账号"], "Welcome Back");
 
   const readyHtml = renderPicker(AccountPickerCard, {
     accounts,
@@ -245,10 +303,63 @@ function testAccountPickerMarkup({ AccountPickerCard, getAccountKey, getAccountS
   assert.match(readyHtml, /https:\/\/example\.com/);
   assert.match(readyHtml, /Bowen Yang/);
   assert.match(readyHtml, /KurisuRakko/);
+  assert.match(readyHtml, /M24 5c5\.5 4\.5 5\.5 10\.5 0 16/);
+  assert.doesNotMatch(readyHtml, /account-picker__mark/);
+  assert.doesNotMatch(readyHtml, /lucide-user-round/);
   assert.match(readyHtml, /已登录/);
   assert.match(readyHtml, /aria-label="使用 Bowen Yang，z5717379@ad\.unsw\.edu\.au，已登录 继续访问 canvas"/);
+  assert.match(readyHtml, /aria-label="打开 Bowen Yang 的更多操作"/);
+  assert.match(readyHtml, /lucide-ellipsis-vertical/);
+  assert.doesNotMatch(readyHtml, /lucide-arrow-right/);
+  assert.doesNotMatch(readyHtml, /lucide-trash-2/);
   assert.match(readyHtml, /使用其他账号/);
   assert.doesNotMatch(readyHtml, /输入密码/);
+
+  const currentActionsHtml = renderAccountActionsDialog(AccountPickerActionsDialog, {
+    account: accounts[0],
+  });
+  assert.match(currentActionsHtml, /账号操作/);
+  assert.match(currentActionsHtml, /Bowen Yang/);
+  assert.match(currentActionsHtml, /修改密码/);
+  assert.match(currentActionsHtml, /设定资料/);
+  assert.match(currentActionsHtml, /设定头像/);
+  assert.match(currentActionsHtml, /登出账号/);
+  assert.doesNotMatch(currentActionsHtml, /这个账号已在此浏览器登出/);
+
+  const otherActionsHtml = renderAccountActionsDialog(AccountPickerActionsDialog, {
+    account: accounts[1],
+  });
+  assert.match(otherActionsHtml, /KurisuRakko/);
+  assert.match(otherActionsHtml, /修改密码/);
+  assert.match(otherActionsHtml, /设定资料/);
+  assert.match(otherActionsHtml, /设定头像/);
+  assert.match(otherActionsHtml, /登出账号/);
+  assert.doesNotMatch(otherActionsHtml, /这个账号已在此浏览器登出/);
+
+  const signedOutAccount = buildAccount({
+    authenticated: false,
+    choiceId: "choice-signed-out",
+    displayName: "Signed Out User",
+    email: "signed.out@example.com",
+    revoked: true,
+    userId: "u-signed-out",
+  });
+  const signedOutActionsHtml = renderAccountActionsDialog(AccountPickerActionsDialog, {
+    account: signedOutAccount,
+  });
+  assert.match(signedOutActionsHtml, /Signed Out User/);
+  assert.match(signedOutActionsHtml, /这个账号已在此浏览器登出，不能修改资料、密码或头像。/);
+  assert.match(signedOutActionsHtml, /登出账号/);
+  assert.doesNotMatch(signedOutActionsHtml, /修改密码/);
+  assert.doesNotMatch(signedOutActionsHtml, /设定资料/);
+  assert.doesNotMatch(signedOutActionsHtml, /设定头像/);
+
+  const busyActionsHtml = renderAccountActionsDialog(AccountPickerActionsDialog, {
+    account: accounts[0],
+    busy: true,
+  });
+  assert.match(busyActionsHtml, /登出中/);
+  assert.match(busyActionsHtml, /disabled=""/);
 
   const singleHtml = renderPicker(AccountPickerCard, {
     accounts: [accounts[0]],
@@ -289,6 +400,22 @@ function testAccountPickerMarkup({ AccountPickerCard, getAccountKey, getAccountS
   assert.match(busyHtml, /aria-busy="true"/);
   assert.match(busyHtml, /aria-label="正在使用 Bowen Yang，z5717379@ad\.unsw\.edu\.au，已登录 继续访问 canvas"/);
   assert.match(busyHtml, /继续中/);
+
+  const removingHtml = renderPicker(AccountPickerCard, {
+    accounts,
+    removingAccountId: "choice-bowen",
+    status: "ready",
+  });
+  assert.match(removingHtml, /aria-busy="true"/);
+  assert.match(removingHtml, /登出中/);
+
+  const signedOutHtml = renderPicker(AccountPickerCard, {
+    accounts: [signedOutAccount],
+    status: "ready",
+  });
+  assert.match(signedOutHtml, /Signed Out User/);
+  assert.match(signedOutHtml, /已登出/);
+  assert.match(signedOutHtml, /aria-label="打开 Signed Out User 的更多操作"/);
 
   const longTextHtml = renderPicker(AccountPickerCard, {
     accounts: [buildAccount({
@@ -358,7 +485,7 @@ function testLoginFormBackButton({ LoginForm }) {
   assert.match(totpHtml, /返回密码登录/);
 }
 
-async function testSharedApiContract({ authorizeLocalSession, listLocalAccountChoices, loginLocalSession }) {
+async function testSharedApiContract({ activateLocalAccountChoice, authorizeLocalSession, listLocalAccountChoices, loginLocalSession, removeLocalAccountChoice }) {
   const originalFetch = globalThis.fetch;
   const calls = [];
   const responses = [
@@ -376,6 +503,7 @@ async function testSharedApiContract({ authorizeLocalSession, listLocalAccountCh
           username: "snake",
         },
         {
+          authenticated: false,
           avatarUrl: "https://example.com/b.png",
           choiceId: "choice-camel",
           current: false,
@@ -383,6 +511,7 @@ async function testSharedApiContract({ authorizeLocalSession, listLocalAccountCh
           email: "camel@example.com",
           expiresAt: "2026-05-24T13:00:00.000Z",
           lastUsedAt: "2026-05-24T02:00:00.000Z",
+          revoked: true,
           userId: "user-camel",
           username: "camel",
         },
@@ -410,6 +539,8 @@ async function testSharedApiContract({ authorizeLocalSession, listLocalAccountCh
     },
     { redirect_url: "https://example.com/callback?login_code=mock", expires_in: 60, expires_at: 1_779_600_000 },
     { redirectUrl: "https://example.com/current", expiresIn: 30, expiresAt: 1_779_600_030 },
+    { authenticated: true, current: false, removed: true, revoked: true, user_id: "user-snake" },
+    { authenticated: true, expires_at: "2026-05-24T12:30:00.000Z", user: { email: "snake@example.com", user_id: "user-snake", username: "snake" } },
     { authenticated: true, expires_at: "2026-05-24T12:00:00.000Z", user: { user_id: "user-login", username: "login-user" } },
   ];
 
@@ -438,7 +569,9 @@ async function testSharedApiContract({ authorizeLocalSession, listLocalAccountCh
     assert.equal(choices.accounts[0].choiceId, "choice-snake");
     assert.equal(choices.accounts[0].avatarUrl, "https://example.com/a.png");
     assert.equal(choices.accounts[1].choiceId, "choice-camel");
+    assert.equal(choices.accounts[1].authenticated, false);
     assert.equal(choices.accounts[1].displayName, "Camel Case");
+    assert.equal(choices.accounts[1].revoked, true);
     assert.equal(choices.app.appId, "canvas");
     assert.equal(choices.app.returnToOrigin, "https://example.com");
 
@@ -481,13 +614,34 @@ async function testSharedApiContract({ authorizeLocalSession, listLocalAccountCh
       return_to: "https://example.com/current",
     });
 
+    const removed = await removeLocalAccountChoice("user-snake");
+    assert.equal(removed.authenticated, true);
+    assert.equal(removed.current, false);
+    assert.equal(removed.removed, true);
+    assert.equal(removed.revoked, true);
+    assert.equal(removed.userId, "user-snake");
+    const removeUrl = new URL(calls[4].url);
+    assert.equal(removeUrl.pathname, "/auth/priestess/account-choices/user-snake");
+    assert.equal(calls[4].method, "DELETE");
+    assert.equal(calls[4].credentials, "include");
+
+    const activated = await activateLocalAccountChoice("user-snake", { choiceId: "choice-snake" });
+    assert.equal(activated.authenticated, true);
+    assert.equal(activated.user?.userId, "user-snake");
+    assert.equal(activated.user?.username, "snake");
+    const activateUrl = new URL(calls[5].url);
+    assert.equal(activateUrl.pathname, "/auth/priestess/account-choices/user-snake/activate");
+    assert.equal(calls[5].method, "POST");
+    assert.deepEqual(calls[5].body, { choice_id: "choice-snake" });
+    assert.equal(calls[5].credentials, "include");
+
     const login = await loginLocalSession({
       password: "secret-password",
       turnstileToken: "turnstile-ok",
       username: "login-user",
     });
     assert.equal(login.authenticated, true);
-    assert.deepEqual(calls[4].body, {
+    assert.deepEqual(calls[6].body, {
       password: "secret-password",
       turnstile_token: "turnstile-ok",
       username: "login-user",
@@ -681,10 +835,23 @@ function renderPicker(AccountPickerCard, props) {
     busyAccountId: props.busyAccountId ?? "",
     disabled: false,
     error: props.error ?? "",
+    removingAccountId: props.removingAccountId ?? "",
+    onOpenAccountAction() {},
+    onRemoveAccount() {},
     onRetry() {},
     onSelectAccount() {},
     onUseAnotherAccount() {},
     status: props.status,
+  }));
+}
+
+function renderAccountActionsDialog(AccountPickerActionsDialog, props) {
+  return renderWithI18n(React.createElement(AccountPickerActionsDialog, {
+    account: props.account,
+    busy: props.busy ?? false,
+    onClose() {},
+    onOpenAccountAction() {},
+    onSignOut() {},
   }));
 }
 
@@ -714,6 +881,7 @@ function renderWithI18n(element) {
 
 function buildAccount(overrides) {
   return {
+    authenticated: true,
     avatarUrl: "",
     authorizeChoiceId: overrides.choiceId,
     choiceId: overrides.choiceId,
@@ -723,10 +891,35 @@ function buildAccount(overrides) {
     expiresAt: "",
     lastUsedAt: "",
     raw: {},
+    revoked: false,
     source: "account-choices",
     userId: "",
     username: "",
     ...overrides,
+  };
+}
+
+function buildLocalSession(userOverrides = {}) {
+  return {
+    authenticated: true,
+    challengeId: "",
+    expiresAt: "",
+    mfaRequired: false,
+    mfaType: "",
+    raw: {},
+    user: {
+      address: "",
+      avatarUrl: "",
+      birthday: "",
+      displayName: "",
+      email: "",
+      enabled: true,
+      passwordManager: null,
+      phone: "",
+      userId: "",
+      username: "",
+      ...userOverrides,
+    },
   };
 }
 

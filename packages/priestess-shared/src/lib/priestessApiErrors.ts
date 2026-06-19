@@ -69,6 +69,7 @@ export function resolveErrorMessage(payload: unknown, status: number) {
   if (["registration_email_failed", "sms_webhook_failed"].includes(apiError?.code ?? "")) return translatePriestess("errors:registrationChannelFailed");
   if (["auth_origin_not_allowed", "auth_origin_required", "origin_not_allowed"].includes(apiError?.code ?? "")) return translatePriestess("errors:originNotAllowed");
   if (apiError?.code === "invalid_email") return translatePriestess("errors:invalidEmail");
+  if (apiError?.code === "invalid_login_identifier") return translatePriestess("errors:invalidLoginIdentifier");
   if (["invalid_registration_identity", "invalid_registration_identity_type"].includes(apiError?.code ?? "")) return translatePriestess("errors:invalidIdentity");
   if (["invalid_register_username", "invalid_username"].includes(apiError?.code ?? "")) return translatePriestess("errors:invalidUsername");
   if (["register_username_reserved", "reserved_username"].includes(apiError?.code ?? "")) return translatePriestess("errors:usernameReserved");

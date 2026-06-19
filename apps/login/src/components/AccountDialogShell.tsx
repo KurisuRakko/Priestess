@@ -1,5 +1,6 @@
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import type { ReactNode } from "react";
+import { createPortal } from "react-dom";
 import "./AccountPageDialog.css";
 
 const DIALOG_BACKDROP_EASE = [0.2, 0.8, 0.2, 1] as const;
@@ -17,7 +18,7 @@ export function AccountDialogShell({ children, className, labelledBy, open }: Ac
   const dialogClassName = ["account-dialog", className].filter(Boolean).join(" ");
 
   // 关闭时由 AnimatePresence 接管卸载时机，保证个人中心弹窗都有完整退场动画。
-  return (
+  const dialog = (
     <AnimatePresence>
       {open ? (
         <motion.div
@@ -48,4 +49,6 @@ export function AccountDialogShell({ children, className, labelledBy, open }: Ac
       ) : null}
     </AnimatePresence>
   );
+
+  return typeof document === "undefined" ? dialog : createPortal(dialog, document.body);
 }
