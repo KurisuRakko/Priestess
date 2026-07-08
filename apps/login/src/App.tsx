@@ -400,20 +400,43 @@ export function App() {
       throw new Error(t("注册完成但本地会话尚未建立"));
     }
 
+    const request = readAuthRequest();
     const abortController = new AbortController();
     loginAbortControllerRef.current = abortController;
+    if (request) {
+      setShowLoginFormForAuthRequest(false);
+      setAccountAuthorizeError("");
+      setDirectAuthorizeBusy(true);
+    }
     try {
-      if (readAuthRequest()) {
-        setShowLoginFormForAuthRequest(false);
-        setAccountAuthorizeError("");
-        accountChoices.refresh();
-        showNotice(t("注册成功，请选择要继续使用的账号"));
+      if (request) {
+        const result = await authorizeLocalSession({
+          appId: request.appId,
+          returnTo: request.returnTo,
+        }, { signal: abortController.signal });
+        if (!result.redirectUrl) {
+          throw new Error(t("后端未返回回跳地址"));
+        }
+
+        showNotice(t("注册成功，正在返回应用"));
+        window.location.assign(result.redirectUrl);
         return;
       }
 
       showNotice(t("注册成功"));
       navigateTo(readLoginNext(), { replace: true });
+    } catch (error) {
+      if (abortController.signal.aborted || !request) {
+        throw error;
+      }
+      const message = getAuthAccountChoiceErrorMessage(error, t("注册成功，请选择要继续使用的账号"));
+      setAccountAuthorizeError(message);
+      accountChoices.refresh();
+      showNotice(message);
     } finally {
+      if (request) {
+        setDirectAuthorizeBusy(false);
+      }
       if (loginAbortControllerRef.current === abortController) {
         loginAbortControllerRef.current = null;
       }

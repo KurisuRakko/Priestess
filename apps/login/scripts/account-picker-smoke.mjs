@@ -19,6 +19,7 @@ const server = await createServer({
 });
 
 try {
+  const sharedSourceRoot = new URL("../../../packages/priestess-shared/src/lib/", import.meta.url).pathname;
   const accountPickerModule = await server.ssrLoadModule("/src/components/AccountPickerCard.tsx");
   const accountManagementActionModule = await server.ssrLoadModule("/src/lib/accountManagementAction.ts");
   const accountAuthorizationModule = await server.ssrLoadModule("/src/lib/accountAuthorization.ts");
@@ -29,8 +30,8 @@ try {
   const loginNextModule = await server.ssrLoadModule("/src/lib/loginNext.ts");
   const loginLayoutStateModule = await server.ssrLoadModule("/src/lib/loginLayoutState.ts");
   const localLoginTurnstileRetryModule = await server.ssrLoadModule("/src/lib/localLoginTurnstileRetry.ts");
-  const sharedI18nModule = await server.ssrLoadModule("/@fs/Users/rakko/GitHub/priestess/packages/priestess-shared/src/lib/i18n.tsx");
-  const sharedApiModule = await server.ssrLoadModule("/@fs/Users/rakko/GitHub/priestess/packages/priestess-shared/src/lib/priestessApi.ts");
+  const sharedI18nModule = await server.ssrLoadModule(`/@fs${sharedSourceRoot}i18n.tsx`);
+  const sharedApiModule = await server.ssrLoadModule(`/@fs${sharedSourceRoot}priestessApi.ts`);
   const { AccountPickerActionsDialog, AccountPickerCard, getAccountKey, getAccountMoreActionsLabel, getAccountRemoveDescription, getAccountRemoveLabel, getAccountSelectLabel, getSafeAvatarUrl } = accountPickerModule;
   const { buildAccountManagementActionPath, getAccountManagementActionSection, readAccountManagementAction, removeAccountManagementActionFromSearch, resolveAccountManagementActionTarget } = accountManagementActionModule;
   const { buildAuthAccountAuthorizeParams, getAuthAccountAuthorizeBlocker, shouldShowAuthAccountPicker } = accountAuthorizationModule;
@@ -42,7 +43,7 @@ try {
   ({ loginI18nResources } = loginI18nModule);
   const { resolveLoginLayoutState } = loginLayoutStateModule;
   ({ PriestessI18nProvider } = sharedI18nModule);
-  const { activateLocalAccountChoice, authorizeLocalSession, listLocalAccountChoices, loginLocalSession, removeLocalAccountChoice, PriestessApiError } = sharedApiModule;
+  const { activateLocalAccountChoice, authorizeLocalSession, checkRegisterInvite, confirmLocalRegistration, listLocalAccountChoices, loginLocalSession, removeLocalAccountChoice, PriestessApiError } = sharedApiModule;
 
   testAuthRequestHelpers({ getAuthRequestAppLabel, getAuthRequestReturnToOrigin, readAuthRequest });
   testAccountAuthorizationHelpers({ buildAuthAccountAuthorizeParams, getAuthAccountAuthorizeBlocker, shouldShowAuthAccountPicker });
@@ -51,7 +52,7 @@ try {
   testLoginLayoutState({ resolveLoginLayoutState });
   testAccountPickerMarkup({ AccountPickerActionsDialog, AccountPickerCard, getAccountKey, getAccountMoreActionsLabel, getAccountRemoveDescription, getAccountRemoveLabel, getAccountSelectLabel, getSafeAvatarUrl });
   testLoginFormBackButton({ LoginForm });
-  await testSharedApiContract({ activateLocalAccountChoice, authorizeLocalSession, listLocalAccountChoices, loginLocalSession, removeLocalAccountChoice });
+  await testSharedApiContract({ activateLocalAccountChoice, authorizeLocalSession, checkRegisterInvite, confirmLocalRegistration, listLocalAccountChoices, loginLocalSession, removeLocalAccountChoice });
   await testLocalLoginTurnstileRetry({ loginLocalSessionWithTurnstileRetry, PriestessApiError });
   testAccountChoiceErrorRedaction({ getAuthAccountChoiceErrorMessage, redactSensitiveAuthText });
   await testAccountChoiceFallback({ readAuthAccountChoicesForRequest });
@@ -485,7 +486,7 @@ function testLoginFormBackButton({ LoginForm }) {
   assert.match(totpHtml, /返回密码登录/);
 }
 
-async function testSharedApiContract({ activateLocalAccountChoice, authorizeLocalSession, listLocalAccountChoices, loginLocalSession, removeLocalAccountChoice }) {
+async function testSharedApiContract({ activateLocalAccountChoice, authorizeLocalSession, checkRegisterInvite, confirmLocalRegistration, listLocalAccountChoices, loginLocalSession, removeLocalAccountChoice }) {
   const originalFetch = globalThis.fetch;
   const calls = [];
   const responses = [
@@ -542,6 +543,8 @@ async function testSharedApiContract({ activateLocalAccountChoice, authorizeLoca
     { authenticated: true, current: false, removed: true, revoked: true, user_id: "user-snake" },
     { authenticated: true, expires_at: "2026-05-24T12:30:00.000Z", user: { email: "snake@example.com", user_id: "user-snake", username: "snake" } },
     { authenticated: true, expires_at: "2026-05-24T12:00:00.000Z", user: { user_id: "user-login", username: "login-user" } },
+    { accepted: true, expires_at: 1_779_600_120, invite_challenge: "invite.challenge" },
+    { authenticated: true, expires_at: "2026-05-24T12:40:00.000Z", user: { email: "register@example.com", user_id: "user-register", username: "register_user" } },
   ];
 
   globalThis.fetch = async(url, init = {}) => {
@@ -575,7 +578,7 @@ async function testSharedApiContract({ activateLocalAccountChoice, authorizeLoca
     assert.equal(choices.app.appId, "canvas");
     assert.equal(choices.app.returnToOrigin, "https://example.com");
 
-    const listUrl = new URL(calls[0].url);
+    const listUrl = readCallUrl(calls[0].url);
     assert.equal(listUrl.pathname, "/auth/priestess/account-choices");
     assert.equal(listUrl.searchParams.get("app_id"), "canvas");
     assert.equal(listUrl.searchParams.get("return_to"), "https://example.com/callback");
@@ -620,7 +623,7 @@ async function testSharedApiContract({ activateLocalAccountChoice, authorizeLoca
     assert.equal(removed.removed, true);
     assert.equal(removed.revoked, true);
     assert.equal(removed.userId, "user-snake");
-    const removeUrl = new URL(calls[4].url);
+    const removeUrl = readCallUrl(calls[4].url);
     assert.equal(removeUrl.pathname, "/auth/priestess/account-choices/user-snake");
     assert.equal(calls[4].method, "DELETE");
     assert.equal(calls[4].credentials, "include");
@@ -629,7 +632,7 @@ async function testSharedApiContract({ activateLocalAccountChoice, authorizeLoca
     assert.equal(activated.authenticated, true);
     assert.equal(activated.user?.userId, "user-snake");
     assert.equal(activated.user?.username, "snake");
-    const activateUrl = new URL(calls[5].url);
+    const activateUrl = readCallUrl(calls[5].url);
     assert.equal(activateUrl.pathname, "/auth/priestess/account-choices/user-snake/activate");
     assert.equal(calls[5].method, "POST");
     assert.deepEqual(calls[5].body, { choice_id: "choice-snake" });
@@ -645,6 +648,43 @@ async function testSharedApiContract({ activateLocalAccountChoice, authorizeLoca
       password: "secret-password",
       turnstile_token: "turnstile-ok",
       username: "login-user",
+    });
+
+    const invite = await checkRegisterInvite({
+      identity: "register@example.com",
+      identityType: "email",
+      inviteCode: "open-sesame",
+      turnstileToken: "turnstile-ok",
+    });
+    assert.equal(invite.accepted, true);
+    assert.equal(invite.inviteChallenge, "invite.challenge");
+    assert.equal(invite.expiresAt, 1_779_600_120);
+    assert.deepEqual(calls[7].body, {
+      identity: "register@example.com",
+      identity_type: "email",
+      invite_code: "open-sesame",
+      turnstile_token: "turnstile-ok",
+    });
+
+    const registered = await confirmLocalRegistration({
+      displayName: "Register User",
+      identity: "register@example.com",
+      identityType: "email",
+      inviteChallenge: invite.inviteChallenge,
+      inviteCode: "open-sesame",
+      password: "valid-password-123",
+      username: "register_user",
+    });
+    assert.equal(registered.authenticated, true);
+    assert.equal(registered.user?.username, "register_user");
+    assert.deepEqual(calls[8].body, {
+      display_name: "Register User",
+      identity: "register@example.com",
+      identity_type: "email",
+      invite_challenge: "invite.challenge",
+      invite_code: "open-sesame",
+      password: "valid-password-123",
+      username: "register_user",
     });
   } finally {
     globalThis.fetch = originalFetch;
@@ -767,8 +807,8 @@ async function testAccountChoiceFallback({ readAuthAccountChoicesForRequest }) {
   ], async(calls) => {
     const result = await readAuthAccountChoicesForRequest(authRequest, new AbortController().signal);
     assert.equal(calls.length, 2);
-    assert.equal(new URL(calls[0].url).pathname, "/auth/priestess/account-choices");
-    assert.equal(new URL(calls[1].url).pathname, "/auth/priestess/session");
+    assert.equal(readCallUrl(calls[0].url).pathname, "/auth/priestess/account-choices");
+    assert.equal(readCallUrl(calls[1].url).pathname, "/auth/priestess/session");
     return result;
   });
 
@@ -921,6 +961,10 @@ function buildLocalSession(userOverrides = {}) {
       ...userOverrides,
     },
   };
+}
+
+function readCallUrl(value) {
+  return new URL(value, "https://priestess.local");
 }
 
 async function withMockFetch(responses, callback) {

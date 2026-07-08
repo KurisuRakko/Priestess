@@ -1,14 +1,14 @@
 import type { RegisterIdentityType } from "@priestess/shared";
 
-export const REGISTER_STEPS = ["identity", "password", "verification", "profile"] as const;
+export const REGISTER_STEPS = ["identity", "verification", "password", "profile"] as const;
 
 export type RegisterStep = (typeof REGISTER_STEPS)[number] | "success";
 
 export const REGISTER_STEP_LABELS: Record<(typeof REGISTER_STEPS)[number], string> = {
   identity: "账号",
+  verification: "邀请",
   password: "密码",
   profile: "资料",
-  verification: "验证",
 };
 
 export const STEP_PANEL_EASE = [0.2, 0.8, 0.2, 1] as const;
@@ -35,8 +35,8 @@ export function getStepCopy(step: RegisterStep, identityType: RegisterIdentityTy
   if (step === "password") return { title: "设置密码", description: "至少 12 个字符，建议使用不重复的长密码。" };
   if (step === "verification") {
     return {
-      title: identityType === "phone" ? "验证手机号" : "验证邮箱",
-      description: "先完成人机验证，再发送并确认验证码。",
+      title: "校验邀请码",
+      description: identityType === "phone" ? "邀请码会绑定当前手机号，校验通过后再设置密码。" : "邀请码会绑定当前邮箱，校验通过后再设置密码。",
     };
   }
   if (step === "profile") return { title: "创建个人资料", description: "设置昵称和唯一用户名，用户名会先从昵称自动生成。" };

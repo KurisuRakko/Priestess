@@ -200,6 +200,13 @@ export type RegisterVerificationRequestResult = {
   requestId: string;
 };
 
+export type RegisterInviteCheckResult = {
+  accepted: boolean;
+  expiresAt: number;
+  inviteChallenge: string;
+  raw: unknown;
+};
+
 export type AdminPasswordResetRequest = {
   context: unknown;
   createdAt: string;
@@ -383,22 +390,38 @@ export async function requestRegisterVerification(params: { identity: string; id
   return normalizeRegisterVerificationRequestResult(payload);
 }
 
+export async function checkRegisterInvite(params: { identity: string; identityType: RegisterIdentityType; inviteCode: string; turnstileToken: string }, options: Pick<RequestOptions, "signal"> = {}) {
+  const payload = await requestJson(`${PRIESTESS_AUTH_BASE}/register/invite-check`, {
+    body: {
+      identity: params.identity,
+      identity_type: params.identityType,
+      invite_code: params.inviteCode,
+      turnstile_token: params.turnstileToken,
+    },
+    method: "POST",
+    signal: options.signal,
+  });
+  return normalizeRegisterInviteCheckResult(payload);
+}
+
 export async function confirmLocalRegistration(params: {
   displayName: string;
   identity: string;
   identityType: RegisterIdentityType;
+  inviteChallenge: string;
+  inviteCode: string;
   password: string;
   username: string;
-  verificationCode: string;
 }, options: Pick<RequestOptions, "signal"> = {}) {
   const payload = await requestJson(`${PRIESTESS_AUTH_BASE}/register/confirm`, {
     body: {
       display_name: params.displayName,
       identity: params.identity,
       identity_type: params.identityType,
+      invite_challenge: params.inviteChallenge,
+      invite_code: params.inviteCode,
       password: params.password,
       username: params.username,
-      verification_code: params.verificationCode,
     },
     method: "POST",
     signal: options.signal,
@@ -730,6 +753,16 @@ function normalizeRegisterVerificationRequestResult(payload: unknown): RegisterV
     expiresAt: readDateTimeString(record, ["expires_at", "expiresAt"]),
     raw: payload,
     requestId: readString(record, ["request_id", "requestId"]),
+  };
+}
+
+function normalizeRegisterInviteCheckResult(payload: unknown): RegisterInviteCheckResult {
+  const record = isRecord(payload) ? pickRecord(payload, ["data"]) ?? payload : {};
+  return {
+    accepted: readBoolean(record, ["accepted", "ok"]) ?? false,
+    expiresAt: readNumber(record, ["expires_at", "expiresAt"]) ?? 0,
+    inviteChallenge: readString(record, ["invite_challenge", "inviteChallenge"]),
+    raw: payload,
   };
 }
 
