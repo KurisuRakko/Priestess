@@ -1,5 +1,6 @@
 .not-found-page {
   position: relative;
+  min-height: 100vh;
   min-height: 100svh;
   overflow: hidden;
   background-color: var(--color-page);
@@ -38,6 +39,7 @@
   font-weight: 500;
   line-height: 1.2;
   text-decoration: none;
+  -webkit-backdrop-filter: blur(16px);
   backdrop-filter: blur(16px);
   transition: border-color 160ms var(--ease-out), background-color 160ms var(--ease-out), box-shadow 160ms var(--ease-out), transform 160ms var(--ease-out);
 }

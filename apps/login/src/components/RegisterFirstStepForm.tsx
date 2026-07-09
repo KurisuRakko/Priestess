@@ -20,8 +20,9 @@ import {
   normalizePhoneLocalInput,
   REGISTER_PHONE_REGIONS,
 } from "./registerIdentityOptions";
+import { startLoginTransitionOverlay } from "./LoginTransitionOverlay";
 import { getStepCopy, REGISTER_STEP_LABELS, REGISTER_STEPS, type RegisterStep, STEP_PANEL_EASE, STEP_PANEL_VARIANTS } from "./registerStepConfig";
-import { readTurnstileSiteKey, TurnstileWidget } from "./TurnstileWidget";
+import { readTurnstileSiteKey } from "./TurnstileWidget";
 import "./RegisterFirstStepForm.css";
 
 const SUCCESS_REDIRECT_DELAY_MS = 700;
@@ -37,13 +38,13 @@ type RegisterFirstStepFormProps = {
 };
 
 type FieldErrors = {
-  code?: string;
   displayName?: string;
   identity?: string;
+  inviteCode?: string;
   password?: string;
   passwordConfirm?: string;
   terms?: string;
-  turnstile?: string;
+  verificationCode?: string;
   username?: string;
 };
 
@@ -86,16 +87,6 @@ function getIdentityKey(identityType: RegisterIdentityType, value: string) {
   return `${identityType}:${value}`;
 }
 
-function formatCooldownLabel(seconds: number) {
-  return translatePriestess("login:{{seconds}} 秒后可重新发送", { seconds: Math.max(0, seconds) });
-}
-
-function getDeliveryLabel(delivery: string) {
-  if (delivery === "email") return translatePriestess("login:邮箱");
-  if (delivery === "sms") return translatePriestess("login:手机");
-  return delivery;
-}
-
 export function RegisterFirstStepForm({
   disabled,
   onBackToLogin,
@@ -105,7 +96,6 @@ export function RegisterFirstStepForm({
   const { i18n, t } = usePriestessTranslation("login");
   const shouldReduceStepMotion = useReducedMotion();
   const successTimerRef = useRef<number | null>(null);
-  const verificationAbortRef = useRef<AbortController | null>(null);
   const submitAbortRef = useRef<AbortController | null>(null);
   const [step, setStep] = useState<RegisterStep>("identity");
   const [stepDirection, setStepDirection] = useState(1);
@@ -116,20 +106,18 @@ export function RegisterFirstStepForm({
   const [phoneRegionId, setPhoneRegionId] = useState(DEFAULT_REGISTER_PHONE_REGION_ID);
   const [committedIdentity, setCommittedIdentity] = useState("");
   const [committedIdentityKey, setCommittedIdentityKey] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
+  const [verificationCode, setVerificationCode] = useState("");
+  const [verificationIdentityKey, setVerificationIdentityKey] = useState("");
+  const [verificationRequestId, setVerificationRequestId] = useState("");
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
-  const [verificationCode, setVerificationCode] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [username, setUsername] = useState("");
   const [usernameTouched, setUsernameTouched] = useState(false);
-  const [lastVerificationIdentityKey, setLastVerificationIdentityKey] = useState("");
-  const [verificationCooldown, setVerificationCooldown] = useState(0);
-  const [verificationSent, setVerificationSent] = useState(false);
-  const [turnstileToken, setTurnstileToken] = useState("");
-  const [turnstileResetSignal, setTurnstileResetSignal] = useState(0);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
-  const [verificationBusy, setVerificationBusy] = useState(false);
   const [submitBusy, setSubmitBusy] = useState(false);
+  const [verificationBusy, setVerificationBusy] = useState(false);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [panelElement, setPanelElement] = useState<HTMLDivElement | null>(null);
   const [panelHeight, setPanelHeight] = useState<number | null>(null);
@@ -139,41 +127,19 @@ export function RegisterFirstStepForm({
     if (identityMode === "phone") return normalizePhoneIdentity(phoneRegionId, phoneLocalNumber);
     return normalizeEmailIdentity(emailIdentity);
   }, [emailIdentity, identityMode, phoneLocalNumber, phoneRegionId]);
-  const turnstileSiteKey = useMemo(() => readTurnstileSiteKey(), []);
   const copy = getStepCopy(step, step === "identity" ? identityMode : identityType);
   const stepIndex = REGISTER_STEPS.findIndex((item) => item === step);
   const progressFill = stepIndex <= 0 ? 0 : stepIndex / (REGISTER_STEPS.length - 1);
   const progressStyle = { "--register-progress-fill": `${progressFill * 100}%` } as CSSProperties;
-  const isFormLocked = disabled || verificationBusy || submitBusy || step === "success";
-  const isTurnstileConfigured = Boolean(turnstileSiteKey);
-  const canSendVerification = Boolean(isTurnstileConfigured && turnstileToken && verificationCooldown === 0 && !isFormLocked);
-  const verificationButtonLabel = verificationBusy ? t("正在发送") : !isTurnstileConfigured ? t("等待验证码配置") : verificationSent ? t("重新发送验证码") : t("发送验证码");
+  const isFormLocked = disabled || submitBusy || step === "success";
+  const isVerificationReady = Boolean(verificationRequestId && verificationIdentityKey === committedIdentityKey);
   const termsLinkSeparator = i18n.language.toLowerCase().startsWith("en") ? t("协议链接分隔符") : "";
-
-  useEffect(() => {
-    if (verificationCooldown <= 0) return undefined;
-
-    const timer = window.setInterval(() => {
-      setVerificationCooldown((current) => Math.max(0, current - 1));
-    }, 1000);
-
-    return () => window.clearInterval(timer);
-  }, [verificationCooldown]);
-
-  useEffect(() => {
-    if (step !== "verification" || isTurnstileConfigured) return;
-
-    // 生产环境缺少站点 key 时保持在明确的配置缺失状态，避免用户误以为只是按钮偶发不可点。
-    setTurnstileToken("");
-    setErrors((current) => current.turnstile ? current : { ...current, turnstile: t("验证码组件未配置，请联系管理员") });
-  }, [isTurnstileConfigured, step]);
 
   useEffect(() => {
     return () => {
       if (successTimerRef.current !== null) {
         window.clearTimeout(successTimerRef.current);
       }
-      verificationAbortRef.current?.abort();
       submitAbortRef.current?.abort();
     };
   }, []);
@@ -193,10 +159,14 @@ export function RegisterFirstStepForm({
       }
     };
     updateHeight();
+    if (typeof ResizeObserver === "undefined") {
+      // 少数受限浏览器环境没有 ResizeObserver 时，保留一次测量结果，避免注册面板高度动画阻塞流程。
+      return undefined;
+    }
     const observer = new ResizeObserver(updateHeight);
     observer.observe(panelElement);
     return () => observer.disconnect();
-  }, [errors.code, errors.displayName, errors.identity, errors.password, errors.passwordConfirm, errors.terms, errors.turnstile, errors.username, identityMode, panelElement, shouldReduceStepMotion, step, verificationCooldown, verificationSent]);
+  }, [errors.displayName, errors.identity, errors.inviteCode, errors.password, errors.passwordConfirm, errors.terms, errors.username, errors.verificationCode, identityMode, panelElement, shouldReduceStepMotion, step, verificationBusy, verificationCode, verificationRequestId]);
 
   const clearError = (key: keyof FieldErrors) => {
     setErrors((current) => ({ ...current, [key]: undefined }));
@@ -207,13 +177,11 @@ export function RegisterFirstStepForm({
     setStep(nextStep);
   };
 
-  const resetVerificationState = () => {
+  const resetInviteState = () => {
+    setInviteCode("");
     setVerificationCode("");
-    setVerificationCooldown(0);
-    setVerificationSent(false);
-    setLastVerificationIdentityKey("");
-    setTurnstileToken("");
-    setTurnstileResetSignal((current) => current + 1);
+    setVerificationIdentityKey("");
+    setVerificationRequestId("");
   };
 
   const resetCredentialState = () => {
@@ -222,7 +190,7 @@ export function RegisterFirstStepForm({
     setDisplayName("");
     setUsername("");
     setUsernameTouched(false);
-    resetVerificationState();
+    resetInviteState();
   };
 
   const switchIdentityMode = () => {
@@ -231,7 +199,7 @@ export function RegisterFirstStepForm({
     setCommittedIdentity("");
     setCommittedIdentityKey("");
     resetCredentialState();
-    setErrors((current) => ({ ...current, identity: undefined, turnstile: undefined }));
+    setErrors((current) => ({ ...current, identity: undefined, inviteCode: undefined, verificationCode: undefined }));
   };
 
   const submitIdentity = (event: FormEvent<HTMLFormElement>) => {
@@ -249,7 +217,7 @@ export function RegisterFirstStepForm({
 
     const nextIdentityKey = getIdentityKey(nextIdentity.type, nextIdentity.value);
     if (committedIdentityKey && committedIdentityKey !== nextIdentityKey) {
-      // 账号标识变化后，旧密码、旧验证码和昵称都不能继续沿用到新的注册主体。
+      // 账号标识变化后，旧密码、旧邀请码和昵称都不能继续沿用到新的注册主体。
       resetCredentialState();
     }
 
@@ -273,72 +241,77 @@ export function RegisterFirstStepForm({
     moveToStep("verification", 1);
   };
 
-  const sendVerification = async() => {
-    if (isFormLocked) return;
-    if (verificationCooldown > 0) {
-      setErrors((current) => ({ ...current, turnstile: formatCooldownLabel(verificationCooldown) }));
-      return;
-    }
-    if (!turnstileSiteKey) {
-      setErrors((current) => ({ ...current, turnstile: t("验证码组件未配置，请联系管理员") }));
-      return;
-    }
-    if (!turnstileToken) {
-      setErrors((current) => ({ ...current, turnstile: t("请先完成人机验证") }));
+  const sendVerificationCode = async() => {
+    if (isFormLocked || verificationBusy) return;
+    if (!committedIdentity || !committedIdentityKey) {
+      setErrors((current) => ({ ...current, verificationCode: t("账号信息已变化，请重新发送验证码") }));
       return;
     }
 
+    const controller = startLoginTransitionOverlay({
+      description: t("验证通过后会返回注册表单并发送验证码。"),
+      loadingTitle: t("请完成人机验证"),
+      title: t("正在准备验证码"),
+    });
     setVerificationBusy(true);
-    setErrors((current) => ({ ...current, turnstile: undefined }));
-    const abortController = new AbortController();
-    verificationAbortRef.current?.abort();
-    verificationAbortRef.current = abortController;
+    setErrors((current) => ({ ...current, verificationCode: undefined }));
     try {
+      const siteKey = readTurnstileSiteKey();
+      if (!siteKey) {
+        throw new Error(t("验证码组件未配置，请联系管理员"));
+      }
+      const turnstileToken = await controller.challenge({
+        challengeDescription: t("通过后会立即回到注册表单。"),
+        challengeSiteKey: siteKey,
+        challengeTitle: t("请完成人机验证"),
+      });
+      controller.dismiss();
       const result = await requestRegisterVerification({
         identity: committedIdentity,
         identityType,
         turnstileToken,
-      }, { signal: abortController.signal });
-      setVerificationSent(true);
-      setVerificationCode(result.devVerificationCode);
-      setLastVerificationIdentityKey(committedIdentityKey);
-      setVerificationCooldown(Math.max(0, result.cooldownSeconds ?? 0));
-      setTurnstileToken("");
-      setTurnstileResetSignal((current) => current + 1);
-      onNotice(result.devVerificationCode ? t("本地开发验证码已填入") : result.delivery ? t("验证码已发送到{{delivery}}", { delivery: getDeliveryLabel(result.delivery) }) : t("验证码已发送"));
-    } catch (error) {
-      if (abortController.signal.aborted) return;
-      setErrors((current) => ({
-        ...current,
-        turnstile: getPriestessApiErrorMessage(error, t("验证码发送失败")),
-      }));
-      setTurnstileToken("");
-      setTurnstileResetSignal((current) => current + 1);
-    } finally {
-      if (verificationAbortRef.current === abortController) {
-        verificationAbortRef.current = null;
-        setVerificationBusy(false);
+      });
+      setVerificationIdentityKey(committedIdentityKey);
+      setVerificationRequestId(result.requestId);
+      if (result.devVerificationCode) {
+        setVerificationCode(result.devVerificationCode);
+        onNotice(t("本地开发验证码已填入"));
+      } else {
+        onNotice(result.delivery ? t("验证码已发送到{{delivery}}", { delivery: result.delivery }) : t("验证码已发送"));
       }
+    } catch (error) {
+      controller.dismiss();
+      setVerificationRequestId("");
+      setVerificationIdentityKey("");
+      setErrors((current) => ({ ...current, verificationCode: getPriestessApiErrorMessage(error, t("验证码发送失败")) }));
+    } finally {
+      setVerificationBusy(false);
     }
   };
 
   const submitVerification = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (isFormLocked) return;
+    if (isFormLocked || verificationBusy) return;
 
-    const normalizedCode = verificationCode.replace(/\s+/g, "");
-    if (lastVerificationIdentityKey && committedIdentityKey !== lastVerificationIdentityKey) {
-      resetVerificationState();
-      setErrors((current) => ({ ...current, turnstile: t("账号信息已变化，请重新发送验证码") }));
+    const normalizedInviteCode = inviteCode.trim();
+    const normalizedVerificationCode = verificationCode.trim();
+    const nextErrors: FieldErrors = {};
+    if (!normalizedInviteCode) {
+      nextErrors.inviteCode = t("请输入邀请码");
+    }
+    if (!isVerificationReady) {
+      nextErrors.verificationCode = t("请先发送验证码");
+    } else if (!/^[0-9]{6}$/.test(normalizedVerificationCode)) {
+      nextErrors.verificationCode = t("请输入 6 位数字验证码");
+    }
+    if (Object.keys(nextErrors).length > 0) {
+      setErrors((current) => ({ ...current, ...nextErrors }));
       return;
     }
-    if (!/^\d{6}$/.test(normalizedCode)) {
-      setErrors((current) => ({ ...current, code: t("请输入 6 位数字验证码") }));
-      return;
-    }
 
-    setVerificationCode(normalizedCode);
-    setErrors((current) => ({ ...current, code: undefined }));
+    setInviteCode(normalizedInviteCode);
+    setVerificationCode(normalizedVerificationCode);
+    setErrors((current) => ({ ...current, inviteCode: undefined, verificationCode: undefined }));
     moveToStep("profile", 1);
   };
 
@@ -372,9 +345,11 @@ export function RegisterFirstStepForm({
         displayName: normalizedDisplayName,
         identity: committedIdentity,
         identityType,
+        inviteCode,
         password,
-        username: usernameValidation.value,
         verificationCode,
+        verificationRequestId,
+        username: usernameValidation.value,
       }, { signal: abortController.signal });
       moveToStep("success", 1);
       onNotice(t("注册成功"));
@@ -394,10 +369,15 @@ export function RegisterFirstStepForm({
       const errorCode = getPriestessApiErrorCode(error);
       const message = getPriestessApiErrorMessage(error, t("注册失败"));
 
-      // 后端最终确认会重新校验跨步骤状态；错误回到对应步骤，避免用户在昵称页处理验证码或密码问题。
+      // 后端最终确认会重新校验跨步骤状态；错误回到对应步骤，避免用户在昵称页处理邀请码或密码问题。
+      if (["registration_invite_invalid", "registration_invite_not_configured", "registration_invite_required"].includes(errorCode)) {
+        moveToStep("verification", -1);
+        setErrors({ inviteCode: message });
+        return;
+      }
       if (["registration_verification_invalid", "invalid_registration_code"].includes(errorCode)) {
         moveToStep("verification", -1);
-        setErrors({ code: message });
+        setErrors({ verificationCode: message });
         return;
       }
       if (["weak_local_password", "invalid_password"].includes(errorCode)) {
@@ -670,60 +650,57 @@ export function RegisterFirstStepForm({
           {step === "verification" ? (
             <form className="login-form" noValidate onSubmit={submitVerification}>
           <label className="field-group">
-            <span className="field-group__label">{t("Cloudflare 验证")}</span>
-            <TurnstileWidget
-              disabled={disabled || verificationBusy || submitBusy || !isTurnstileConfigured}
-              onError={() => setErrors((current) => ({ ...current, turnstile: t("验证码组件加载失败，请重试") }))}
-              onExpire={() => {
-                setTurnstileToken("");
-                setErrors((current) => ({ ...current, turnstile: t("人机验证已过期，请重新完成") }));
-              }}
-              onToken={(token) => {
-                setTurnstileToken(token);
-                setErrors((current) => ({ ...current, turnstile: undefined }));
-              }}
-              resetSignal={turnstileResetSignal}
-              siteKey={turnstileSiteKey}
-            />
-            {errors.turnstile && <span className="field-error">{errors.turnstile}</span>}
+            <span className="field-group__label">{t("邀请码")}</span>
+            <span className={`text-field ${errors.inviteCode ? "text-field--error" : ""}`}>
+              <ShieldCheck aria-hidden="true" size={20} strokeWidth={1.8} />
+              <input
+                aria-invalid={Boolean(errors.inviteCode)}
+                aria-describedby={errors.inviteCode ? "register-invite-code-error" : undefined}
+                autoComplete="off"
+                disabled={isFormLocked}
+                onChange={(event) => {
+                  setInviteCode(event.target.value);
+                  if (errors.inviteCode) clearError("inviteCode");
+                }}
+                placeholder={t("输入邀请码")}
+                type="text"
+                value={inviteCode}
+              />
+            </span>
+            {errors.inviteCode && <span className="field-error" id="register-invite-code-error">{errors.inviteCode}</span>}
           </label>
 
-          <button className={verificationSent ? "secondary-button" : "primary-button"} disabled={!canSendVerification} onClick={sendVerification} type="button">
-            <span>{verificationButtonLabel}</span>
-            <ShieldCheck aria-hidden="true" size={19} strokeWidth={1.8} />
+          <label className="field-group">
+            <span className="field-group__label">{identityType === "email" ? t("邮箱验证码") : t("手机验证码")}</span>
+            <span className={`text-field ${errors.verificationCode ? "text-field--error" : ""}`}>
+              <AtSign aria-hidden="true" size={20} strokeWidth={1.8} />
+              <input
+                aria-invalid={Boolean(errors.verificationCode)}
+                aria-describedby={errors.verificationCode ? "register-verification-code-error" : undefined}
+                autoComplete="one-time-code"
+                disabled={isFormLocked || verificationBusy}
+                inputMode="numeric"
+                maxLength={6}
+                onChange={(event) => {
+                  setVerificationCode(event.target.value.replace(/\D/g, "").slice(0, 6));
+                  if (errors.verificationCode) clearError("verificationCode");
+                }}
+                placeholder={t("请输入 6 位数字验证码")}
+                type="text"
+                value={verificationCode}
+              />
+            </span>
+            {errors.verificationCode && <span className="field-error" id="register-verification-code-error">{errors.verificationCode}</span>}
+          </label>
+
+          <button className="secondary-button" disabled={isFormLocked || verificationBusy} onClick={sendVerificationCode} type="button">
+            {verificationBusy ? t("发送中") : verificationRequestId ? t("重新发送验证码") : t("发送验证码")}
           </button>
-          {verificationCooldown > 0 ? <span className="register-inline-note">{formatCooldownLabel(verificationCooldown)}</span> : null}
 
-          {verificationSent ? (
-            <>
-              <label className="field-group">
-                <span className="field-group__label">{identityType === "phone" ? t("手机验证码") : t("邮箱验证码")}</span>
-                <span className={`text-field ${errors.code ? "text-field--error" : ""}`}>
-                  <ShieldCheck aria-hidden="true" size={20} strokeWidth={1.8} />
-                  <input
-                    aria-invalid={Boolean(errors.code)}
-                    aria-describedby={errors.code ? "register-code-error" : undefined}
-                    autoComplete="one-time-code"
-                    disabled={isFormLocked}
-                    inputMode="numeric"
-                    onChange={(event) => {
-                      setVerificationCode(event.target.value);
-                      if (errors.code) clearError("code");
-                    }}
-                    placeholder="123456"
-                    type="text"
-                    value={verificationCode}
-                  />
-                </span>
-                {errors.code && <span className="field-error" id="register-code-error">{errors.code}</span>}
-              </label>
-
-              <button className="primary-button" disabled={isFormLocked} type="submit">
-                <span>{t("确认验证码")}</span>
-                <ArrowRight aria-hidden="true" size={21} strokeWidth={1.8} />
-              </button>
-            </>
-          ) : null}
+          <button className="primary-button" disabled={isFormLocked || verificationBusy} type="submit">
+            <span>{t("确认邀请码和验证码")}</span>
+            <ArrowRight aria-hidden="true" size={21} strokeWidth={1.8} />
+          </button>
             </form>
           ) : null}
 

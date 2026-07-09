@@ -6,6 +6,7 @@
   place-items: center;
   padding: 20px;
   background: rgba(36, 35, 31, 0.26);
+  -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
   will-change: opacity;
 }

@@ -1,6 +1,6 @@
-import { FormEvent, useMemo, useRef, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight, KeyRound } from "lucide-react";
-import { BrandMark, FloatingBackdrop, confirmPasswordReset, getPriestessApiErrorMessage, usePriestessTranslation } from "@priestess/shared";
+import { BrandMark, FloatingBackdrop, confirmPasswordReset, getPriestessApiErrorMessage, usePriestessTranslation, visitPasswordResetLink } from "@priestess/shared";
 import "./PasswordRecovery.css";
 
 type ResetPasswordPageProps = {
@@ -14,18 +14,37 @@ export function ResetPasswordPage({ onNavigateToLogin, onNotice }: ResetPassword
   const { t } = usePriestessTranslation("login");
   const passwordRef = useRef<HTMLInputElement>(null);
   const confirmRef = useRef<HTMLInputElement>(null);
+  const visitStartedRef = useRef(false);
   const [error, setError] = useState("");
+  const [isLinkAccepted, setIsLinkAccepted] = useState(false);
+  const [isLinkChecking, setIsLinkChecking] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
   const requestId = params.get("request_id") ?? "";
   const token = params.get("token") ?? "";
   const hasLink = Boolean(requestId && token);
 
+  useEffect(() => {
+    if (!hasLink || visitStartedRef.current) return;
+    visitStartedRef.current = true;
+    setIsLinkChecking(true);
+    setError("");
+    void visitPasswordResetLink({ requestId, token })
+      .then(() => {
+        setIsLinkAccepted(true);
+      })
+      .catch((error) => {
+        setIsLinkAccepted(false);
+        setError(getPriestessApiErrorMessage(error, t("重置链接无效或已过期")));
+      })
+      .finally(() => setIsLinkChecking(false));
+  }, [hasLink, requestId, t, token]);
+
   const submit = async(event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const password = passwordRef.current?.value ?? "";
     const confirmation = confirmRef.current?.value ?? "";
-    if (!hasLink) {
+    if (!hasLink || !isLinkAccepted) {
       setError(t("重置链接无效或缺少参数"));
       return;
     }
@@ -68,20 +87,20 @@ export function ResetPasswordPage({ onNavigateToLogin, onNotice }: ResetPassword
         </span>
         <div className="recovery-dialog__heading">
           <h1 id="reset-password-title">{t("设置新密码")}</h1>
-          <p>{t("重置链接只能使用一次；成功后旧登录会话会失效。")}</p>
+          <p>{t("重置链接 10 分钟内有效，最多打开 2 次；成功后旧登录会话会失效。")}</p>
         </div>
         <form className="recovery-form" onSubmit={submit}>
           <label>
             <span>{t("新密码")}</span>
-            <input autoComplete="new-password" disabled={!hasLink} ref={passwordRef} type="password" />
+            <input autoComplete="new-password" disabled={!isLinkAccepted || isLinkChecking} ref={passwordRef} type="password" />
           </label>
           <label>
             <span>{t("确认新密码")}</span>
-            <input autoComplete="new-password" disabled={!hasLink} ref={confirmRef} type="password" />
+            <input autoComplete="new-password" disabled={!isLinkAccepted || isLinkChecking} ref={confirmRef} type="password" />
           </label>
-          {error || !hasLink ? <div className="recovery-error" role="status">{error || t("重置链接无效或缺少参数")}</div> : null}
-          <button className="primary-button" disabled={isSubmitting || !hasLink} type="submit">
-            <span>{isSubmitting ? t("重置中") : t("重置密码")}</span>
+          {error || !hasLink || isLinkChecking ? <div className="recovery-error" role="status">{error || (isLinkChecking ? t("正在校验重置链接") : t("重置链接无效或缺少参数"))}</div> : null}
+          <button className="primary-button" disabled={isSubmitting || isLinkChecking || !isLinkAccepted} type="submit">
+            <span>{isSubmitting ? t("重置中") : isLinkChecking ? t("校验中") : t("重置密码")}</span>
             <ArrowRight aria-hidden="true" size={20} strokeWidth={1.8} />
           </button>
         </form>

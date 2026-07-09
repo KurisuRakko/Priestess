@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent, type PointerEvent, type WheelEvent } from "react";
-import { CalendarDays, ImageUp, Mail, MapPin, Pencil, Phone, X } from "lucide-react";
+import { ArrowDown, ArrowUp, CalendarDays, ImageUp, Languages, Mail, MapPin, Pencil, Phone, Plus, Trash2, X } from "lucide-react";
 import {
   getPriestessDisplayAvatarUrl,
   getPriestessApiErrorMessage,
@@ -13,12 +13,23 @@ import "./AccountProfile.css";
 import { AccountDialogShell } from "./AccountDialogShell";
 import { getTodayDateInputValue, isValidProfileBirthday, isValidProfilePhone, normalizeProfilePhone } from "./profileFormUtils";
 
-export type ProfileQuickEditMode = "avatar" | "displayName" | "email" | "phone" | "birthday" | "address";
+export type ProfileQuickEditMode = "avatar" | "displayName" | "email" | "phone" | "birthday" | "address" | "preferredLanguages";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const AVATAR_CROP_MAX_SIZE = 1024;
 const AVATAR_CROP_MAX_SCALE = 3;
 const AVATAR_CROP_MIN_SCALE = 1;
+const PREFERRED_LANGUAGE_MAX_COUNT = 8;
+const PREFERRED_LANGUAGE_OPTIONS = [
+  { label: "简体中文", value: "zh-CN" },
+  { label: "繁體中文", value: "zh-TW" },
+  { label: "English (US)", value: "en-US" },
+  { label: "日本語", value: "ja-JP" },
+  { label: "한국어", value: "ko-KR" },
+  { label: "Français", value: "fr-FR" },
+  { label: "Deutsch", value: "de-DE" },
+  { label: "Español", value: "es-ES" },
+];
 
 type AvatarCropOffset = {
   x: number;
@@ -57,6 +68,8 @@ export function ProfileQuickEditDialog({ mode, onChanged, onClose, onNotice, use
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [phone, setPhone] = useState("");
+  const [preferredLanguages, setPreferredLanguages] = useState<string[]>([]);
+  const [selectedLanguage, setSelectedLanguage] = useState("");
 
   const open = Boolean(mode && user);
 
@@ -76,6 +89,8 @@ export function ProfileQuickEditDialog({ mode, onChanged, onClose, onNotice, use
     setError("");
     setIsSubmitting(false);
     setPhone(user?.phone ?? "");
+    setPreferredLanguages(user?.preferredLanguages ?? []);
+    setSelectedLanguage("");
   }, [open, user]);
 
   useEffect(() => {
@@ -97,6 +112,10 @@ export function ProfileQuickEditDialog({ mode, onChanged, onClose, onNotice, use
       }
     };
     updateCropFrameSize();
+    if (typeof ResizeObserver === "undefined") {
+      // 头像裁剪只依赖当前框尺寸；没有 ResizeObserver 时使用首次测量，仍可正常确认上传。
+      return undefined;
+    }
     const resizeObserver = new ResizeObserver(updateCropFrameSize);
     resizeObserver.observe(cropFrame);
     return () => resizeObserver.disconnect();
@@ -157,15 +176,17 @@ export function ProfileQuickEditDialog({ mode, onChanged, onClose, onNotice, use
         nextUser = await updateLocalProfile({ birthday: nextBirthday || null });
       } else if (mode === "address") {
         nextUser = await updateLocalProfile({ address: nextAddress || null });
+      } else if (mode === "preferredLanguages") {
+        nextUser = await updateLocalProfile({ preferredLanguages });
       }
 
       if (nextUser) {
         onChanged(nextUser);
       }
-      onNotice(mode === "email" ? t("邮箱已更新") : mode === "phone" ? t("手机号已更新") : mode === "birthday" ? t("生日已更新") : mode === "address" ? t("地址已更新") : t("显示名称已更新"));
+      onNotice(mode === "email" ? t("邮箱已更新") : mode === "phone" ? t("手机号已更新") : mode === "birthday" ? t("生日已更新") : mode === "address" ? t("地址已更新") : mode === "preferredLanguages" ? t("偏好语言已更新") : t("显示名称已更新"));
       close();
     } catch (requestError) {
-      setError(getPriestessApiErrorMessage(requestError, mode === "email" ? t("邮箱更新失败") : mode === "phone" ? t("手机号更新失败") : mode === "birthday" ? t("生日更新失败") : mode === "address" ? t("地址更新失败") : t("显示名称更新失败")));
+      setError(getPriestessApiErrorMessage(requestError, mode === "email" ? t("邮箱更新失败") : mode === "phone" ? t("手机号更新失败") : mode === "birthday" ? t("生日更新失败") : mode === "address" ? t("地址更新失败") : mode === "preferredLanguages" ? t("偏好语言更新失败") : t("显示名称更新失败")));
     } finally {
       setIsSubmitting(false);
     }
@@ -176,10 +197,13 @@ export function ProfileQuickEditDialog({ mode, onChanged, onClose, onNotice, use
   const isPhoneMode = mode === "phone";
   const isBirthdayMode = mode === "birthday";
   const isAddressMode = mode === "address";
-  const titleId = isAvatarMode ? "account-avatar-title" : isEmailMode ? "account-email-title" : isPhoneMode ? "account-phone-title" : isBirthdayMode ? "account-birthday-title" : isAddressMode ? "account-address-title" : "account-display-name-title";
+  const isPreferredLanguagesMode = mode === "preferredLanguages";
+  const titleId = isAvatarMode ? "account-avatar-title" : isEmailMode ? "account-email-title" : isPhoneMode ? "account-phone-title" : isBirthdayMode ? "account-birthday-title" : isAddressMode ? "account-address-title" : isPreferredLanguagesMode ? "account-preferred-languages-title" : "account-display-name-title";
   const currentAvatarUrl = getPriestessDisplayAvatarUrl(user.avatarUrl);
-  const title = isAvatarMode ? t("修改头像") : isEmailMode ? t("修改邮箱") : isPhoneMode ? t("修改登录手机号") : isBirthdayMode ? t("修改生日") : isAddressMode ? t("修改地址") : t("修改显示名称");
+  const title = isAvatarMode ? t("修改头像") : isEmailMode ? t("修改邮箱") : isPhoneMode ? t("修改登录手机号") : isBirthdayMode ? t("修改生日") : isAddressMode ? t("修改地址") : isPreferredLanguagesMode ? t("修改偏好语言") : t("修改显示名称");
   const avatarCropGeometry = avatarDraft ? getAvatarCropGeometry(avatarDraft, avatarCropFrameSize, avatarCropScale, avatarCropOffset) : null;
+  const availableLanguageOptions = PREFERRED_LANGUAGE_OPTIONS.filter((option) => !preferredLanguages.includes(option.value));
+  const languageToAdd = selectedLanguage || availableLanguageOptions[0]?.value || "";
 
   const clearAvatarDraft = () => {
     avatarCropDragRef.current = null;
@@ -248,6 +272,27 @@ export function ProfileQuickEditDialog({ mode, onChanged, onClose, onNotice, use
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const addPreferredLanguage = () => {
+    const nextLanguage = languageToAdd;
+    if (!nextLanguage || preferredLanguages.includes(nextLanguage) || preferredLanguages.length >= PREFERRED_LANGUAGE_MAX_COUNT) return;
+    setPreferredLanguages((current) => [...current, nextLanguage]);
+    setSelectedLanguage("");
+  };
+
+  const movePreferredLanguage = (index: number, direction: -1 | 1) => {
+    const nextIndex = index + direction;
+    if (nextIndex < 0 || nextIndex >= preferredLanguages.length) return;
+    setPreferredLanguages((current) => {
+      const next = [...current];
+      [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
+      return next;
+    });
+  };
+
+  const removePreferredLanguage = (language: string) => {
+    setPreferredLanguages((current) => current.filter((item) => item !== language));
   };
 
   const startAvatarCropDrag = (event: PointerEvent<HTMLDivElement>) => {
@@ -416,7 +461,9 @@ export function ProfileQuickEditDialog({ mode, onChanged, onClose, onNotice, use
         ? t("生日会同步到 Priestess 账户资料；清空后会移除当前生日。")
         : isAddressMode
           ? t("地址会同步到 Priestess 账户资料；清空后会移除当前地址。")
-          : t("显示名称会同步到 Priestess 账户资料。");
+          : isPreferredLanguagesMode
+            ? t("语言会按优先级同步到 Priestess 账户资料。")
+            : t("显示名称会同步到 Priestess 账户资料。");
 
   return (
     <AccountDialogShell labelledBy={titleId} open={open}>
@@ -424,7 +471,7 @@ export function ProfileQuickEditDialog({ mode, onChanged, onClose, onNotice, use
           <X aria-hidden="true" size={17} strokeWidth={1.8} />
         </button>
         <span className="account-dialog__icon account-dialog__icon--secure" aria-hidden="true">
-          {isEmailMode ? <Mail size={22} strokeWidth={1.8} /> : isPhoneMode ? <Phone size={22} strokeWidth={1.8} /> : isBirthdayMode ? <CalendarDays size={22} strokeWidth={1.8} /> : isAddressMode ? <MapPin size={22} strokeWidth={1.8} /> : <Pencil size={22} strokeWidth={1.8} />}
+          {isEmailMode ? <Mail size={22} strokeWidth={1.8} /> : isPhoneMode ? <Phone size={22} strokeWidth={1.8} /> : isBirthdayMode ? <CalendarDays size={22} strokeWidth={1.8} /> : isAddressMode ? <MapPin size={22} strokeWidth={1.8} /> : isPreferredLanguagesMode ? <Languages size={22} strokeWidth={1.8} /> : <Pencil size={22} strokeWidth={1.8} />}
         </span>
         <div>
           <p>{t("个人资料")}</p>
@@ -432,9 +479,21 @@ export function ProfileQuickEditDialog({ mode, onChanged, onClose, onNotice, use
           <span>{description}</span>
         </div>
         <form className="account-dialog-form" onSubmit={submit}>
-          <label>
-            <span>{isEmailMode ? t("邮箱") : isPhoneMode ? t("手机号") : isBirthdayMode ? t("生日") : isAddressMode ? t("地址") : t("显示名称")}</span>
-            {isEmailMode ? (
+          {isPreferredLanguagesMode ? (
+            <PreferredLanguagesEditor
+              availableLanguageOptions={availableLanguageOptions}
+              isSubmitting={isSubmitting}
+              languageToAdd={languageToAdd}
+              onAdd={addPreferredLanguage}
+              onMove={movePreferredLanguage}
+              onRemove={removePreferredLanguage}
+              onSelect={setSelectedLanguage}
+              preferredLanguages={preferredLanguages}
+            />
+          ) : (
+            <label>
+              <span>{isEmailMode ? t("邮箱") : isPhoneMode ? t("手机号") : isBirthdayMode ? t("生日") : isAddressMode ? t("地址") : t("显示名称")}</span>
+              {isEmailMode ? (
               <input
                 autoComplete="email"
                 disabled={isSubmitting}
@@ -473,7 +532,8 @@ export function ProfileQuickEditDialog({ mode, onChanged, onClose, onNotice, use
             ) : (
               <input autoComplete="name" disabled={isSubmitting} onChange={(event) => setDisplayName(event.target.value)} value={displayName} />
             )}
-          </label>
+            </label>
+          )}
           {error ? <div className="account-dialog-form__error" role="status">{error}</div> : null}
           <div className="account-dialog__actions">
             <button className="account-button account-button--quiet" disabled={isSubmitting} onClick={close} type="button">{t("取消")}</button>
@@ -485,6 +545,74 @@ export function ProfileQuickEditDialog({ mode, onChanged, onClose, onNotice, use
         </form>
     </AccountDialogShell>
   );
+}
+
+function PreferredLanguagesEditor({ availableLanguageOptions, isSubmitting, languageToAdd, onAdd, onMove, onRemove, onSelect, preferredLanguages }: {
+  availableLanguageOptions: Array<{ label: string; value: string }>;
+  isSubmitting: boolean;
+  languageToAdd: string;
+  onAdd: () => void;
+  onMove: (index: number, direction: -1 | 1) => void;
+  onRemove: (language: string) => void;
+  onSelect: (language: string) => void;
+  preferredLanguages: string[];
+}) {
+  const { t } = usePriestessTranslation("account");
+  const canAdd = Boolean(languageToAdd) && preferredLanguages.length < PREFERRED_LANGUAGE_MAX_COUNT;
+  return (
+    <div className="account-language-editor">
+      <div className="account-language-editor__picker">
+        <label>
+          <span>{t("添加语言")}</span>
+          <select disabled={isSubmitting || availableLanguageOptions.length === 0 || preferredLanguages.length >= PREFERRED_LANGUAGE_MAX_COUNT} onChange={(event) => onSelect(event.target.value)} value={languageToAdd}>
+            {availableLanguageOptions.length === 0 ? <option value="">{t("没有可添加的语言")}</option> : null}
+            {availableLanguageOptions.map((option) => (
+              <option key={option.value} value={option.value}>{t(option.label)} · {option.value}</option>
+            ))}
+          </select>
+        </label>
+        <button className="account-button account-button--quiet" disabled={isSubmitting || !canAdd} onClick={onAdd} type="button">
+          <Plus aria-hidden="true" size={17} strokeWidth={1.8} />
+          <span>{t("添加")}</span>
+        </button>
+      </div>
+
+      <div className="account-language-editor__list" aria-label={t("偏好语言优先级")}>
+        {preferredLanguages.length === 0 ? (
+          <div className="account-language-editor__empty">{t("尚未设置偏好语言")}</div>
+        ) : (
+          preferredLanguages.map((language, index) => (
+            <div className="account-language-editor__row" key={language}>
+              <div>
+                <span>{t(formatPreferredLanguagePriority(index))}</span>
+                <strong>{t(formatPreferredLanguageName(language))} · {language}</strong>
+              </div>
+              <div className="account-language-editor__actions">
+                <button aria-label={t("上移{{language}}", { language })} disabled={isSubmitting || index === 0} onClick={() => onMove(index, -1)} type="button">
+                  <ArrowUp aria-hidden="true" size={16} strokeWidth={1.8} />
+                </button>
+                <button aria-label={t("下移{{language}}", { language })} disabled={isSubmitting || index === preferredLanguages.length - 1} onClick={() => onMove(index, 1)} type="button">
+                  <ArrowDown aria-hidden="true" size={16} strokeWidth={1.8} />
+                </button>
+                <button aria-label={t("移除{{language}}", { language })} disabled={isSubmitting} onClick={() => onRemove(language)} type="button">
+                  <Trash2 aria-hidden="true" size={16} strokeWidth={1.8} />
+                </button>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+function formatPreferredLanguageName(language: string) {
+  return PREFERRED_LANGUAGE_OPTIONS.find((option) => option.value === language)?.label ?? language;
+}
+
+function formatPreferredLanguagePriority(index: number) {
+  const labels = ["第一级", "第二级", "第三级", "第四级"];
+  return labels[index] ?? `第 ${index + 1} 级`;
 }
 
 async function createAvatarCropDraft(file: File): Promise<AvatarCropDraft> {

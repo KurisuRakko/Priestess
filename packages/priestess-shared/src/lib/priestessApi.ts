@@ -1,219 +1,41 @@
 import { PriestessApiError } from "./priestessApiErrors";
 import { requestJson, type RequestOptions } from "./priestessApiRequest";
 import { translatePriestess } from "./i18n";
+import type {
+  AdminPasskey,
+  AdminPasswordResetRequest,
+  AdminQrSession,
+  AdminSession,
+  AdminSessionOptions,
+  AdminUser,
+  LocalAccountChoice,
+  LocalAccountChoicesResult,
+  LocalAccountChoiceRemovalResult,
+  LocalAuthorizeResult,
+  LocalLoginCredentials,
+  LocalPasswordManagerPreference,
+  LocalSession,
+  LocalSessionUser,
+  LoginRiskBucket,
+  PasswordResetLinkVisitResult,
+  PasswordResetRequestResult,
+  PriestessStatus,
+  PriestessUserRole,
+  QrSession,
+  QrSessionPollStatus,
+  RegisterIdentityType,
+  RegisterVerificationRequestResult,
+} from "./priestessApiTypes";
 
 export { getPriestessApiErrorCode, getPriestessApiErrorMessage, PriestessApiError } from "./priestessApiErrors";
 export { getPriestessApiBaseLabel, getPriestessApiBaseUrl } from "./priestessApiRequest";
+export type * from "./priestessApiTypes";
 
 type JsonRecord = Record<string, unknown>;
 
 const PRIESTESS_AUTH_BASE = "/auth/priestess";
 const PRIESTESS_QR_BASE = `${PRIESTESS_AUTH_BASE}/qr`;
-
-export type LocalLoginCredentials = {
-  username: string;
-  password: string;
-  turnstileToken?: string;
-};
-
-export type LocalPasswordManagerPreference = {
-  label: string;
-  provider: string;
-  raw: unknown;
-};
-
-export type LocalSessionUser = {
-  address: string;
-  avatarUrl: string;
-  birthday: string;
-  userId: string;
-  username: string;
-  displayName: string;
-  email: string;
-  phone: string;
-  enabled: boolean | null;
-  passwordManager: LocalPasswordManagerPreference | null;
-};
-
-export type LocalSession = {
-  authenticated: boolean;
-  challengeId: string;
-  expiresAt: string;
-  mfaRequired: boolean;
-  mfaType: string;
-  user: LocalSessionUser | null;
-  raw: unknown;
-};
-
-export type LocalAccountChoice = {
-  authenticated: boolean;
-  avatarUrl: string;
-  choiceId: string;
-  current: boolean;
-  displayName: string;
-  email: string;
-  expiresAt: string;
-  lastUsedAt: string;
-  raw: unknown;
-  revoked: boolean;
-  userId: string;
-  username: string;
-};
-
-export type LocalAccountChoiceApp = {
-  appId: string;
-  raw: unknown;
-  returnToOrigin: string;
-};
-
-export type LocalAccountChoicesResult = {
-  accounts: LocalAccountChoice[];
-  app: LocalAccountChoiceApp;
-  raw: unknown;
-};
-
-export type LocalAccountChoiceRemovalResult = {
-  authenticated: boolean;
-  current: boolean;
-  raw: unknown;
-  removed: boolean;
-  revoked: boolean;
-  userId: string;
-};
-
-export type LocalAuthorizeResult = {
-  expiresAt: number;
-  expiresIn: number;
-  raw: unknown;
-  redirectUrl: string;
-};
-
-export type AdminSession = {
-  authenticated: boolean;
-  expiresAt: string;
-  raw: unknown;
-};
-
-export type AdminUser = {
-  address: string;
-  avatarUrl: string;
-  birthday: string;
-  userId: string;
-  username: string;
-  displayName: string;
-  email: string;
-  phone: string;
-  enabled: boolean | null;
-  createdAt: string;
-  updatedAt: string;
-  raw: unknown;
-};
-
-export type QrSessionStatus = "pending" | "scanned" | "pre_confirmed" | "confirmed" | "rejected" | "expired" | string;
-
-export type QrSession = {
-  expiresAt: number;
-  expiresIn: number;
-  qrUrl: string;
-  raw: unknown;
-  sessionId: string;
-  statusUrl: string;
-};
-
-export type QrSessionPollStatus = {
-  appId: string;
-  expiresAt: number;
-  expiresIn: number;
-  loginCode: string;
-  raw: unknown;
-  redirectUrl: string;
-  returnTo: string;
-  securityLevel: number | null;
-  sessionId: string;
-  status: QrSessionStatus;
-};
-
-export type AdminQrSession = {
-  sessionId: string;
-  appId: string;
-  returnTo: string;
-  status: QrSessionStatus;
-  securityLevel: number | null;
-  createdAt: string;
-  expiresAt: string;
-  updatedAt: string;
-  pcContext: unknown;
-  phoneContext: unknown;
-  raw: unknown;
-};
-
-export type LoginRiskBucket = {
-  bucketKey: string;
-  scope: string;
-  failureCount: number | null;
-  lockedUntil: string;
-  lastFailedAt: string;
-  lastReason: string;
-  context: unknown;
-  raw: unknown;
-};
-
-export type AdminPasskey = {
-  backedUp: boolean | null;
-  counter: number | null;
-  credentialId: string;
-  name: string;
-  deviceType: string;
-  transports: string[];
-  createdAt: string;
-  lastUsedAt: string;
-  disabledAt: string;
-  raw: unknown;
-};
-
-export type LocalPasskey = AdminPasskey;
-
-export type PriestessStatus = {
-  enabled: boolean | null;
-  mode: string;
-  raw: unknown;
-};
-
-export type PasswordResetRequestResult = {
-  accepted: boolean;
-  delivery: string;
-  devResetUrl: string;
-  expiresAt: string;
-  requestId: string;
-  raw: unknown;
-};
-
-export type RegisterIdentityType = "email" | "phone";
-
-export type RegisterVerificationRequestResult = {
-  accepted: boolean;
-  cooldownSeconds: number | null;
-  devVerificationCode: string;
-  delivery: string;
-  expiresAt: string;
-  raw: unknown;
-  requestId: string;
-};
-
-export type AdminPasswordResetRequest = {
-  context: unknown;
-  createdAt: string;
-  email: string;
-  emailSentAt: string;
-  expiresAt: string;
-  requestId: string;
-  status: string;
-  updatedAt: string;
-  usedAt: string;
-  userId: string;
-  username: string;
-  raw: unknown;
-};
+const ADMIN_PASSWORD_CONFIRMATION_HEADER = "X-Phainon-Admin-Password";
 
 export async function getLocalSession(options: Pick<RequestOptions, "signal"> = {}) {
   try {
@@ -365,13 +187,22 @@ export async function deleteLocalPasskey(credentialId: string, options: Pick<Req
   });
 }
 
-export async function requestPasswordReset(identity: string, options: Pick<RequestOptions, "signal"> = {}) {
+export async function requestPasswordReset(identity: string, turnstileToken: string, options: Pick<RequestOptions, "signal"> = {}) {
   const payload = await requestJson(`${PRIESTESS_AUTH_BASE}/password-reset/requests`, {
-    body: { identity },
+    body: { identity, turnstile_token: turnstileToken },
     method: "POST",
     signal: options.signal,
   });
   return normalizePasswordResetRequestResult(payload);
+}
+
+export async function visitPasswordResetLink(params: { requestId: string; token: string }, options: Pick<RequestOptions, "signal"> = {}) {
+  const payload = await requestJson(`${PRIESTESS_AUTH_BASE}/password-reset/links/visits`, {
+    body: { request_id: params.requestId, token: params.token },
+    method: "POST",
+    signal: options.signal,
+  });
+  return normalizePasswordResetLinkVisitResult(payload);
 }
 
 export async function requestRegisterVerification(params: { identity: string; identityType: RegisterIdentityType; turnstileToken: string }, options: Pick<RequestOptions, "signal"> = {}) {
@@ -387,18 +218,22 @@ export async function confirmLocalRegistration(params: {
   displayName: string;
   identity: string;
   identityType: RegisterIdentityType;
+  inviteCode: string;
   password: string;
-  username: string;
   verificationCode: string;
+  verificationRequestId: string;
+  username: string;
 }, options: Pick<RequestOptions, "signal"> = {}) {
   const payload = await requestJson(`${PRIESTESS_AUTH_BASE}/register/confirm`, {
     body: {
       display_name: params.displayName,
       identity: params.identity,
       identity_type: params.identityType,
+      invite_code: params.inviteCode,
       password: params.password,
-      username: params.username,
       verification_code: params.verificationCode,
+      verification_request_id: params.verificationRequestId,
+      username: params.username,
     },
     method: "POST",
     signal: options.signal,
@@ -423,9 +258,17 @@ export async function getAdminSession(options: Pick<RequestOptions, "signal"> = 
   return normalizeAdminSession(payload);
 }
 
-export async function loginAdminSession(password: string, options: Pick<RequestOptions, "signal"> = {}) {
+export async function getAdminSessionOptions(options: Pick<RequestOptions, "signal"> = {}) {
+  const payload = await requestJson("/admin/session/options", { signal: options.signal });
+  return normalizeAdminSessionOptions(payload);
+}
+
+export async function loginAdminSession(params: { password: string; turnstileToken?: string }, options: Pick<RequestOptions, "signal"> = {}) {
   const payload = await requestJson("/admin/session", {
-    body: { password },
+    body: {
+      password: params.password,
+      ...(params.turnstileToken ? { turnstile_token: params.turnstileToken } : {}),
+    },
     method: "POST",
     signal: options.signal,
   });
@@ -442,6 +285,18 @@ export async function logoutAdminSession(options: Pick<RequestOptions, "signal">
 export async function listAdminUsers(options: Pick<RequestOptions, "signal"> = {}) {
   const payload = await requestJson("/admin/priestess/users", { signal: options.signal });
   return extractList(payload, ["users", "local_users", "items", "data"]).map(normalizeAdminUser);
+}
+
+export async function updateAdminUserRole(userId: string, role: PriestessUserRole, adminPassword: string, options: Pick<RequestOptions, "signal"> = {}) {
+  // 管理密码只作为本次高风险变更的确认 header 发送，不写入请求体或前端状态。
+  const payload = await requestJson(`/admin/priestess/users/${encodeURIComponent(userId)}`, {
+    body: { role },
+    headers: { [ADMIN_PASSWORD_CONFIRMATION_HEADER]: adminPassword },
+    method: "PUT",
+    signal: options.signal,
+  });
+  const userPayload = isRecord(payload) ? pickRecord(payload, ["user", "local_user", "localUser", "data"]) ?? payload : payload;
+  return normalizeAdminUser(userPayload, 0);
 }
 
 export async function listAdminQrSessions(params: { status?: string; limit?: number } = {}, options: Pick<RequestOptions, "signal"> = {}) {
@@ -512,6 +367,19 @@ function normalizeAdminSession(payload: unknown): AdminSession {
     authenticated: readBoolean(payload, ["authenticated", "active", "ok"]) ?? false,
     expiresAt: readDateTimeString(payload, ["expires_at", "expiresAt"]),
     raw: payload,
+  };
+}
+
+function normalizeAdminSessionOptions(payload: unknown): AdminSessionOptions {
+  const record = isRecord(payload) ? payload : {};
+  const passwordLoginEnabled = readBoolean(record, ["password_login_enabled", "passwordLoginEnabled"]);
+
+  return {
+    passkeyLoginEnabled: readBoolean(record, ["passkey_login_enabled", "passkeyLoginEnabled"]) ?? false,
+    passwordLoginEnabled: passwordLoginEnabled ?? true,
+    raw: payload,
+    turnstileRequired: readBoolean(record, ["turnstile_required", "turnstileRequired"]) ?? false,
+    turnstileSiteKey: readString(record, ["turnstile_site_key", "turnstileSiteKey"]),
   };
 }
 
@@ -675,6 +543,8 @@ function normalizeLocalSessionUser(payload: unknown): LocalSessionUser | null {
     enabled: readBoolean(payload, ["enabled"]),
     passwordManager: normalizeLocalPasswordManagerPreference(readUnknown(payload, ["password_manager", "passwordManager"])),
     phone,
+    preferredLanguages: readStringList(payload, ["preferred_languages", "preferredLanguages"]),
+    role: normalizePriestessUserRole(readString(payload, ["role", "user_role", "userRole"])),
     userId: userId || username || email,
     username: username || email || userId,
   };
@@ -720,6 +590,16 @@ function normalizePasswordResetRequestResult(payload: unknown): PasswordResetReq
   };
 }
 
+function normalizePasswordResetLinkVisitResult(payload: unknown): PasswordResetLinkVisitResult {
+  const record = isRecord(payload) ? payload : {};
+  return {
+    expiresAt: readDateTimeString(record, ["expires_at", "expiresAt"]),
+    raw: payload,
+    remainingVisits: readNumber(record, ["remaining_visits", "remainingVisits"]),
+    valid: readBoolean(record, ["valid", "ok"]) ?? false,
+  };
+}
+
 function normalizeRegisterVerificationRequestResult(payload: unknown): RegisterVerificationRequestResult {
   const record = isRecord(payload) ? pickRecord(payload, ["data"]) ?? payload : {};
   return {
@@ -752,11 +632,17 @@ function normalizeAdminUser(payload: unknown, index: number): AdminUser {
     email,
     enabled: readBoolean(record, ["enabled"]),
     phone,
+    preferredLanguages: readStringList(record, ["preferred_languages", "preferredLanguages"]),
     raw: payload,
+    role: normalizePriestessUserRole(readString(record, ["role", "user_role", "userRole"])),
     updatedAt: readDateTimeString(record, ["updated_at", "updatedAt"]),
     userId,
     username,
   };
+}
+
+function normalizePriestessUserRole(value: string): PriestessUserRole {
+  return value === "admin" ? "admin" : "user";
 }
 
 function normalizeAdminQrSession(payload: unknown, index: number): AdminQrSession {

@@ -83,6 +83,7 @@ a:focus-visible {
     linear-gradient(rgba(36, 35, 31, 0.018) 1px, transparent 1px),
     linear-gradient(90deg, rgba(36, 35, 31, 0.014) 1px, transparent 1px);
   background-size: 42px 42px, 42px 42px;
+  -webkit-mask-image: radial-gradient(circle at center, black, transparent 78%);
   mask-image: radial-gradient(circle at center, black, transparent 78%);
 }
 
@@ -134,6 +135,7 @@ a:focus-visible {
   color: var(--color-text);
   background: rgba(252, 251, 248, 0.92);
   box-shadow: var(--shadow-soft);
+  -webkit-backdrop-filter: blur(14px);
   backdrop-filter: blur(14px);
   padding: 13px 16px;
   font-size: 14px;

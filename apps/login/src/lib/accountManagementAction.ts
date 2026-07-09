@@ -13,6 +13,10 @@ export const ACCOUNT_MANAGEMENT_ACTION_PARAM = "account_action";
 const ACCOUNT_MANAGEMENT_ACTIONS = new Set<AccountManagementAction>(["avatar", "password", "profile"]);
 
 export function buildAccountManagementActionPath(action: AccountManagementAction) {
+  if (action === "profile") {
+    return MANAGE_ROUTE_PATH;
+  }
+
   const search = `${ACCOUNT_MANAGEMENT_ACTION_PARAM}=${encodeURIComponent(action)}`;
   const hash = getAccountManagementActionSection(action) === "security" ? "#security" : "";
   return `${MANAGE_ROUTE_PATH}?${search}${hash}`;

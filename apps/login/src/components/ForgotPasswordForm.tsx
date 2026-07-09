@@ -1,6 +1,8 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, KeyRound, UserRound } from "lucide-react";
 import { getPriestessApiErrorMessage, requestPasswordReset, usePriestessTranslation } from "@priestess/shared";
+import { startLoginTransitionOverlay } from "./LoginTransitionOverlay";
+import { readTurnstileSiteKey } from "./TurnstileWidget";
 
 type ForgotPasswordFormProps = {
   defaultIdentity: string;
@@ -48,11 +50,27 @@ export function ForgotPasswordForm({ defaultIdentity, disabled, onBackToLogin, o
     setIsSubmitting(true);
     setError("");
     setDevResetUrl("");
+    const controller = startLoginTransitionOverlay({
+      description: t("验证通过后会返回找回密码表单。"),
+      loadingTitle: t("请完成人机验证"),
+      title: t("正在准备重置申请"),
+    });
     try {
-      const result = await requestPasswordReset(normalizedIdentity);
+      const siteKey = readTurnstileSiteKey();
+      if (!siteKey) {
+        throw new Error(t("验证码组件未配置，请联系管理员"));
+      }
+      const turnstileToken = await controller.challenge({
+        challengeDescription: t("验证通过后会立即回到当前表单并发送重置邮件。"),
+        challengeSiteKey: siteKey,
+        challengeTitle: t("请完成人机验证"),
+      });
+      controller.dismiss();
+      const result = await requestPasswordReset(normalizedIdentity, turnstileToken);
       setDevResetUrl(result.devResetUrl);
       onNotice(result.devResetUrl ? t("重置链接已生成") : t("如果账号存在，重置请求已受理"));
     } catch (error) {
+      controller.dismiss();
       setError(getPriestessApiErrorMessage(error, t("重置请求失败")));
     } finally {
       setIsSubmitting(false);

@@ -5,12 +5,15 @@ import {
   getPriestessApiErrorMessage,
   listLocalAccountChoices,
   PriestessApiError,
+  redactSensitiveAuthText,
   translatePriestess,
   type LocalAccountChoice,
   type LocalAccountChoiceApp,
   type LocalSession,
 } from "@priestess/shared";
 import { getAuthRequestKey, getAuthRequestReturnToOrigin, type AuthRequest } from "./authRequest";
+
+export { redactSensitiveAuthText };
 
 export type AuthAccountChoice = LocalAccountChoice & {
   authorizeChoiceId: string | null;
@@ -104,14 +107,6 @@ export function useAuthAccountChoices({ authRequest, enabled }: UseAuthAccountCh
 
 export function getAuthAccountChoiceErrorMessage(error: unknown, fallback = translatePriestess("login:账号选择暂时不可用")) {
   return redactSensitiveAuthText(getPriestessApiErrorMessage(error, fallback));
-}
-
-export function redactSensitiveAuthText(value: string) {
-  // 账号选择错误会出现在卡片和 toast 中；这里兜底隐藏后端误带出的敏感字段值。
-  return value.replace(
-    /(^|[?&\s,;])((?:access_token|choice_id|cookie|id_token|login_code|otp_code|password|private_key|refresh_token|secret|session|session_id|token|totp_code|verification_code)\s*[=:]\s*)[^\s&,;]+/gi,
-    `$1$2${translatePriestess("common:[已隐藏]")}`,
-  );
 }
 
 export async function readAuthAccountChoicesForRequest(authRequest: AuthRequest, signal: AbortSignal) {

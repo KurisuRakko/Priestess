@@ -208,86 +208,78 @@
   gap: 10px;
 }
 
-.account-profile-upload input[type="file"] {
-  min-height: 42px;
-  padding: 9px 11px;
+.account-language-editor {
+  display: grid;
+  gap: 14px;
 }
 
-.account-profile-file {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  min-width: 0;
-  border: 1px solid rgba(36, 35, 31, 0.1);
-  border-radius: 8px;
-  padding: 9px 11px;
-  color: var(--color-muted);
-  background: rgba(240, 239, 235, 0.48);
-  font-size: 13px;
-  line-height: 1.4;
-  overflow-wrap: anywhere;
+.account-language-editor__picker {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 10px;
 }
 
-.account-profile-clear {
-  display: flex !important;
-  align-items: center;
-  gap: 8px !important;
-  border: 1px solid rgba(36, 35, 31, 0.1);
-  border-radius: 8px;
-  padding: 10px 11px;
-  background: rgba(240, 239, 235, 0.36);
+.account-language-editor__picker label {
+  margin: 0;
 }
 
-.account-profile-clear input[type="checkbox"] {
-  flex: 0 0 auto;
-  width: 16px;
-  height: 16px;
-  min-height: 0;
-  padding: 0;
-  accent-color: var(--color-accent);
+.account-language-editor__picker select {
+  min-height: 46px;
+  width: 100%;
+  border: 1px solid rgba(36, 35, 31, 0.12);
+  border-radius: var(--radius-control);
+  padding: 0 12px;
+  color: var(--color-heading);
+  background: rgba(252, 251, 248, 0.9);
+  font: inherit;
 }
 
-.account-profile-clear span {
-  color: var(--color-text) !important;
-  font-size: 13px;
-  line-height: 1.45;
+.account-language-editor__picker > .account-button {
+  min-height: 46px;
+  padding: 0 16px;
 }
 
-.account-profile-preview {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+.account-language-editor__list {
+  display: grid;
+  gap: 8px;
+}
+
+.account-language-editor__empty,
+.account-language-editor__row {
   border: 1px solid rgba(36, 35, 31, 0.1);
   border-radius: var(--radius-control);
-  padding: 11px;
-  background: rgba(240, 239, 235, 0.42);
+  background: rgba(252, 251, 248, 0.68);
 }
 
-.account-profile-preview__avatar {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 auto;
-  width: 54px;
-  height: 54px;
-  border-radius: 14px;
+.account-language-editor__empty {
+  padding: 13px 14px;
   color: var(--color-muted);
-  background: rgba(252, 251, 248, 0.82);
-  overflow: hidden;
+  font-size: 14px;
+  line-height: 1.55;
 }
 
-.account-profile-preview__avatar img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+.account-language-editor__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
 }
 
-.account-profile-preview strong,
-.account-profile-preview span {
+.account-language-editor__row span,
+.account-language-editor__row strong {
   display: block;
 }
 
-.account-profile-preview strong {
+.account-language-editor__row span {
+  color: var(--color-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.account-language-editor__row strong {
+  margin-top: 3px;
   color: var(--color-heading);
   font-size: 15px;
   font-weight: 500;
@@ -295,11 +287,34 @@
   overflow-wrap: anywhere;
 }
 
-.account-profile-preview span {
-  margin-top: 3px;
+.account-language-editor__actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.account-language-editor__actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid rgba(36, 35, 31, 0.1);
+  border-radius: 7px;
   color: var(--color-muted);
-  font-size: 13px;
-  line-height: 1.45;
+  background: rgba(252, 251, 248, 0.82);
+  cursor: pointer;
+}
+
+.account-language-editor__actions button:not(:disabled):hover {
+  border-color: rgba(198, 95, 114, 0.26);
+  color: var(--color-accent-deep);
+  background: rgba(198, 95, 114, 0.08);
+}
+
+.account-language-editor__actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
 }
 
 @media (max-width: 520px) {
@@ -331,5 +346,14 @@
 
   .account-avatar-dialog__crop-actions {
     display: grid;
+  }
+
+  .account-language-editor__picker,
+  .account-language-editor__row {
+    grid-template-columns: 1fr;
+  }
+
+  .account-language-editor__actions {
+    justify-content: flex-end;
   }
 }
