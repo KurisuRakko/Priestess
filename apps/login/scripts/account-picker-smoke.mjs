@@ -699,6 +699,7 @@ async function testLocalLoginTurnstileRetry({ loginLocalSessionWithTurnstileRetr
     },
   ]);
   assert.deepEqual(challengeCalls, [{
+    action: "local_login",
     description: "这次登录需要先通过 Cloudflare 验证。",
     siteKey: "site-key-login",
     title: "请完成人机验证",

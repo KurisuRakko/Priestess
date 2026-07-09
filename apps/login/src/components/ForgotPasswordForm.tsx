@@ -61,6 +61,7 @@ export function ForgotPasswordForm({ defaultIdentity, disabled, onBackToLogin, o
         throw new Error(t("验证码组件未配置，请联系管理员"));
       }
       const turnstileToken = await controller.challenge({
+        challengeAction: "password_reset",
         challengeDescription: t("验证通过后会立即回到当前表单并发送重置邮件。"),
         challengeSiteKey: siteKey,
         challengeTitle: t("请完成人机验证"),

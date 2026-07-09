@@ -261,6 +261,7 @@ export function RegisterFirstStepForm({
         throw new Error(t("验证码组件未配置，请联系管理员"));
       }
       const turnstileToken = await controller.challenge({
+        challengeAction: "registration",
         challengeDescription: t("通过后会立即回到注册表单。"),
         challengeSiteKey: siteKey,
         challengeTitle: t("请完成人机验证"),

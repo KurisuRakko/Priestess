@@ -1,6 +1,7 @@
 import { getPriestessApiErrorCode, type LocalLoginCredentials, type LocalSession } from "@priestess/shared";
 
 export type LocalLoginTurnstileChallengeParams = {
+  action: string;
   description: string;
   siteKey: string;
   title: string;
@@ -36,6 +37,7 @@ export async function loginLocalSessionWithTurnstileRetry({
     }
 
     const token = await requestChallenge({
+      action: "local_login",
       description: t("这次登录需要先通过 Cloudflare 验证。"),
       siteKey,
       title: t("请完成人机验证"),

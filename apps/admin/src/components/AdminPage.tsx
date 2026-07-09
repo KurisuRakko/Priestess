@@ -745,6 +745,7 @@ export function AdminPage({ onNavigateToLogin, onNotice }: AdminPageProps) {
                   <label className="admin-password-field">
                     <span>{t("人机验证")}</span>
                     <TurnstileWidget
+                      action="admin_login"
                       disabled={isLoggingIn || isSessionOptionsLoading}
                       onError={() => {
                         setTurnstileToken("");

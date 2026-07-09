@@ -634,7 +634,8 @@ export function App() {
         credentials,
         login: runPasswordLogin,
         readSiteKey: readTurnstileSiteKey,
-        requestChallenge: ({ description, siteKey, title }) => controller.challenge({
+        requestChallenge: ({ action, description, siteKey, title }) => controller.challenge({
+          challengeAction: action,
           challengeDescription: description,
           challengeSiteKey: siteKey,
           challengeTitle: title,

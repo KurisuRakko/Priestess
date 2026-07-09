@@ -56,6 +56,7 @@ type Timeline = {
 };
 
 export type LoginTransitionOverlayParams = {
+  challengeAction?: string;
   challengeDescription?: string;
   challengeSiteKey?: string;
   challengeTitle?: string;
@@ -76,6 +77,7 @@ export type LoginTransitionOverlayParams = {
 };
 
 type RenderState = Required<Pick<LoginTransitionOverlayParams, "loadingTitle" | "title" | "description" | "organizationName" | "username" | "primaryColor">> & {
+  challengeAction: string;
   challengeDescription: string;
   challengeSiteKey: string;
   challengeTitle: string;
@@ -276,6 +278,7 @@ function buildRenderState(
   if (phase === PHASE_LOADING) {
     return {
       challengeDescription: "",
+      challengeAction: "",
       challengeSiteKey: "",
       challengeTitle: "",
       phase: PHASE_LOADING,
@@ -298,6 +301,7 @@ function buildRenderState(
   if (phase === PHASE_CHALLENGE) {
     return {
       challengeDescription: normalizeText(params.challengeDescription),
+      challengeAction: normalizeText(params.challengeAction),
       challengeSiteKey: normalizeText(params.challengeSiteKey),
       challengeTitle: normalizeText(params.challengeTitle) || translatePriestess("login:请完成人机验证"),
       phase,
@@ -319,6 +323,7 @@ function buildRenderState(
 
   return {
     challengeDescription: "",
+    challengeAction: "",
     challengeSiteKey: "",
     challengeTitle: "",
     phase,
@@ -342,6 +347,7 @@ function LoginTransitionOverlayInner(props: RenderState & { onFinish: () => void
   const {
     phase,
     challengeDescription,
+    challengeAction,
     challengeSiteKey,
     challengeTitle,
     loadingTitle,
@@ -515,6 +521,7 @@ function LoginTransitionOverlayInner(props: RenderState & { onFinish: () => void
               </div>
             )}
             <TurnstileWidget
+              action={challengeAction}
               className="login-success-overlay-turnstile"
               containerClassName="login-success-overlay-turnstile-container"
               disabled={false}
@@ -658,6 +665,7 @@ function createOverlayController(params: LoginTransitionOverlayParams = {}): Log
     root.render(
       <LoginTransitionOverlayInner
         challengeDescription={renderState.challengeDescription}
+        challengeAction={renderState.challengeAction}
         challengeSiteKey={renderState.challengeSiteKey}
         challengeTitle={renderState.challengeTitle}
         phase={renderState.phase}

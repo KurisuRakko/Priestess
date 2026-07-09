@@ -9,6 +9,7 @@ const TURNSTILE_TEST_SITE_KEY = "1x00000000000000000000AA";
 type TurnstileAppearance = "always" | "execute" | "interaction-only";
 
 type TurnstileRenderOptions = {
+  action?: string;
   appearance?: TurnstileAppearance;
   callback: (token: string) => void;
   "error-callback": () => void;
@@ -87,6 +88,7 @@ function loadTurnstileScript() {
 }
 
 export function TurnstileWidget({
+  action,
   appearance = "always",
   className = "text-field",
   containerClassName,
@@ -98,6 +100,7 @@ export function TurnstileWidget({
   resetSignal,
   siteKey,
 }: {
+  action?: string;
   appearance?: TurnstileAppearance;
   className?: string;
   containerClassName?: string;
@@ -133,6 +136,7 @@ export function TurnstileWidget({
         containerRef.current.innerHTML = "";
         tokenResolvedRef.current = false;
         widgetIdRef.current = window.turnstile.render(containerRef.current, {
+          ...(action ? { action } : {}),
           appearance,
           sitekey: siteKey,
           theme: "light",
@@ -164,7 +168,7 @@ export function TurnstileWidget({
       }
       widgetIdRef.current = "";
     };
-  }, [appearance, disabled, resetSignal, siteKey]);
+  }, [action, appearance, disabled, resetSignal, siteKey]);
 
   const wrapperStyle = {
     justifyContent: "center",
