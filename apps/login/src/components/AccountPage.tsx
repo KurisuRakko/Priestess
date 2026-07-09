@@ -6,18 +6,20 @@ import {
   Database,
   CircleDashed,
   Laptop,
+  Languages,
   LogOut,
   Mail,
   MapPin,
-  Pencil,
   Phone,
   Server,
   ShieldCheck,
   UserRound,
+  UsersRound,
   WalletCards,
 } from "lucide-react";
 import {
   BrandMark,
+  copyTextToClipboard,
   FloatingBackdrop,
   getLocalSession,
   getPriestessDisplayAvatarUrl,
@@ -34,7 +36,6 @@ import { AccountSecuritySection } from "./AccountSecuritySection";
 import { AccountServicesSection } from "./AccountServicesSection";
 import "./AccountPage.css";
 import { PasswordChangeDialog } from "./PasswordChangeDialog";
-import { ProfileEditDialog } from "./ProfileEditDialog";
 import { ProfileQuickEditDialog, type ProfileQuickEditMode } from "./ProfileQuickEditDialog";
 import {
   getAccountManagementActionSection,
@@ -68,7 +69,6 @@ export function AccountPage({ onNavigateToLogin, onRequireLogin, onNotice }: Acc
   const [isLoading, setIsLoading] = useState(true);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isPasswordChangeOpen, setIsPasswordChangeOpen] = useState(false);
-  const [isProfileEditOpen, setIsProfileEditOpen] = useState(false);
   const [profileQuickEditMode, setProfileQuickEditMode] = useState<ProfileQuickEditMode | null>(null);
   const [session, setSession] = useState<LocalSession | null>(null);
 
@@ -124,8 +124,8 @@ export function AccountPage({ onNavigateToLogin, onRequireLogin, onNotice }: Acc
 
     try {
       // 复制动作只发生在用户点击后，失败时给出可理解反馈，不把数据写入任何本地存储。
-      await navigator.clipboard.writeText(cleanValue);
-      onNotice(t("{{label}}已复制", { label }));
+      const copied = await copyTextToClipboard(cleanValue);
+      onNotice(copied ? t("{{label}}已复制", { label }) : t("浏览器没有开放剪贴板权限"));
     } catch {
       onNotice(t("浏览器没有开放剪贴板权限"));
     }
@@ -163,13 +163,11 @@ export function AccountPage({ onNavigateToLogin, onRequireLogin, onNotice }: Acc
     setActiveSection(actionSection);
     if (accountAction === "password") {
       setIsPasswordChangeOpen(true);
-    } else if (accountAction === "profile") {
-      setIsProfileEditOpen(true);
-    } else {
+    } else if (accountAction === "avatar") {
       setProfileQuickEditMode("avatar");
     }
 
-    // action 只负责首次打开窗口，消费后从 URL 移除，避免刷新或切换 hash 时重复弹出。
+    // action 只负责首次打开目标状态；profile 是已弃用的兼容入口，只进入主界面并清理 URL。
     clearAccountManagementActionFromUrl(actionSection);
   }, [isAuthenticated]);
 
@@ -239,8 +237,8 @@ export function AccountPage({ onNavigateToLogin, onRequireLogin, onNotice }: Acc
                   onEditBirthday={() => setProfileQuickEditMode("birthday")}
                   onEditDisplayName={() => setProfileQuickEditMode("displayName")}
                   onEditEmail={() => setProfileQuickEditMode("email")}
+                  onEditPreferredLanguages={() => setProfileQuickEditMode("preferredLanguages")}
                   onEditPhone={() => setProfileQuickEditMode("phone")}
-                  onOpenProfileEdit={() => setIsProfileEditOpen(true)}
                   user={user}
                 />
               ) : null}
@@ -267,13 +265,6 @@ export function AccountPage({ onNavigateToLogin, onRequireLogin, onNotice }: Acc
           onNotice={onNotice}
           open={isPasswordChangeOpen}
         />
-        <ProfileEditDialog
-          onChanged={(nextUser) => setSession((current) => current ? { ...current, user: nextUser } : current)}
-          onClose={() => setIsProfileEditOpen(false)}
-          onNotice={onNotice}
-          open={isProfileEditOpen}
-          user={user}
-        />
         <ProfileQuickEditDialog
           mode={profileQuickEditMode}
           onChanged={(nextUser) => setSession((current) => current ? { ...current, user: nextUser } : current)}
@@ -286,7 +277,7 @@ export function AccountPage({ onNavigateToLogin, onRequireLogin, onNotice }: Acc
   );
 }
 
-function OverviewSection({ displayName, onCopy, onEditAddress, onEditAvatar, onEditBirthday, onEditDisplayName, onEditEmail, onEditPhone, onOpenProfileEdit, user }: {
+function OverviewSection({ displayName, onCopy, onEditAddress, onEditAvatar, onEditBirthday, onEditDisplayName, onEditEmail, onEditPreferredLanguages, onEditPhone, user }: {
   displayName: string;
   onCopy: (label: string, value: string) => void;
   onEditAddress: () => void;
@@ -294,30 +285,61 @@ function OverviewSection({ displayName, onCopy, onEditAddress, onEditAvatar, onE
   onEditBirthday: () => void;
   onEditDisplayName: () => void;
   onEditEmail: () => void;
+  onEditPreferredLanguages: () => void;
   onEditPhone: () => void;
-  onOpenProfileEdit: () => void;
   user: LocalSession["user"];
 }) {
   const { t } = usePriestessTranslation("account");
+  const preferredLanguages = user?.preferredLanguages ?? [];
   return (
     <AccountSectionView icon={<UserRound size={21} strokeWidth={1.8} />} title={t("你的信息")} description={t("查看当前账户会话中已经确认的账户资料。")}>
       <div className="account-card-grid">
         <CopyInfoCard icon={<Copy size={19} strokeWidth={1.8} />} label={t("用户 ID")} onCopy={onCopy} value={user?.userId || t("未提供")} />
         <DisplayNameInfoCard avatarUrl={user?.avatarUrl || ""} displayName={displayName} onEditAvatar={onEditAvatar} onEditDisplayName={onEditDisplayName} />
         <InfoCard icon={<Server size={19} strokeWidth={1.8} />} label={t("用户名")} value={user?.username || t("未提供")} />
+        <InfoCard icon={<UsersRound size={19} strokeWidth={1.8} />} label={t("用户组")} value={formatUserGroupLabel(user?.role)} />
         <EditableInfoCard ariaLabel={t("修改邮箱")} icon={<Mail size={19} strokeWidth={1.8} />} label={t("邮箱")} onEdit={onEditEmail} value={user?.email || t("未设置")} />
+        <EditableInfoCard ariaLabel={t("修改偏好语言")} icon={<Languages size={19} strokeWidth={1.8} />} label={t("偏好语言")} onEdit={onEditPreferredLanguages} value={formatPreferredLanguagesSummary(preferredLanguages, t)} />
         <EditableCopyInfoCard ariaLabel={t("修改电话号")} icon={<Phone size={19} strokeWidth={1.8} />} label={t("电话号")} onCopy={onCopy} onEdit={onEditPhone} value={user?.phone || t("未设置")} />
         <EditableInfoCard ariaLabel={t("修改生日")} icon={<CalendarDays size={19} strokeWidth={1.8} />} label={t("生日")} onEdit={onEditBirthday} value={user?.birthday || t("未设置")} />
         <EditableCopyInfoCard ariaLabel={t("修改地址")} className="account-info-card--wide" icon={<MapPin size={19} strokeWidth={1.8} />} label={t("地址")} onCopy={onCopy} onEdit={onEditAddress} value={user?.address || t("未设置")} />
       </div>
-      <div className="account-section-actions">
-        <button className="account-button account-button--quiet" onClick={onOpenProfileEdit} type="button">
-          <Pencil aria-hidden="true" size={17} strokeWidth={1.8} />
-          <span>{t("编辑资料")}</span>
-        </button>
-      </div>
     </AccountSectionView>
   );
+}
+
+function formatUserGroupLabel(role: string | undefined) {
+  return role === "admin" ? "Admin" : "User";
+}
+
+function formatPreferredLanguagesSummary(languages: string[], t: (key: string, options?: Record<string, unknown>) => string) {
+  if (languages.length === 0) {
+    return t("未设置");
+  }
+  const summary = languages.slice(0, 4).map((language, index) => `${t(formatPreferredLanguagePriority(index))}: ${formatPreferredLanguageDisplay(language, t)}`);
+  if (languages.length > 4) {
+    summary.push(t("另有 {{count}} 项", { count: languages.length - 4 }));
+  }
+  return summary.join(" · ");
+}
+
+function formatPreferredLanguageDisplay(language: string, t: (key: string) => string) {
+  const labels: Record<string, string> = {
+    "de-DE": "Deutsch",
+    "en-US": "English (US)",
+    "es-ES": "Español",
+    "fr-FR": "Français",
+    "ja-JP": "日本語",
+    "ko-KR": "한국어",
+    "zh-CN": "简体中文",
+    "zh-TW": "繁體中文",
+  };
+  return `${t(labels[language] ?? language)} (${language})`;
+}
+
+function formatPreferredLanguagePriority(index: number) {
+  const labels = ["第一级", "第二级", "第三级", "第四级"];
+  return labels[index] ?? `第 ${index + 1} 级`;
 }
 
 function EditableCopyInfoCard({ ariaLabel, className = "", icon, label, onCopy, onEdit, value }: {

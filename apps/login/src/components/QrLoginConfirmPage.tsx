@@ -530,6 +530,7 @@ function BottomActions({
   status: PageStatus;
 }) {
   const { t } = usePriestessTranslation("login");
+  const isActionBlocked = isOverlayOpen || isSubmitting !== null;
   return (
     <motion.div
       animate={{ opacity: 1, y: 0 }}
@@ -544,21 +545,21 @@ function BottomActions({
           <motion.div animate={{ opacity: 1, y: 0 }} className="qr-mobile-action-stack" exit={{ opacity: 0, y: -10 }} initial={{ opacity: 0, y: 10 }} key="pending">
             <motion.button
               className="qr-mobile-primary"
-              disabled={isSubmitting !== null || !canConfirm}
+              disabled={isActionBlocked || !canConfirm}
               onClick={onConfirm}
               type="button"
-              whileHover={isSubmitting ? {} : { scale: 1.02 }}
-              whileTap={isSubmitting ? {} : { scale: 0.98 }}
+              whileHover={isActionBlocked ? {} : { scale: 1.02 }}
+              whileTap={isActionBlocked ? {} : { scale: 0.98 }}
             >
               {isSubmitting === "agreed" ? <Loader2 className="qr-mobile-spin" size={22} /> : mainConfirmLabel}
             </motion.button>
             <motion.button
               className="qr-mobile-secondary"
-              disabled={isSubmitting !== null || !canReject}
+              disabled={isActionBlocked || !canReject}
               onClick={onReject}
               type="button"
-              whileHover={isSubmitting ? {} : { scale: 1.02 }}
-              whileTap={isSubmitting ? {} : { scale: 0.98 }}
+              whileHover={isActionBlocked ? {} : { scale: 1.02 }}
+              whileTap={isActionBlocked ? {} : { scale: 0.98 }}
             >
               {isSubmitting === "rejected" ? <Loader2 className="qr-mobile-spin" size={20} /> : t("取消")}
             </motion.button>

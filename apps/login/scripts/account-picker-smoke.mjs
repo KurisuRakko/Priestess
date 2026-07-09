@@ -42,7 +42,7 @@ try {
   ({ loginI18nResources } = loginI18nModule);
   const { resolveLoginLayoutState } = loginLayoutStateModule;
   ({ PriestessI18nProvider } = sharedI18nModule);
-  const { activateLocalAccountChoice, authorizeLocalSession, listLocalAccountChoices, loginLocalSession, removeLocalAccountChoice, PriestessApiError } = sharedApiModule;
+  const { activateLocalAccountChoice, authorizeLocalSession, getPriestessApiErrorMessage, listLocalAccountChoices, loginLocalSession, removeLocalAccountChoice, PriestessApiError } = sharedApiModule;
 
   testAuthRequestHelpers({ getAuthRequestAppLabel, getAuthRequestReturnToOrigin, readAuthRequest });
   testAccountAuthorizationHelpers({ buildAuthAccountAuthorizeParams, getAuthAccountAuthorizeBlocker, shouldShowAuthAccountPicker });
@@ -53,7 +53,7 @@ try {
   testLoginFormBackButton({ LoginForm });
   await testSharedApiContract({ activateLocalAccountChoice, authorizeLocalSession, listLocalAccountChoices, loginLocalSession, removeLocalAccountChoice });
   await testLocalLoginTurnstileRetry({ loginLocalSessionWithTurnstileRetry, PriestessApiError });
-  testAccountChoiceErrorRedaction({ getAuthAccountChoiceErrorMessage, redactSensitiveAuthText });
+  testAccountChoiceErrorRedaction({ getAuthAccountChoiceErrorMessage, getPriestessApiErrorMessage, redactSensitiveAuthText });
   await testAccountChoiceFallback({ readAuthAccountChoicesForRequest });
 
   console.log("account-picker smoke passed");
@@ -122,10 +122,10 @@ function testAccountAuthorizationHelpers({ buildAuthAccountAuthorizeParams, getA
 
 function testAccountManagementActionHelpers({ buildAccountManagementActionPath, getAccountManagementActionSection, normalizePriestessNextPath, readAccountManagementAction, removeAccountManagementActionFromSearch, resolveAccountManagementActionTarget }) {
   assert.equal(buildAccountManagementActionPath("password"), "/manage?account_action=password#security");
-  assert.equal(buildAccountManagementActionPath("profile"), "/manage?account_action=profile");
+  assert.equal(buildAccountManagementActionPath("profile"), "/manage");
   assert.equal(buildAccountManagementActionPath("avatar"), "/manage?account_action=avatar");
   assert.equal(normalizePriestessNextPath(buildAccountManagementActionPath("password")), "/manage?account_action=password#security");
-  assert.equal(normalizePriestessNextPath(buildAccountManagementActionPath("profile")), "/manage?account_action=profile");
+  assert.equal(normalizePriestessNextPath(buildAccountManagementActionPath("profile")), "/manage");
   assert.equal(normalizePriestessNextPath(buildAccountManagementActionPath("avatar")), "/manage?account_action=avatar");
   assert.equal(readAccountManagementAction("?account_action=password"), "password");
   assert.equal(readAccountManagementAction("?account_action=profile"), "profile");
@@ -135,6 +135,7 @@ function testAccountManagementActionHelpers({ buildAccountManagementActionPath, 
   assert.equal(getAccountManagementActionSection("profile"), "overview");
   assert.equal(getAccountManagementActionSection("avatar"), "overview");
   assert.equal(removeAccountManagementActionFromSearch("?account_action=password&next=1"), "?next=1");
+  assert.equal(removeAccountManagementActionFromSearch("?account_action=profile"), "");
   assert.equal(removeAccountManagementActionFromSearch("?account_action=avatar"), "");
 
   const editableAccount = buildAccount({
@@ -149,7 +150,7 @@ function testAccountManagementActionHelpers({ buildAccountManagementActionPath, 
     username: "alice",
   });
   assert.deepEqual(resolveAccountManagementActionTarget(editableAccount, "profile", matchingSession), {
-    path: "/manage?account_action=profile",
+    path: "/manage",
     status: "ready",
   });
   assert.deepEqual(resolveAccountManagementActionTarget(editableAccount, "password", buildLocalSession({ userId: "u-bob", username: "bob" })), {
@@ -808,7 +809,7 @@ async function testAccountChoiceFallback({ readAuthAccountChoicesForRequest }) {
   );
 }
 
-function testAccountChoiceErrorRedaction({ getAuthAccountChoiceErrorMessage, redactSensitiveAuthText }) {
+function testAccountChoiceErrorRedaction({ getAuthAccountChoiceErrorMessage, getPriestessApiErrorMessage, redactSensitiveAuthText }) {
   assert.equal(
     redactSensitiveAuthText("redirect failed: https://example.com/callback?login_code=abc123&state=ok token=xyz"),
     "redirect failed: https://example.com/callback?login_code=[已隐藏]&state=ok token=[已隐藏]",
@@ -820,6 +821,10 @@ function testAccountChoiceErrorRedaction({ getAuthAccountChoiceErrorMessage, red
   assert.equal(
     getAuthAccountChoiceErrorMessage(new Error("choice_id=choice-secret private_key=secret"), "fallback"),
     "choice_id=[已隐藏] private_key=[已隐藏]",
+  );
+  assert.equal(
+    getPriestessApiErrorMessage(new Error("access_token=abc123 refresh_token=def456")),
+    "access_token=[已隐藏] refresh_token=[已隐藏]",
   );
 }
 

@@ -21,6 +21,10 @@ export class PriestessApiError extends Error {
 export function getPriestessApiErrorMessage(error: unknown, fallback?: string) {
   const resolvedFallback = fallback ?? translatePriestess("errors:requestFailed");
 
+  return redactSensitiveAuthText(resolvePriestessApiErrorMessage(error, resolvedFallback));
+}
+
+function resolvePriestessApiErrorMessage(error: unknown, resolvedFallback: string) {
   if (error instanceof PriestessApiError && error.message) {
     return error.message;
   }
@@ -44,6 +48,14 @@ export function getPriestessApiErrorCode(error: unknown) {
   return error instanceof PriestessApiError ? readApiError(error.payload)?.code ?? "" : "";
 }
 
+export function redactSensitiveAuthText(value: string) {
+  // 错误消息可能来自后端或浏览器异常；展示前统一隐藏凭证、cookie、会话和一次性授权码。
+  return value.replace(
+    /(^|[?#&\s,;])((?:access_token|choice_id|client_secret|cookie|id_token|invite_code|login_code|otp_code|password|private_key|refresh_token|secret|session|session_id|token|totp_code|verification_code)\s*[=:]\s*)[^\s&#&,;]+/gi,
+    `$1$2${translatePriestess("common:[已隐藏]")}`,
+  );
+}
+
 export function resolveErrorMessage(payload: unknown, status: number) {
   if (payload === NON_JSON_PAYLOAD) {
     return translatePriestess("errors:apiRequestFailed", { status });
@@ -55,13 +67,20 @@ export function resolveErrorMessage(payload: unknown, status: number) {
   }
   if (apiError?.code === "invalid_admin_password") return translatePriestess("errors:adminPasswordInvalid");
   if (apiError?.code === "admin_login_required") return translatePriestess("errors:adminLoginRequired");
+  if (apiError?.code === "admin_turnstile_required") return translatePriestess("errors:turnstileRequired");
+  if (apiError?.code === "admin_turnstile_not_configured") return translatePriestess("errors:registrationTurnstileMissing");
+  if (apiError?.code === "admin_turnstile_failed") return translatePriestess("errors:turnstileFailed");
   if (apiError?.code === "password_reset_invalid") return translatePriestess("errors:passwordResetInvalid");
+  if (apiError?.code === "password_reset_turnstile_not_configured") return translatePriestess("errors:registrationTurnstileMissing");
+  if (apiError?.code === "password_reset_turnstile_failed") return translatePriestess("errors:turnstileFailed");
   if (apiError?.code === "local_login_temporarily_locked") return translatePriestess("errors:localLoginTemporarilyLocked");
   if (apiError?.code === "local_login_turnstile_required") return translatePriestess("errors:turnstileRequired");
   if (apiError?.code === "local_login_turnstile_not_configured") return translatePriestess("errors:registrationTurnstileMissing");
   if (apiError?.code === "local_login_turnstile_failed") return translatePriestess("errors:turnstileFailed");
   if (apiError?.code === "weak_local_password") return translatePriestess("errors:weakPassword");
   if (["local_user_exists", "register_identity_exists"].includes(apiError?.code ?? "")) return translatePriestess("errors:localUserExists");
+  if (["registration_invite_invalid", "registration_invite_required"].includes(apiError?.code ?? "")) return translatePriestess("errors:registrationInviteInvalid");
+  if (apiError?.code === "registration_invite_not_configured") return translatePriestess("errors:registrationInviteMissing");
   if (["registration_verification_invalid", "register_verification_invalid", "invalid_register_code", "invalid_registration_code"].includes(apiError?.code ?? "")) return translatePriestess("errors:registrationCodeInvalid");
   if (["registration_turnstile_failed", "turnstile_invalid", "turnstile_required"].includes(apiError?.code ?? "")) return translatePriestess("errors:turnstileFailed");
   if (apiError?.code === "registration_turnstile_not_configured") return translatePriestess("errors:registrationTurnstileMissing");

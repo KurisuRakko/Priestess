@@ -7,6 +7,7 @@ import { translatePriestess } from "./i18n";
 
 export type RequestOptions = {
   body?: unknown;
+  headers?: Record<string, string>;
   method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   searchParams?: URLSearchParams;
   signal?: AbortSignal;
@@ -31,6 +32,7 @@ export async function requestJson(path: string, options: RequestOptions = {}) {
     headers: {
       Accept: "application/json",
       ...(options.body === undefined || isFormData ? {} : { "Content-Type": "application/json" }),
+      ...options.headers,
     },
     method: options.method ?? "GET",
     signal: options.signal,

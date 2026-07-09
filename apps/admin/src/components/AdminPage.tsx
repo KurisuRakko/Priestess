@@ -12,17 +12,19 @@ import {
   Search,
   Server,
   ShieldAlert,
+  ShieldCheck,
   UserRound,
   UsersRound,
 } from "lucide-react";
 import {
   BrandMark,
   FloatingBackdrop,
+  TurnstileWidget,
+  getAdminSessionOptions,
   getAdminSession,
   getPriestessDisplayAvatarUrl,
   getPriestessApiBaseLabel,
   getPriestessApiErrorMessage,
-  detectPriestessLanguage,
   loginAdminSession,
   listAdminQrSessions,
   listAdminUserPasskeys,
@@ -31,14 +33,35 @@ import {
   listPasswordResetRequests,
   logoutAdminSession,
   translatePriestess,
+  updateAdminUserRole,
   usePriestessTranslation,
   type AdminSession,
   type AdminPasswordResetRequest,
   type AdminPasskey,
   type AdminQrSession,
+  type AdminSessionOptions,
   type AdminUser,
   type LoginRiskBucket,
+  type PriestessUserRole,
 } from "@priestess/shared";
+import {
+  compareUserGroupPriority,
+  describeContext,
+  formatDateTime,
+  formatEnabled,
+  formatPasskeyDevice,
+  formatPasskeyStatus,
+  formatPasskeySummary,
+  formatPasskeyTransports,
+  formatQrStatus,
+  formatRoleAction,
+  formatStatusSummary,
+  formatUserRole,
+  getNextUserRole,
+  getPasskeyStatusTone,
+  getQrStatusTone,
+  shortId,
+} from "./AdminPageFormatters";
 import "./AdminPage.css";
 
 type AdminPageProps = {
@@ -61,22 +84,23 @@ const RISK_STATUS_OPTIONS = [
   { label: "全部", value: "all" },
 ];
 
-const dateTimeFormatter = new Intl.DateTimeFormat(detectPriestessLanguage(), {
-  day: "2-digit",
-  hour: "2-digit",
-  minute: "2-digit",
-  month: "2-digit",
-});
+type RoleConfirmation = {
+  role: PriestessUserRole;
+  user: AdminUser;
+};
 
 export function AdminPage({ onNavigateToLogin, onNotice }: AdminPageProps) {
   const { t } = usePriestessTranslation("admin");
   const [session, setSession] = useState<AdminSession | null>(null);
+  const [sessionOptions, setSessionOptions] = useState<AdminSessionOptions | null>(null);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [qrSessions, setQrSessions] = useState<AdminQrSession[]>([]);
   const [riskBuckets, setRiskBuckets] = useState<LoginRiskBucket[]>([]);
   const [passwordResetRequests, setPasswordResetRequests] = useState<AdminPasswordResetRequest[]>([]);
   const [passkeys, setPasskeys] = useState<AdminPasskey[]>([]);
   const [adminLoginError, setAdminLoginError] = useState("");
+  const [roleConfirmation, setRoleConfirmation] = useState<RoleConfirmation | null>(null);
+  const [roleConfirmationError, setRoleConfirmationError] = useState("");
   const [selectedUserId, setSelectedUserId] = useState("");
   const [query, setQuery] = useState("");
   const [qrStatus, setQrStatus] = useState("all");
@@ -84,24 +108,55 @@ export function AdminPage({ onNavigateToLogin, onNotice }: AdminPageProps) {
   const [dashboardError, setDashboardError] = useState("");
   const [passkeyError, setPasskeyError] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+  const [isSessionOptionsLoading, setIsSessionOptionsLoading] = useState(true);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [isPasskeysLoading, setIsPasskeysLoading] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [isRoleUpdating, setIsRoleUpdating] = useState(false);
   const [lastLoadedAt, setLastLoadedAt] = useState<Date | null>(null);
+  const [turnstileResetSignal, setTurnstileResetSignal] = useState(0);
+  const [turnstileToken, setTurnstileToken] = useState("");
   const adminPasswordInputRef = useRef<HTMLInputElement>(null);
+  const rolePasswordInputRef = useRef<HTMLInputElement>(null);
+  const adminTurnstileRequired = Boolean(sessionOptions?.turnstileRequired);
+  const adminTurnstileSiteKey = sessionOptions?.turnstileSiteKey ?? "";
+  const adminTurnstileMissing = adminTurnstileRequired && !adminTurnstileSiteKey;
+
+  useEffect(() => {
+    const abortController = new AbortController();
+    setIsSessionOptionsLoading(true);
+    void getAdminSessionOptions({ signal: abortController.signal })
+      .then((options) => {
+        if (!abortController.signal.aborted) {
+          setSessionOptions(options);
+        }
+      })
+      .catch(() => {
+        if (!abortController.signal.aborted) {
+          setSessionOptions(null);
+        }
+      })
+      .finally(() => {
+        if (!abortController.signal.aborted) {
+          setIsSessionOptionsLoading(false);
+        }
+      });
+    return () => abortController.abort();
+  }, []);
 
   const visibleUsers = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
-    if (!normalizedQuery) {
-      return users;
-    }
-
-    return users.filter((user) => {
-      return [user.username, user.displayName, user.email, user.userId]
-        .join(" ")
-        .toLowerCase()
-        .includes(normalizedQuery);
-    });
+    return users
+      .map((user, index) => ({ index, user }))
+      .filter(({ user }) => {
+        if (!normalizedQuery) return true;
+        return [user.username, user.displayName, user.email, user.userId]
+          .join(" ")
+          .toLowerCase()
+          .includes(normalizedQuery);
+      })
+      .sort((left, right) => compareUserGroupPriority(left.user, right.user) || left.index - right.index)
+      .map(({ user }) => user);
   }, [query, users]);
 
   const selectedUser = useMemo(() => {
@@ -259,8 +314,69 @@ export function AdminPage({ onNavigateToLogin, onNotice }: AdminPageProps) {
     return () => abortController.abort();
   }, [selectedUserId]);
 
+  useEffect(() => {
+    if (!roleConfirmation) {
+      return undefined;
+    }
+
+    const timer = window.setTimeout(() => rolePasswordInputRef.current?.focus(), 0);
+    return () => window.clearTimeout(timer);
+  }, [roleConfirmation]);
+
   const refreshDashboard = () => {
     void loadDashboard().then(() => onNotice(t("管理数据已刷新")));
+  };
+
+  const openRoleConfirmation = (user: AdminUser) => {
+    setRoleConfirmation({
+      role: getNextUserRole(user.role),
+      user,
+    });
+    setRoleConfirmationError("");
+  };
+
+  const closeRoleConfirmation = () => {
+    if (isRoleUpdating) {
+      return;
+    }
+
+    setRoleConfirmation(null);
+    setRoleConfirmationError("");
+    if (rolePasswordInputRef.current) {
+      rolePasswordInputRef.current.value = "";
+    }
+  };
+
+  const submitRoleChange = async(event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!roleConfirmation) {
+      return;
+    }
+
+    const passwordInput = rolePasswordInputRef.current;
+    const password = passwordInput?.value ?? "";
+    if (!password) {
+      setRoleConfirmationError(t("请输入管理员密码"));
+      passwordInput?.focus();
+      return;
+    }
+
+    setIsRoleUpdating(true);
+    setRoleConfirmationError("");
+    try {
+      const updatedUser = await updateAdminUserRole(roleConfirmation.user.userId, roleConfirmation.role, password);
+      setUsers((currentUsers) => currentUsers.map((user) => user.userId === updatedUser.userId ? updatedUser : user));
+      setRoleConfirmation(null);
+      onNotice(t("权限已更新"));
+    } catch (error) {
+      setRoleConfirmationError(getPriestessApiErrorMessage(error, t("权限更新失败")));
+      passwordInput?.focus();
+    } finally {
+      if (passwordInput) {
+        passwordInput.value = "";
+      }
+      setIsRoleUpdating(false);
+    }
   };
 
   const submitAdminLogin = async(event: FormEvent<HTMLFormElement>) => {
@@ -273,16 +389,25 @@ export function AdminPage({ onNavigateToLogin, onNotice }: AdminPageProps) {
       passwordInput?.focus();
       return;
     }
+    if (adminTurnstileRequired && !turnstileToken) {
+      setAdminLoginError(adminTurnstileMissing ? t("管理台人机验证未配置，请联系管理员") : t("请先完成人机验证"));
+      return;
+    }
 
     setIsLoggingIn(true);
     setAdminLoginError("");
     try {
-      const nextSession = await loginAdminSession(password);
+      const nextSession = await loginAdminSession({
+        password,
+        ...(adminTurnstileRequired ? { turnstileToken } : {}),
+      });
       setSession(nextSession);
+      resetAdminTurnstile();
       onNotice(t("管理员已登录"));
       await loadDashboard();
     } catch (error) {
       setAdminLoginError(getPriestessApiErrorMessage(error, t("管理员登录失败")));
+      resetAdminTurnstile();
       passwordInput?.focus();
     } finally {
       if (passwordInput) {
@@ -290,6 +415,11 @@ export function AdminPage({ onNavigateToLogin, onNotice }: AdminPageProps) {
       }
       setIsLoggingIn(false);
     }
+  };
+
+  const resetAdminTurnstile = () => {
+    setTurnstileToken("");
+    setTurnstileResetSignal((current) => current + 1);
   };
 
   const logout = async() => {
@@ -302,6 +432,7 @@ export function AdminPage({ onNavigateToLogin, onNotice }: AdminPageProps) {
       setRiskBuckets([]);
       setPasswordResetRequests([]);
       setPasskeys([]);
+      setRoleConfirmation(null);
       onNotice(t("已退出登录"));
     } catch (error) {
       onNotice(getPriestessApiErrorMessage(error, t("退出登录失败")));
@@ -351,7 +482,7 @@ export function AdminPage({ onNavigateToLogin, onNotice }: AdminPageProps) {
             tone={session?.authenticated ? "good" : "warn"}
             value={session?.authenticated ? t("已登录") : t("未登录")}
           />
-          <StatusItem icon={<Clock3 size={17} strokeWidth={1.8} />} label={t("上次刷新")} value={lastLoadedAt ? dateTimeFormatter.format(lastLoadedAt) : t("未刷新")} />
+          <StatusItem icon={<Clock3 size={17} strokeWidth={1.8} />} label={t("上次刷新")} value={lastLoadedAt ? formatDateTime(lastLoadedAt.toISOString()) : t("未刷新")} />
         </div>
 
         {dashboardError ? (
@@ -395,6 +526,7 @@ export function AdminPage({ onNavigateToLogin, onNotice }: AdminPageProps) {
                   <tr>
                     <th>{t("用户")}</th>
                     <th>{t("邮箱")}</th>
+                    <th>{t("用户组 / 权限")}</th>
                     <th>{t("状态")}</th>
                     <th>{t("更新时间")}</th>
                   </tr>
@@ -414,6 +546,15 @@ export function AdminPage({ onNavigateToLogin, onNotice }: AdminPageProps) {
                         </button>
                       </td>
                       <td>{user.email || t("未设置")}</td>
+                      <td>
+                        <div className="admin-role-cell">
+                          <StatusBadge label={formatUserRole(user.role)} tone={user.role === "admin" ? "warn" : "neutral"} />
+                          <button className="admin-role-button" disabled={isRoleUpdating} onClick={() => openRoleConfirmation(user)} type="button">
+                            <ShieldCheck aria-hidden="true" size={15} strokeWidth={1.8} />
+                            <span>{formatRoleAction(user.role)}</span>
+                          </button>
+                        </div>
+                      </td>
                       <td><StatusBadge label={formatEnabled(user.enabled)} tone={user.enabled === false ? "danger" : "good"} /></td>
                       <td>{formatDateTime(user.updatedAt || user.createdAt)}</td>
                     </tr>
@@ -591,6 +732,7 @@ export function AdminPage({ onNavigateToLogin, onNotice }: AdminPageProps) {
                   <span>{t("管理员密码")}</span>
                   <input
                     autoComplete="current-password"
+                    disabled={isLoggingIn || isSessionOptionsLoading}
                     name="admin-password"
                     onChange={(event) => {
                       if (adminLoginError) setAdminLoginError("");
@@ -599,16 +741,83 @@ export function AdminPage({ onNavigateToLogin, onNotice }: AdminPageProps) {
                     type="password"
                   />
                 </label>
+                {adminTurnstileRequired ? (
+                  <label className="admin-password-field">
+                    <span>{t("人机验证")}</span>
+                    <TurnstileWidget
+                      disabled={isLoggingIn || isSessionOptionsLoading}
+                      onError={() => {
+                        setTurnstileToken("");
+                        setAdminLoginError(t("人机验证加载失败，请检查网络后重试"));
+                      }}
+                      onExpire={() => {
+                        setTurnstileToken("");
+                        setAdminLoginError(t("人机验证已过期，请重新完成验证"));
+                      }}
+                      onToken={(token) => {
+                        setTurnstileToken(token);
+                        if (adminLoginError) {
+                          setAdminLoginError("");
+                        }
+                      }}
+                      resetSignal={turnstileResetSignal}
+                      siteKey={adminTurnstileSiteKey}
+                    />
+                  </label>
+                ) : null}
                 {adminLoginError ? <div className="admin-inline-error">{adminLoginError}</div> : null}
-                <button className="admin-button admin-button--primary" disabled={isLoggingIn} type="submit">
+                <button className="admin-button admin-button--primary" disabled={isLoggingIn || isSessionOptionsLoading} type="submit">
                   <LockKeyhole aria-hidden="true" size={17} strokeWidth={1.8} />
-                  <span>{isLoggingIn ? t("登录中") : t("登录 Manage")}</span>
+                  <span>{isSessionOptionsLoading ? t("正在读取登录策略") : isLoggingIn ? t("登录中") : t("登录 Manage")}</span>
                 </button>
               </form>
             </div>
           </section>
         )}
       </section>
+
+      {roleConfirmation ? (
+        <div className="admin-modal-backdrop" onMouseDown={(event) => {
+          if (event.target === event.currentTarget) {
+            closeRoleConfirmation();
+          }
+        }}>
+          <form className="admin-role-dialog" onSubmit={submitRoleChange} role="dialog" aria-modal="true" aria-labelledby="admin-role-dialog-title">
+            <div className="admin-role-dialog__header">
+              <span aria-hidden="true">
+                <ShieldCheck size={20} strokeWidth={1.8} />
+              </span>
+              <div>
+                <h2 id="admin-role-dialog-title">{t("更新用户权限")}</h2>
+                <p>{t("将 {{username}} 设为{{role}}", { role: formatUserRole(roleConfirmation.role), username: roleConfirmation.user.username })}</p>
+              </div>
+            </div>
+            <p className="admin-role-dialog__note">{t("角色变更会撤销该用户当前 Rakko 服务刷新会话。")}</p>
+            <label className="admin-password-field">
+              <span>{t("管理员密码")}</span>
+              <input
+                autoComplete="current-password"
+                name="role-admin-password"
+                onChange={() => {
+                  if (roleConfirmationError) setRoleConfirmationError("");
+                }}
+                ref={rolePasswordInputRef}
+                type="password"
+              />
+            </label>
+            {roleConfirmationError ? <div className="admin-inline-error">{roleConfirmationError}</div> : null}
+            <div className="admin-role-dialog__actions">
+              <button className="admin-button admin-button--quiet" disabled={isRoleUpdating} onClick={closeRoleConfirmation} type="button">
+                <span>{t("取消")}</span>
+              </button>
+              <button className="admin-button admin-button--primary" disabled={isRoleUpdating} type="submit">
+                <ShieldCheck aria-hidden="true" size={17} strokeWidth={1.8} />
+                <span>{isRoleUpdating ? t("更新中") : t("确认更新")}</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
     </main>
   );
 }
@@ -705,168 +914,4 @@ function getPasswordResetStatusTone(request: AdminPasswordResetRequest): "danger
   }
 
   return "warn";
-}
-
-function formatPasskeySummary(passkeys: AdminPasskey[], activeCount: number, backedUpCount: number, selectedUser: AdminUser | null) {
-  if (!selectedUser) {
-    return translatePriestess("admin:无用户数据");
-  }
-  if (passkeys.length === 0) {
-    return selectedUser.email || selectedUser.username || translatePriestess("admin:暂无 Passkey");
-  }
-
-  return translatePriestess("admin:{{activeCount}} 个可用 · {{backedUpCount}} 个已备份", { activeCount, backedUpCount });
-}
-
-function formatPasskeyStatus(passkey: AdminPasskey) {
-  if (passkey.disabledAt) {
-    return translatePriestess("admin:已禁用");
-  }
-  if (passkey.backedUp === true) {
-    return translatePriestess("admin:可用");
-  }
-
-  return translatePriestess("admin:需关注");
-}
-
-function getPasskeyStatusTone(passkey: AdminPasskey): "danger" | "good" | "neutral" | "warn" {
-  if (passkey.disabledAt) {
-    return "danger";
-  }
-  if (passkey.backedUp === true) {
-    return "good";
-  }
-
-  return "warn";
-}
-
-function formatPasskeyDevice(value: string) {
-  if (value === "singleDevice") {
-    return translatePriestess("admin:单设备");
-  }
-  if (value === "multiDevice") {
-    return translatePriestess("admin:多设备");
-  }
-
-  return value || translatePriestess("admin:平台凭据");
-}
-
-function formatPasskeyTransports(values: string[]) {
-  if (values.length === 0) {
-    return translatePriestess("admin:未提供");
-  }
-
-  return values.join(" · ");
-}
-
-function formatEnabled(enabled: boolean | null) {
-  if (enabled === false) {
-    return translatePriestess("admin:停用");
-  }
-
-  return translatePriestess("admin:启用");
-}
-
-function formatDateTime(value: string) {
-  if (!value) {
-    return translatePriestess("admin:未提供");
-  }
-
-  const numericValue = Number(value);
-  const date = Number.isFinite(numericValue) && value.trim() !== ""
-    ? new Date(numericValue < 1_000_000_000_000 ? numericValue * 1000 : numericValue)
-    : new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return dateTimeFormatter.format(date);
-}
-
-function formatQrStatus(status: string) {
-  const labels: Record<string, string> = {
-    confirmed: translatePriestess("admin:已确认"),
-    expired: translatePriestess("admin:已过期"),
-    pending: translatePriestess("admin:等待"),
-    pre_confirmed: translatePriestess("admin:二次确认"),
-    rejected: translatePriestess("admin:已拒绝"),
-    scanned: translatePriestess("admin:已扫码"),
-  };
-
-  return labels[status] ?? status;
-}
-
-function getQrStatusTone(status: string): "danger" | "good" | "neutral" | "warn" {
-  if (status === "confirmed") {
-    return "good";
-  }
-  if (status === "rejected" || status === "expired") {
-    return "danger";
-  }
-  if (status === "pre_confirmed" || status === "scanned") {
-    return "warn";
-  }
-
-  return "neutral";
-}
-
-function formatStatusSummary(items: AdminQrSession[]) {
-  const activeCount = items.filter((item) => ["pending", "scanned", "pre_confirmed"].includes(item.status)).length;
-  return translatePriestess("admin:{{count}} 个进行中", { count: activeCount });
-}
-
-function shortId(value: string) {
-  if (value.length <= 12) {
-    return value;
-  }
-
-  return `${value.slice(0, 6)}...${value.slice(-4)}`;
-}
-
-function describeContext(value: unknown) {
-  const parsedValue = parseContext(value);
-  if (!parsedValue) {
-    return translatePriestess("admin:无上下文");
-  }
-
-  if (typeof parsedValue === "string") {
-    return parsedValue;
-  }
-
-  const parts = Object.entries(parsedValue)
-    .filter(([, entryValue]) => ["number", "string", "boolean"].includes(typeof entryValue))
-    .slice(0, 4)
-    .map(([key, entryValue]) => `${key}: ${String(entryValue)}`);
-
-  return parts.length > 0 ? parts.join(" · ") : translatePriestess("admin:无上下文");
-}
-
-function parseContext(value: unknown): Record<string, unknown> | string | null {
-  if (typeof value === "string") {
-    const cleanValue = value.trim();
-    if (!cleanValue) {
-      return null;
-    }
-
-    try {
-      const parsed = JSON.parse(cleanValue) as unknown;
-      if (isRecord(parsed)) {
-        return parsed;
-      }
-    } catch {
-      return cleanValue;
-    }
-
-    return cleanValue;
-  }
-
-  if (isRecord(value)) {
-    return value;
-  }
-
-  return null;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

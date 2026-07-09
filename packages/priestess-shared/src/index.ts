@@ -1,7 +1,10 @@
 export * from "./components/BrandMark";
 export * from "./components/FloatingBackdrop";
 export * from "./components/Toast";
+export * from "./components/TurnstileWidget";
 export * from "./lib/avatar";
+export * from "./lib/browserCompat";
 export * from "./lib/i18n";
 export * from "./lib/priestessApi";
+export { redactSensitiveAuthText } from "./lib/priestessApiErrors";
 export * from "./lib/priestessUserApi";

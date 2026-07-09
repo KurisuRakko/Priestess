@@ -29,6 +29,7 @@ export function AccountPrivacySection() {
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [lastLoadedAt, setLastLoadedAt] = useState<Date | null>(null);
+  const [canAutoLoadMore, setCanAutoLoadMore] = useState(() => typeof IntersectionObserver !== "undefined");
   const isFetchingRef = useRef(false);
   const nextOffsetRef = useRef<number | null>(0);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
@@ -76,8 +77,12 @@ export function AccountPrivacySection() {
   }, [loadActivities]);
 
   useEffect(() => {
+    setCanAutoLoadMore(typeof IntersectionObserver !== "undefined");
+  }, []);
+
+  useEffect(() => {
     const sentinel = sentinelRef.current;
-    if (!sentinel || !hasMore || isLoading || isLoadingMore) return undefined;
+    if (!canAutoLoadMore || !sentinel || !hasMore || isLoading || isLoadingMore) return undefined;
     const observer = new IntersectionObserver((entries) => {
       if (entries.some((entry) => entry.isIntersecting)) {
         void loadActivities();
@@ -85,7 +90,7 @@ export function AccountPrivacySection() {
     }, { rootMargin: "320px 0px" });
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [hasMore, isLoading, isLoadingMore, loadActivities]);
+  }, [canAutoLoadMore, hasMore, isLoading, isLoadingMore, loadActivities]);
 
   const latestActivity = activities[0] ?? null;
 
@@ -148,8 +153,13 @@ export function AccountPrivacySection() {
                   <RefreshCw aria-hidden="true" size={16} strokeWidth={1.8} />
                   <span>{t("继续读取下一批活动")}</span>
                 </>
-              ) : hasMore ? (
+              ) : hasMore && canAutoLoadMore ? (
                 <span>{t("继续向下滑动加载更多")}</span>
+              ) : hasMore ? (
+                <button className="account-button account-button--quiet" onClick={() => void loadActivities()} type="button">
+                  <RefreshCw aria-hidden="true" size={16} strokeWidth={1.8} />
+                  <span>{t("加载更多")}</span>
+                </button>
               ) : (
                 <span>{t("已显示全部可见活动")}</span>
               )}

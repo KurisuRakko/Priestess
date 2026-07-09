@@ -1,5 +1,5 @@
 import { requestJson, type RequestOptions } from "./priestessApiRequest";
-import type { LocalPasskey, LocalPasswordManagerPreference, LocalSession, LocalSessionUser, QrSessionStatus } from "./priestessApi";
+import type { LocalPasskey, LocalPasswordManagerPreference, LocalSession, LocalSessionUser, PriestessUserRole, QrSessionStatus } from "./priestessApi";
 import { translatePriestess } from "./i18n";
 
 type JsonRecord = Record<string, unknown>;
@@ -138,6 +138,7 @@ export async function updateLocalProfile(params: {
   email?: string;
   passwordManager?: { label?: string; provider: string } | null;
   phone?: string | null;
+  preferredLanguages?: string[] | null;
 }, options: Pick<RequestOptions, "signal"> = {}) {
   const body: JsonRecord = {};
   if (params.address !== undefined) body.address = params.address;
@@ -147,6 +148,7 @@ export async function updateLocalProfile(params: {
   if (params.email !== undefined) body.email = params.email;
   if (params.passwordManager !== undefined) body.password_manager = params.passwordManager;
   if (params.phone !== undefined) body.phone = params.phone;
+  if (params.preferredLanguages !== undefined) body.preferred_languages = params.preferredLanguages;
 
   const payload = await requestJson(`${PRIESTESS_AUTH_BASE}/profile`, {
     body,
@@ -497,9 +499,15 @@ function normalizeLocalSessionUser(payload: unknown): LocalSessionUser | null {
     enabled: readBoolean(payload, ["enabled"]),
     passwordManager: normalizeLocalPasswordManagerPreference(readUnknown(payload, ["password_manager", "passwordManager"])),
     phone,
+    preferredLanguages: readStringList(payload, ["preferred_languages", "preferredLanguages"]),
+    role: normalizePriestessUserRole(readString(payload, ["role", "user_role", "userRole"])),
     userId: userId || username || email,
     username: username || email || userId,
   };
+}
+
+function normalizePriestessUserRole(value: string): PriestessUserRole {
+  return value === "admin" ? "admin" : "user";
 }
 
 function normalizeLocalPasswordManagerPreference(payload: unknown): LocalPasswordManagerPreference | null {

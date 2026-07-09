@@ -24,7 +24,7 @@ Priestess v1 实现 OIDC 扫码登录、本地用户会话、账号资料、头�
 - `login-risk.ts`：本地密码登录软锁策略、风险 bucket hash 和脱敏上下文。
 - `profile.ts`：本地用户资料更新、PNG 头像上传到 R2、上传日志和审计。
 - `passkeys.ts`：Passkey options、verification、credential 管理和审计。
-- `registration.ts`：邮箱/手机号注册路由、Turnstile 校验和验证码发送编排。
+- `registration.ts`：邮箱/手机号注册路由、邀请码校验，以及暂存的 Turnstile/验证码发送编排。
 - `registration-repository.ts`：注册验证码请求 repository 接口和 D1 实现。
 - `routes.ts`：公开登录接口、二维码接口和管理员用户管理接口。
 
@@ -38,6 +38,11 @@ Priestess v1 实现 OIDC 扫码登录、本地用户会话、账号资料、头�
 - 本地联调使用 `VITE_PRIESTESS_API_BASE_URL` 指向 Phainon 兼容后端。没有显式 API base 时，请求只能落到同源生产部署或受控预览环境，不能静默请求 Vite dev server 假装成功。
 - 密码 pepper、管理员密码、session secret、Passkey 配置和长期 token 只允许通过 1Password CLI、Wrangler secret 或运行时环境变量注入，不进入 Priestess 仓库。
 - 如果某个页面流程必须依赖 Phainon 尚未实现的能力，应把缺口记录为后端接入事项；前端只能做清晰失败态或受控 mock，不做会掩盖生产缺口的永久绕行。
+- 外部 OIDC 兼容流继续使用 `state`、`nonce` 和 PKCE S256；Priestess native 流只把一次性 `login_code` 放入回跳 hash，前端立刻 exchange，不保存 access token、refresh token 或 ID token。
+- Phainon access token 校验必须同时检查签名、`iss`、`exp`、`typ=access`、`aud` 存在且等于 `app_id`；固定资源 API 还要传入自己的 audience 白名单，`/auth/priestess/oidc/me` 只作为通用 introspection-style endpoint 校验 token 自洽和 app enabled。
+- refresh token 必须轮转；已轮转的旧 token hash 写入 `refresh_token_rotations`，旧 token 复用时撤销整条 refresh session，写 `auth.refresh_token_reuse` 审计且只记录 `app_id`、`session_id`、`subject` 和时间信息，不记录 token/hash 明文。
+- `return_to` 保持 Phainon 现有前缀兼容策略：同 origin 下允许登记路径本身及其子路径，不允许 sibling path 或跨 origin。高安全应用推荐登记精确 callback URL；登记根路径 `/` 会允许该 origin 下所有路径，属于兼容配置而不是安全默认。
+- 前端和后端日志/错误展示都不得记录或回显 `login_code`、`access_token`、`refresh_token`、`id_token`、`password`、`secret`、`cookie`、`session_id` 等敏感字段。
 
 ## API
 
@@ -135,16 +140,15 @@ Priestess v1 实现 OIDC 扫码登录、本地用户会话、账号资料、头�
 
 - `POST /auth/priestess/register/verification-requests`
   - 输入：`identity`、`identity_type=email|phone`、`turnstile_token`。
-  - 行为：需要可信 `Origin` 或 `Referer`；服务端用 `PRIESTESS_TURNSTILE_SECRET_KEY` 校验 Turnstile，通过后规范化身份并检查该邮箱或手机号是否已存在。
-  - 邮箱注册复用 Phainon 邮件 provider；手机号验证码复用 `PRIESTESS_VERIFICATION_SMS_TOKEN_ID` 指向的 SMS API token/provider/webhook 链路，旧 `PRIESTESS_REGISTRATION_SMS_TOKEN_ID` 只作为迁移期 fallback。
-  - 输出：`accepted`、`request_id`、`delivery=email|sms`、`expires_at`。本地开发请求可额外返回 `dev_verification_code`，生产不返回验证码。
+  - 当前行为：验证码注册暂时停用，默认返回 `410 registration_invite_required`，公开注册主流程改用邀请码。
+  - 保留能力：后端仍保留 Turnstile、邮件、短信、验证码请求表和清理任务；以后显式恢复验证码注册时，继续复用 `PRIESTESS_TURNSTILE_SECRET_KEY`、`PRIESTESS_VERIFICATION_EMAIL_TOKEN_ID` 和 `PRIESTESS_VERIFICATION_SMS_TOKEN_ID`。
 
 - `POST /auth/priestess/register/confirm`
-  - 输入：`identity`、`identity_type`、`password`、`verification_code`、`display_name`、`username`。
-  - 行为：验证码 10 分钟有效，最多 5 次确认尝试；成功后创建本地用户，`username` 使用前端提交并经后端校验的用户名，后端仍需检查格式、唯一性和保留名，邮箱注册写入 `email`，手机号注册写入规范化 `phone`。
+  - 输入：`identity`、`identity_type`、`password`、`invite_code`、`display_name`、`username`。
+  - 行为：服务端用 `PRIESTESS_REGISTRATION_INVITE_CODE` 校验邀请码；成功后创建本地用户，`username` 使用前端提交并经后端校验的用户名，后端仍需检查格式、唯一性和保留名，邮箱注册写入 `email`，手机号注册写入规范化 `phone`。
   - 成功后复用本地登录 session 逻辑写入 `phainon_priestess_session` HttpOnly cookie，并返回 `LocalSession` 兼容 payload。
 
-注册验证码请求只保存 `identity_hash`、`identity_mask`、`code_hash` 和发送状态，不保存明文验证码、Turnstile token、密码或完整手机号。前端应把 `local_user_exists`、`invalid_register_username`、`register_username_reserved`、`register_username_exists`、`registration_verification_invalid`、`registration_turnstile_failed`、`registration_*_not_configured` 等后端错误映射到对应步骤，不在 URL、日志或本地存储里保存敏感字段。前端的用户名保留表、密码强度和冷却提示只能改善体验，服务端校验始终是最终事实。
+邀请码必须通过 1Password CLI / Wrangler secret 注入，不进入仓库、前端配置、URL、日志或本地存储。保留的注册验证码请求只保存 `identity_hash`、`identity_mask`、`code_hash` 和发送状态，不保存明文验证码、Turnstile token、密码或完整手机号。前端应把 `local_user_exists`、`invalid_register_username`、`register_username_reserved`、`register_username_exists`、`registration_invite_invalid`、`registration_invite_not_configured`、`registration_invite_required` 等后端错误映射到对应步骤。前端的用户名保留表、密码强度和邀请码空值提示只能改善体验，服务端校验始终是最终事实。
 
 密码保存策略：
 
@@ -202,9 +206,9 @@ Passkey 私钥永远只在用户设备或平台 authenticator 内；服务端只
 
 ### 管理员用户维护
 
-- `GET /admin/priestess/users`：列出本地用户，不回显密码哈希。
-- `POST /admin/priestess/users`：创建本地用户，需要 admin session 和管理员密码确认。
-- `PUT /admin/priestess/users/:userId`：更新显示名、邮箱、启用状态或重置密码，需要 admin session 和管理员密码确认。
+- `GET /admin/priestess/users`：列出本地用户，不回显密码哈希；每个用户包含 `role=user|admin`。
+- `POST /admin/priestess/users`：创建本地用户，需要 admin session 和管理员密码确认；`role` 可选，缺省为 `user`。
+- `PUT /admin/priestess/users/:userId`：更新显示名、邮箱、启用状态、角色或重置密码，需要 admin session 和管理员密码确认；角色变更会撤销该用户仍活跃的 OIDC refresh session。
 - `GET /admin/priestess/qr-sessions?status=&limit=`：列出最近 QR session，返回脱敏后的 PC/Phone context，不返回 poll token hash 或 login code hash。
 - `DELETE /admin/priestess/qr-sessions/:sessionId`：管理员强制将 QR session 标记为 `expired`，需要 admin session 和管理员密码确认。
 - `GET /admin/priestess/login-risk?status=locked&limit=`：列出本地密码登录风险 bucket；返回 bucket key、scope、失败次数、锁定时间和脱敏上下文，不返回 hash 材料。
@@ -214,9 +218,11 @@ Passkey 私钥永远只在用户设备或平台 authenticator 内；服务端只
 
 真实密码或临时密码不得写入仓库；如需保存长期值，应放入 1Password CLI 管理。
 
+`role` 当前只有 `user` 和 `admin` 两档。Phainon migration 会把既有用户默认设为普通用户，并把 `username='rakko'` 的本地用户设为管理员。后端会把角色写入本地 session payload、OIDC stored claims 和 refresh 返回的 `user.role`；管理台只能通过后端接口更新角色，不能在前端伪造权限状态。
+
 ## D1 表
 
-新增 migration：`0033_priestess_qr_login.sql`、`0034_priestess_login_risk.sql`、`0035_priestess_password_reset.sql`、`0037_priestess_totp_factors.sql`、`0038_priestess_registration.sql`、`0039_priestess_profile.sql`、`0040_priestess_user_phone.sql`、`0041_priestess_password_manager.sql`、`0042_priestess_profile_contact.sql`。
+新增 migration：`0033_priestess_qr_login.sql`、`0034_priestess_login_risk.sql`、`0035_priestess_password_reset.sql`、`0037_priestess_totp_factors.sql`、`0038_priestess_registration.sql`、`0039_priestess_profile.sql`、`0040_priestess_user_phone.sql`、`0041_priestess_password_manager.sql`、`0042_priestess_profile_contact.sql`、`0064_priestess_user_roles.sql`、`0065_refresh_token_history.sql`。
 
 - `auth_local_users`
   - `user_id`
@@ -228,6 +234,7 @@ Passkey 私钥永远只在用户设备或平台 authenticator 内；服务端只
   - `birthday`
   - `avatar_url`
   - `password_hash`
+  - `role`
   - `enabled`
   - `created_at`
   - `updated_at`
@@ -259,6 +266,15 @@ Passkey 私钥永远只在用户设备或平台 authenticator 内；服务端只
   - `login_code_hash`
   - `login_code_issued_at`
   - `rejected_at`
+
+- `refresh_token_rotations`
+  - `token_hash`
+  - `session_id`
+  - `app_id`
+  - `subject`
+  - `rotated_at`
+  - `expires_at`
+  - `reuse_detected_at`
 
 - `auth_passkey_credentials`
   - `credential_id`
