@@ -578,7 +578,8 @@ async function testSharedApiContract({ activateLocalAccountChoice, authorizeLoca
     assert.equal(choices.app.appId, "canvas");
     assert.equal(choices.app.returnToOrigin, "https://example.com");
 
-    const listUrl = new URL(calls[0].url);
+    const testApiBaseUrl = "https://priestess.test";
+    const listUrl = new URL(calls[0].url, testApiBaseUrl);
     assert.equal(listUrl.pathname, "/auth/priestess/account-choices");
     assert.equal(listUrl.searchParams.get("app_id"), "canvas");
     assert.equal(listUrl.searchParams.get("return_to"), "https://example.com/callback");
@@ -623,7 +624,7 @@ async function testSharedApiContract({ activateLocalAccountChoice, authorizeLoca
     assert.equal(removed.removed, true);
     assert.equal(removed.revoked, true);
     assert.equal(removed.userId, "user-snake");
-    const removeUrl = new URL(calls[4].url);
+    const removeUrl = new URL(calls[4].url, testApiBaseUrl);
     assert.equal(removeUrl.pathname, "/auth/priestess/account-choices/user-snake");
     assert.equal(calls[4].method, "DELETE");
     assert.equal(calls[4].credentials, "include");
@@ -632,7 +633,7 @@ async function testSharedApiContract({ activateLocalAccountChoice, authorizeLoca
     assert.equal(activated.authenticated, true);
     assert.equal(activated.user?.userId, "user-snake");
     assert.equal(activated.user?.username, "snake");
-    const activateUrl = new URL(calls[5].url);
+    const activateUrl = new URL(calls[5].url, testApiBaseUrl);
     assert.equal(activateUrl.pathname, "/auth/priestess/account-choices/user-snake/activate");
     assert.equal(calls[5].method, "POST");
     assert.deepEqual(calls[5].body, { choice_id: "choice-snake" });
@@ -770,8 +771,9 @@ async function testAccountChoiceFallback({ readAuthAccountChoicesForRequest }) {
   ], async(calls) => {
     const result = await readAuthAccountChoicesForRequest(authRequest, new AbortController().signal);
     assert.equal(calls.length, 2);
-    assert.equal(new URL(calls[0].url).pathname, "/auth/priestess/account-choices");
-    assert.equal(new URL(calls[1].url).pathname, "/auth/priestess/session");
+    const testApiBaseUrl = "https://priestess.test";
+    assert.equal(new URL(calls[0].url, testApiBaseUrl).pathname, "/auth/priestess/account-choices");
+    assert.equal(new URL(calls[1].url, testApiBaseUrl).pathname, "/auth/priestess/session");
     return result;
   });
 
