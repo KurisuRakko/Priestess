@@ -255,10 +255,11 @@ input:focus-visible {
 }
 
 .auth-card-content {
+  /* 注意：不要在这里对 opacity/filter 挂 CSS transition —— 登录/注册内容切换由 Motion
+   * 逐帧驱动同样的属性，两者叠加会互相拖拽，表现为切换动画抽搐。 */
   display: flex;
   width: 100%;
   min-width: 0;
-  transition: opacity 180ms var(--ease-out), filter 180ms var(--ease-out);
 }
 
 .login-card--submit-stage .auth-card-content {
@@ -266,6 +267,7 @@ input:focus-visible {
   opacity: 0 !important;
   filter: blur(2px) !important;
   pointer-events: none;
+  transition: opacity 180ms var(--ease-out), filter 180ms var(--ease-out);
   transition-delay: 560ms;
 }
 

@@ -29,7 +29,7 @@ import { startLoginTransitionOverlay, type LoginTransitionOverlayController, typ
 import { NotFoundPage } from "./components/NotFoundPage";
 import { QrLoginConfirmPage } from "./components/QrLoginConfirmPage";
 import { ResetPasswordPage } from "./components/ResetPasswordPage";
-import { buildAuthAccountAuthorizeParams, getAuthAccountAuthorizeBlocker, shouldShowAuthAccountPicker } from "./lib/accountAuthorization";
+import { buildAuthAccountAuthorizeParams, getAuthAccountAuthorizeBlocker, resolveSingleAccountAuthorizeRedirect, shouldShowAuthAccountPicker } from "./lib/accountAuthorization";
 import { isAccountEditableInBrowser, resolveAccountManagementActionTarget } from "./lib/accountManagementAction";
 import { getAuthRequestKey, readAuthRequest, type AuthRequest } from "./lib/authRequest";
 import { loginLocalSessionWithTurnstileRetry } from "./lib/localLoginTurnstileRetry";
@@ -196,7 +196,9 @@ export function App() {
     setIsAuthModeTransitioning(true);
     setIsLoginIntroStage(false);
     setAuthMode(nextMode);
-    const shouldDrawerSlideIn = nextMode !== "login" && authMode === "login" && !shouldReduceMotion;
+    // 两段式（先收二维码抽屉、再变卡片）只在抽屉真的展开时才需要；
+    // 居中布局下直接一段过渡，否则卡片会先弹回带抽屉的宽布局再缩回中间，看起来像抽搐。
+    const shouldDrawerSlideIn = nextMode !== "login" && authMode === "login" && isQrDrawerOpen && !shouldReduceMotion;
     setIsRegisterDrawerStage(shouldDrawerSlideIn);
 
     if (shouldDrawerSlideIn) {
@@ -207,7 +209,11 @@ export function App() {
     }
 
     // 布局动画结束后才解锁按钮，避免双击时 QR 抽屉和卡片状态互相打架。
-    const transitionMs = shouldReduceMotion ? 120 : AUTH_MODE_DRAWER_IN_MS + AUTH_MODE_TRANSITION_MS;
+    const transitionMs = shouldReduceMotion
+      ? 120
+      : shouldDrawerSlideIn
+        ? AUTH_MODE_DRAWER_IN_MS + AUTH_MODE_TRANSITION_MS
+        : AUTH_MODE_TRANSITION_MS;
     authModeTransitionTimeoutRef.current = window.setTimeout(() => {
       setIsAuthModeTransitioning(false);
       authModeTransitionTimeoutRef.current = null;
@@ -372,17 +378,31 @@ export function App() {
 
     const displayName = params.session.user?.displayName || params.session.user?.username || params.fallbackUsername;
     const request = readAuthRequest();
+    // 浏览器里只有刚登录的这一个账号时直接授权回跳，账号选择只留给多账号场景。
+    const singleAccountRedirectUrl = request
+      ? await resolveSingleAccountAuthorizeRedirect(request, params.signal)
+      : "";
 
     await params.controller.succeed({
       durationMs: LOGIN_RESULT_ANIMATION_MS,
       organizationName: "Priestess",
       postAnimationDelayMs: LOGIN_SUCCESS_HOLD_MS,
-      title: request ? t("登录成功，请选择账号继续") : t("登录成功"),
+      title: request && !singleAccountRedirectUrl ? t("登录成功，请选择账号继续") : t("登录成功"),
       username: displayName,
     });
 
+    if (params.signal.aborted) {
+      return;
+    }
+
+    if (singleAccountRedirectUrl) {
+      showNotice(t("正在返回应用"));
+      window.location.assign(singleAccountRedirectUrl);
+      return;
+    }
+
     if (request) {
-      // 应用授权入口必须让用户显式选择账号；登录成功只刷新候选列表，不再自动回跳。
+      // 多账号授权入口必须让用户显式选择账号；登录成功只刷新候选列表，不再自动回跳。
       releaseLoginSubmitStage();
       setShowLoginFormForAuthRequest(false);
       setAccountAuthorizeError("");
@@ -403,10 +423,23 @@ export function App() {
     const abortController = new AbortController();
     loginAbortControllerRef.current = abortController;
     try {
-      if (readAuthRequest()) {
+      const request = readAuthRequest();
+      if (request) {
+        // 新注册账号通常是浏览器里唯一的账号，这时直接授权回跳应用，不再经过账号选择页。
+        const singleAccountRedirectUrl = await resolveSingleAccountAuthorizeRedirect(request, abortController.signal);
+        if (abortController.signal.aborted) {
+          return;
+        }
+        if (singleAccountRedirectUrl) {
+          showNotice(t("正在返回应用"));
+          window.location.assign(singleAccountRedirectUrl);
+          return;
+        }
+
+        // 必须切回 login 模式账号选择卡才会渲染，否则界面会一直停在注册成功面板。
         setShowLoginFormForAuthRequest(false);
         setAccountAuthorizeError("");
-        accountChoices.refresh();
+        switchAuthMode("login");
         showNotice(t("注册成功，请选择要继续使用的账号"));
         return;
       }
