@@ -29,7 +29,7 @@ import { startLoginTransitionOverlay, type LoginTransitionOverlayController, typ
 import { NotFoundPage } from "./components/NotFoundPage";
 import { QrLoginConfirmPage } from "./components/QrLoginConfirmPage";
 import { ResetPasswordPage } from "./components/ResetPasswordPage";
-import { buildAuthAccountAuthorizeParams, getAuthAccountAuthorizeBlocker, resolveSingleAccountAuthorizeRedirect, shouldShowAuthAccountPicker } from "./lib/accountAuthorization";
+import { buildAuthAccountAuthorizeParams, getAuthAccountAuthorizeBlocker, shouldShowAuthAccountPicker } from "./lib/accountAuthorization";
 import { isAccountEditableInBrowser, resolveAccountManagementActionTarget } from "./lib/accountManagementAction";
 import { getAuthRequestKey, readAuthRequest, type AuthRequest } from "./lib/authRequest";
 import { loginLocalSessionWithTurnstileRetry } from "./lib/localLoginTurnstileRetry";
@@ -378,16 +378,12 @@ export function App() {
 
     const displayName = params.session.user?.displayName || params.session.user?.username || params.fallbackUsername;
     const request = readAuthRequest();
-    // 浏览器里只有刚登录的这一个账号时直接授权回跳，账号选择只留给多账号场景。
-    const singleAccountRedirectUrl = request
-      ? await resolveSingleAccountAuthorizeRedirect(request, params.signal)
-      : "";
 
     await params.controller.succeed({
       durationMs: LOGIN_RESULT_ANIMATION_MS,
       organizationName: "Priestess",
       postAnimationDelayMs: LOGIN_SUCCESS_HOLD_MS,
-      title: request && !singleAccountRedirectUrl ? t("登录成功，请选择账号继续") : t("登录成功"),
+      title: request ? t("登录成功，请选择账号继续") : t("登录成功"),
       username: displayName,
     });
 
@@ -395,14 +391,8 @@ export function App() {
       return;
     }
 
-    if (singleAccountRedirectUrl) {
-      showNotice(t("正在返回应用"));
-      window.location.assign(singleAccountRedirectUrl);
-      return;
-    }
-
     if (request) {
-      // 多账号授权入口必须让用户显式选择账号；登录成功只刷新候选列表，不再自动回跳。
+      // 所有应用授权都在成功动画结束后回到账号选择器，避免读取账号或授权请求锁住成功遮罩。
       releaseLoginSubmitStage();
       setShowLoginFormForAuthRequest(false);
       setAccountAuthorizeError("");
@@ -420,37 +410,19 @@ export function App() {
       throw new Error(t("注册完成但本地会话尚未建立"));
     }
 
-    const abortController = new AbortController();
-    loginAbortControllerRef.current = abortController;
-    try {
-      const request = readAuthRequest();
-      if (request) {
-        // 新注册账号通常是浏览器里唯一的账号，这时直接授权回跳应用，不再经过账号选择页。
-        const singleAccountRedirectUrl = await resolveSingleAccountAuthorizeRedirect(request, abortController.signal);
-        if (abortController.signal.aborted) {
-          return;
-        }
-        if (singleAccountRedirectUrl) {
-          showNotice(t("正在返回应用"));
-          window.location.assign(singleAccountRedirectUrl);
-          return;
-        }
-
-        // 必须切回 login 模式账号选择卡才会渲染，否则界面会一直停在注册成功面板。
-        setShowLoginFormForAuthRequest(false);
-        setAccountAuthorizeError("");
-        switchAuthMode("login");
-        showNotice(t("注册成功，请选择要继续使用的账号"));
-        return;
-      }
-
-      showNotice(t("注册成功"));
-      navigateTo(readLoginNext(), { replace: true });
-    } finally {
-      if (loginAbortControllerRef.current === abortController) {
-        loginAbortControllerRef.current = null;
-      }
+    const request = readAuthRequest();
+    if (request) {
+      // 注册成功页结束后统一刷新账号列表；唯一账号也必须由用户明确选择后再授权。
+      setShowLoginFormForAuthRequest(false);
+      setAccountAuthorizeError("");
+      accountChoices.refresh();
+      switchAuthMode("login");
+      showNotice(t("注册成功，请选择要继续使用的账号"));
+      return;
     }
+
+    showNotice(t("注册成功"));
+    navigateTo(readLoginNext(), { replace: true });
   };
 
   const chooseAuthAccount = async(account: AuthAccountChoice) => {

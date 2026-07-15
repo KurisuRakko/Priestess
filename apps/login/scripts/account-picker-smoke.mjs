@@ -35,7 +35,7 @@ try {
   const sharedApiModule = await server.ssrLoadModule(`/@fs${sharedLibDir}priestessApi.ts`);
   const { AccountPickerActionsDialog, AccountPickerCard, getAccountKey, getAccountMoreActionsLabel, getAccountRemoveDescription, getAccountRemoveLabel, getAccountSelectLabel, getSafeAvatarUrl } = accountPickerModule;
   const { buildAccountManagementActionPath, getAccountManagementActionSection, readAccountManagementAction, removeAccountManagementActionFromSearch, resolveAccountManagementActionTarget } = accountManagementActionModule;
-  const { buildAuthAccountAuthorizeParams, getAuthAccountAuthorizeBlocker, resolveSingleAccountAuthorizeRedirect, shouldShowAuthAccountPicker } = accountAuthorizationModule;
+  const { buildAuthAccountAuthorizeParams, getAuthAccountAuthorizeBlocker, shouldShowAuthAccountPicker } = accountAuthorizationModule;
   const { getAuthRequestAppLabel, getAuthRequestReturnToOrigin, readAuthRequest } = authRequestModule;
   const { getAuthAccountChoiceErrorMessage, readAuthAccountChoicesForRequest, redactSensitiveAuthText } = authAccountChoicesModule;
   const { LoginForm } = loginFormModule;
@@ -57,7 +57,6 @@ try {
   await testLocalLoginTurnstileRetry({ loginLocalSessionWithTurnstileRetry, PriestessApiError });
   testAccountChoiceErrorRedaction({ getAuthAccountChoiceErrorMessage, getPriestessApiErrorMessage, redactSensitiveAuthText });
   await testAccountChoiceFallback({ readAuthAccountChoicesForRequest });
-  await testSingleAccountAuthorizeRedirect({ resolveSingleAccountAuthorizeRedirect });
 
   console.log("account-picker smoke passed");
 } finally {
@@ -813,83 +812,6 @@ async function testAccountChoiceFallback({ readAuthAccountChoicesForRequest }) {
     ], async() => readAuthAccountChoicesForRequest(authRequest, new AbortController().signal)),
     /账户服务|server_error|请求失败|账号选择/,
   );
-}
-
-async function testSingleAccountAuthorizeRedirect({ resolveSingleAccountAuthorizeRedirect }) {
-  const authRequest = {
-    appId: "canvas",
-    returnTo: "https://example.com/callback",
-  };
-  const soloAccount = {
-    choice_id: "choice-solo",
-    current: true,
-    display_name: "Solo User",
-    email: "solo@example.com",
-    user_id: "user-solo",
-    username: "solo",
-  };
-
-  // 浏览器里只有刚登录的这一个账号：直接完成授权并拿到回跳地址。
-  const soloRedirect = await withMockFetch([
-    jsonResponse({ accounts: [soloAccount], app: { app_id: "canvas", return_to_origin: "https://example.com" } }),
-    jsonResponse({ redirect_url: "https://example.com/callback?login_code=solo" }),
-  ], async(calls) => {
-    const redirectUrl = await resolveSingleAccountAuthorizeRedirect(authRequest, new AbortController().signal);
-    assert.equal(calls.length, 2);
-    assert.deepEqual(calls[1].body, {
-      app_id: "canvas",
-      choice_id: "choice-solo",
-      return_to: "https://example.com/callback",
-    });
-    return redirectUrl;
-  });
-  assert.equal(soloRedirect, "https://example.com/callback?login_code=solo");
-
-  // 多账号必须回到选择界面，不发起授权请求。
-  const multiAccountRedirect = await withMockFetch([
-    jsonResponse({
-      accounts: [soloAccount, { ...soloAccount, choice_id: "choice-two", user_id: "user-two", username: "two" }],
-      app: { app_id: "canvas", return_to_origin: "https://example.com" },
-    }),
-  ], async(calls) => {
-    const redirectUrl = await resolveSingleAccountAuthorizeRedirect(authRequest, new AbortController().signal);
-    assert.equal(calls.length, 1);
-    return redirectUrl;
-  });
-  assert.equal(multiAccountRedirect, "");
-
-  // 唯一账号已被登出/吊销时同样回到选择界面提示用户。
-  const revokedRedirect = await withMockFetch([
-    jsonResponse({ accounts: [{ ...soloAccount, revoked: true }], app: { app_id: "canvas", return_to_origin: "https://example.com" } }),
-  ], async() => resolveSingleAccountAuthorizeRedirect(authRequest, new AbortController().signal));
-  assert.equal(revokedRedirect, "");
-
-  // 授权接口异常时吞掉错误，退回选择流程而不是打断登录结果。
-  const failedRedirect = await withMockFetch([
-    jsonResponse({ accounts: [soloAccount], app: { app_id: "canvas", return_to_origin: "https://example.com" } }),
-    jsonResponse({ error: "server_error" }, 500),
-  ], async() => resolveSingleAccountAuthorizeRedirect(authRequest, new AbortController().signal));
-  assert.equal(failedRedirect, "");
-
-  // 旧后端没有账号选择接口时回退到当前会话，直接用当前会话授权（不带 choice_id）。
-  const fallbackRedirect = await withMockFetch([
-    jsonResponse({ error: "not_found" }, 404),
-    jsonResponse({
-      authenticated: true,
-      expires_at: "2026-05-24T12:00:00.000Z",
-      user: { display_name: "Current User", user_id: "user-current", username: "current" },
-    }),
-    jsonResponse({ redirect_url: "https://example.com/callback?login_code=current" }),
-  ], async(calls) => {
-    const redirectUrl = await resolveSingleAccountAuthorizeRedirect(authRequest, new AbortController().signal);
-    assert.equal(calls.length, 3);
-    assert.deepEqual(calls[2].body, {
-      app_id: "canvas",
-      return_to: "https://example.com/callback",
-    });
-    return redirectUrl;
-  });
-  assert.equal(fallbackRedirect, "https://example.com/callback?login_code=current");
 }
 
 function testAccountChoiceErrorRedaction({ getAuthAccountChoiceErrorMessage, getPriestessApiErrorMessage, redactSensitiveAuthText }) {
