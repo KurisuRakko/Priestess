@@ -1,4 +1,4 @@
-import { type ComponentProps, type RefObject } from "react";
+import { useCallback, useEffect, useState, type ComponentProps, type RefObject } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { BrandMark, FloatingBackdrop } from "@priestess/shared";
 import { AccountPickerCard, type AccountPickerAction } from "./AccountPickerCard";
@@ -114,8 +114,32 @@ export function LoginExperience({
   const drawerEase = [0.2, 0.8, 0.2, 1] as const;
   const authContentTransition = shouldReduceMotion
     ? { duration: 0 }
-    : { duration: 0.36, ease: drawerEase };
+    : { duration: 0.4, ease: drawerEase };
   const loginEnter = shouldReduceMotion ? false : { opacity: 0, x: 360, y: 24, scale: 0.972, filter: "blur(10px)" };
+
+  // 登录/注册/找回密码共用一个高度视口：面板切换或内部内容变化时，
+  // 卡片高度用测量值平滑过渡，替代 popLayout 交换内容瞬间的高度跳变。
+  const [activePanelElement, setActivePanelElement] = useState<HTMLDivElement | null>(null);
+  const [panelHeight, setPanelHeight] = useState<number | null>(null);
+  const assignActivePanel = useCallback((element: HTMLDivElement | null) => {
+    // popLayout 的退出面板卸载时会以 null 回调；忽略它，保持观察最新面板。
+    if (element) setActivePanelElement(element);
+  }, []);
+
+  useEffect(() => {
+    if (shouldReduceMotion || !activePanelElement) return undefined;
+    const updateHeight = () => {
+      const nextHeight = Math.ceil(activePanelElement.getBoundingClientRect().height);
+      if (nextHeight > 0) {
+        setPanelHeight(nextHeight);
+      }
+    };
+    updateHeight();
+    if (typeof ResizeObserver === "undefined") return undefined;
+    const observer = new ResizeObserver(updateHeight);
+    observer.observe(activePanelElement);
+    return () => observer.disconnect();
+  }, [activePanelElement, shouldReduceMotion]);
   const qrDrawerVariants = {
     closed: { x: "-96%", opacity: 0, clipPath: "inset(0 100% 0 0)" },
     open: { x: "0%", opacity: 1, clipPath: "inset(0 0% 0 0)" },
@@ -170,13 +194,21 @@ export function LoginExperience({
                   ].filter(Boolean).join(" ")}
                   style={{ width: "100%", display: "flex", flexDirection: "column" }}
                 >
+                  {/* 方向语义：登录页在左、注册/找回在右。前进时旧内容向左让位、新内容从右进入，
+                      返回时整体向右回退，两块内容始终朝同一方向流动，避免同侧进出的折返感。 */}
+                  <motion.div
+                    className="auth-card-viewport"
+                    animate={shouldReduceMotion || panelHeight === null ? undefined : { height: panelHeight }}
+                    transition={shouldReduceMotion ? { duration: 0 } : { duration: 0.44, ease: drawerEase }}
+                  >
                   <AnimatePresence initial={false} mode="popLayout">
                     {isRegisterMode ? (
                       <motion.div
                         key="register"
+                        ref={assignActivePanel}
                         className="auth-card-content"
                         style={{ width: "100%", display: "flex", flexDirection: "column" }}
-                        initial={shouldReduceMotion ? false : { opacity: 0, x: -24, filter: "blur(4px)" }}
+                        initial={shouldReduceMotion ? false : { opacity: 0, x: 24, filter: "blur(4px)" }}
                         animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
                         exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, x: 24, filter: "blur(4px)" }}
                         transition={authContentTransition}
@@ -191,9 +223,10 @@ export function LoginExperience({
                     ) : isForgotPasswordMode ? (
                       <motion.div
                         key="forgot-password"
+                        ref={assignActivePanel}
                         className="auth-card-content"
                         style={{ width: "100%", display: "flex", flexDirection: "column" }}
-                        initial={shouldReduceMotion ? false : { opacity: 0, x: -24, filter: "blur(4px)" }}
+                        initial={shouldReduceMotion ? false : { opacity: 0, x: 24, filter: "blur(4px)" }}
                         animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
                         exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, x: 24, filter: "blur(4px)" }}
                         transition={authContentTransition}
@@ -208,9 +241,10 @@ export function LoginExperience({
                     ) : (
                       <motion.div
                         key="login"
+                        ref={assignActivePanel}
                         className="auth-card-content"
                         style={{ width: "100%", display: "flex", flexDirection: "column" }}
-                        initial={shouldReduceMotion ? false : { opacity: 0, x: 24, filter: "blur(4px)" }}
+                        initial={shouldReduceMotion ? false : { opacity: 0, x: -24, filter: "blur(4px)" }}
                         animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
                         exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, x: -24, filter: "blur(4px)" }}
                         transition={authContentTransition}
@@ -249,6 +283,7 @@ export function LoginExperience({
                       </motion.div>
                     )}
                   </AnimatePresence>
+                  </motion.div>
                 </motion.div>
               </motion.div>
 
