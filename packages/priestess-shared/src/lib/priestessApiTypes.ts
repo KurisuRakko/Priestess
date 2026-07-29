@@ -221,6 +221,13 @@ export type RegisterVerificationRequestResult = {
   requestId: string;
 };
 
+export type RegisterVerificationCheckResult = {
+  accepted: boolean;
+  expiresAt: number;
+  raw: unknown;
+  verificationChallenge: string;
+};
+
 export type AdminPasswordResetRequest = {
   context: unknown;
   createdAt: string;

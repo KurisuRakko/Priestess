@@ -26,6 +26,7 @@ import type {
   QrSessionPollStatus,
   RegisterIdentityType,
   RegisterInviteCheckResult,
+  RegisterVerificationCheckResult,
   RegisterVerificationRequestResult,
 } from "./priestessApiTypes";
 
@@ -214,9 +215,19 @@ export async function visitPasswordResetLink(params: { requestId: string; token:
   return normalizePasswordResetLinkVisitResult(payload);
 }
 
-export async function requestRegisterVerification(params: { identity: string; identityType: RegisterIdentityType; turnstileToken: string }, options: Pick<RequestOptions, "signal"> = {}) {
+export async function requestRegisterVerification(params: {
+  identity: string;
+  identityType: RegisterIdentityType;
+  inviteChallenge: string;
+  inviteCode: string;
+}, options: Pick<RequestOptions, "signal"> = {}) {
   const payload = await requestJson(`${PRIESTESS_AUTH_BASE}/register/verification-requests`, {
-    body: { identity: params.identity, identity_type: params.identityType, turnstile_token: params.turnstileToken },
+    body: {
+      identity: params.identity,
+      identity_type: params.identityType,
+      invite_challenge: params.inviteChallenge,
+      invite_code: params.inviteCode,
+    },
     method: "POST",
     signal: options.signal,
   });
@@ -237,6 +248,29 @@ export async function checkRegisterInvite(params: { identity: string; identityTy
   return normalizeRegisterInviteCheckResult(payload);
 }
 
+export async function checkRegisterVerification(params: {
+  identity: string;
+  identityType: RegisterIdentityType;
+  inviteChallenge: string;
+  inviteCode: string;
+  verificationCode: string;
+  verificationRequestId: string;
+}, options: Pick<RequestOptions, "signal"> = {}) {
+  const payload = await requestJson(`${PRIESTESS_AUTH_BASE}/register/verification-check`, {
+    body: {
+      identity: params.identity,
+      identity_type: params.identityType,
+      invite_challenge: params.inviteChallenge,
+      invite_code: params.inviteCode,
+      verification_code: params.verificationCode,
+      verification_request_id: params.verificationRequestId,
+    },
+    method: "POST",
+    signal: options.signal,
+  });
+  return normalizeRegisterVerificationCheckResult(payload);
+}
+
 export async function confirmLocalRegistration(params: {
   displayName: string;
   identity: string;
@@ -244,8 +278,7 @@ export async function confirmLocalRegistration(params: {
   inviteChallenge: string;
   inviteCode: string;
   password: string;
-  verificationCode: string;
-  verificationRequestId: string;
+  verificationChallenge: string;
   username: string;
 }, options: Pick<RequestOptions, "signal"> = {}) {
   const payload = await requestJson(`${PRIESTESS_AUTH_BASE}/register/confirm`, {
@@ -256,8 +289,7 @@ export async function confirmLocalRegistration(params: {
       invite_challenge: params.inviteChallenge,
       invite_code: params.inviteCode,
       password: params.password,
-      verification_code: params.verificationCode,
-      verification_request_id: params.verificationRequestId,
+      verification_challenge: params.verificationChallenge,
       username: params.username,
     },
     method: "POST",
@@ -653,6 +685,16 @@ function normalizeRegisterInviteCheckResult(payload: unknown): RegisterInviteChe
     expiresAt: readNumber(record, ["expires_at", "expiresAt"]) ?? 0,
     inviteChallenge: readString(record, ["invite_challenge", "inviteChallenge"]),
     raw: payload,
+  };
+}
+
+function normalizeRegisterVerificationCheckResult(payload: unknown): RegisterVerificationCheckResult {
+  const record = isRecord(payload) ? pickRecord(payload, ["data"]) ?? payload : {};
+  return {
+    accepted: readBoolean(record, ["accepted", "ok"]) ?? false,
+    expiresAt: readNumber(record, ["expires_at", "expiresAt"]) ?? 0,
+    raw: payload,
+    verificationChallenge: readString(record, ["verification_challenge", "verificationChallenge"]),
   };
 }
 

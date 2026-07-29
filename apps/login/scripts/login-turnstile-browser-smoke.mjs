@@ -49,6 +49,7 @@ try {
   await testBareLoginRemainsUsable(browser, appUrl);
   await testTotpReturnsToAccountPicker(browser, appUrl);
   await testPasskeyReturnsToAccountPicker(browser, appUrl);
+  await testPhoneRegistrationProgress(browser, appUrl);
   await testRegistrationReturnsToAccountPicker(browser, appUrl);
 
   console.log("login auth-flow browser smoke passed");
@@ -233,6 +234,22 @@ async function testPasskeyReturnsToAccountPicker(browserInstance, appUrl) {
   });
 }
 
+async function testPhoneRegistrationProgress(browserInstance, appUrl) {
+  const scenario = createScenario("registration-phone-progress");
+
+  await withScenario(browserInstance, scenario, async(page) => {
+    await page.goto(buildAuthUrl(appUrl, scenario.appId), { waitUntil: "domcontentloaded" });
+    await page.getByRole("button", { name: "创建账号" }).click();
+    await page.getByRole("button", { name: "使用手机号注册" }).click();
+    await page.locator("input[autocomplete='tel-national']").waitFor({ state: "visible" });
+
+    assert.deepEqual(
+      await page.locator(".register-progress__label").allTextContents(),
+      ["手机号", "邀请", "验证", "密码", "资料"],
+    );
+  });
+}
+
 async function testRegistrationReturnsToAccountPicker(browserInstance, appUrl) {
   const scenario = createScenario("registration", { accountModeAfterAuth: "single" });
 
@@ -242,6 +259,7 @@ async function testRegistrationReturnsToAccountPicker(browserInstance, appUrl) {
 
     const emailInput = page.locator("input[autocomplete='email']");
     await emailInput.waitFor({ state: "visible", timeout: 5000 });
+    assert.deepEqual(await page.locator(".register-progress__label").allTextContents(), ["邮箱", "邀请", "验证", "密码", "资料"]);
     await emailInput.fill("first-login@example.com");
     await page.locator("#register-terms-consent").check();
     await page.locator(".login-form .primary-button[type='submit']").click();
@@ -251,16 +269,16 @@ async function testRegistrationReturnsToAccountPicker(browserInstance, appUrl) {
     await inviteInput.fill("INVITE-SMOKE");
     await page.locator("[data-priestess-smoke-turnstile='ready']").click();
     await page.getByRole("button", { name: "校验邀请码" }).click();
-    await page.getByRole("button", { name: "发送验证码" }).waitFor({ state: "visible" });
-
-    await page.getByRole("button", { name: "发送验证码" }).click();
-    await page.waitForSelector(".login-success-overlay.is-challenge", { timeout: 5000 });
-    await page.locator("[data-priestess-smoke-turnstile='ready']").click();
     const verificationInput = page.locator("input[autocomplete='one-time-code']");
     await assertInputValue(verificationInput, "654321", 5000);
-    await page.getByRole("button", { name: "继续设置密码" }).click();
+    await page.getByRole("button", { name: /秒后可重发/ }).waitFor({ state: "visible" });
+    await page.getByRole("button", { name: "验证并继续" }).click();
 
     const passwordInputs = page.locator("input[autocomplete='new-password']");
+    await passwordInputs.first().waitFor({ state: "visible" });
+    await page.getByRole("button", { name: "上一步" }).click();
+    await page.locator(".login-form .signup-line", { hasText: "账号验证码已确认" }).waitFor({ state: "visible" });
+    await page.getByRole("button", { name: "继续设置密码" }).click();
     await passwordInputs.first().waitFor({ state: "visible" });
     await passwordInputs.nth(0).fill(TEST_PASSWORD);
     await passwordInputs.nth(1).fill(TEST_PASSWORD);
@@ -281,7 +299,21 @@ async function testRegistrationReturnsToAccountPicker(browserInstance, appUrl) {
       turnstile_token: TURNSTILE_TOKEN,
     }]);
     assert.equal(scenario.records.registrationVerifications.length, 1);
-    assert.equal(scenario.records.registrationVerifications[0].turnstile_token, TURNSTILE_TOKEN);
+    assert.deepEqual(scenario.records.registrationVerifications[0], {
+      identity: "first-login@example.com",
+      identity_type: "email",
+      invite_challenge: "registration-invite-challenge",
+      invite_code: "INVITE-SMOKE",
+    });
+    assert.equal(scenario.records.registrationVerificationChecks.length, 1);
+    assert.deepEqual(scenario.records.registrationVerificationChecks[0], {
+      identity: "first-login@example.com",
+      identity_type: "email",
+      invite_challenge: "registration-invite-challenge",
+      invite_code: "INVITE-SMOKE",
+      verification_code: "654321",
+      verification_request_id: "registration-request",
+    });
     assert.equal(scenario.records.registrationConfirms.length, 1);
     assert.deepEqual(scenario.records.registrationConfirms[0], {
       display_name: "First Login User",
@@ -291,9 +323,9 @@ async function testRegistrationReturnsToAccountPicker(browserInstance, appUrl) {
       invite_code: "INVITE-SMOKE",
       password: TEST_PASSWORD,
       username: "firstloginuser",
-      verification_code: "654321",
-      verification_request_id: "registration-request",
+      verification_challenge: "registration-verification-challenge",
     });
+    assert.equal(await page.locator(".login-success-overlay.is-challenge").count(), 0);
     assert.equal(scenario.records.authorizations.length, 0);
   });
 }
@@ -376,6 +408,7 @@ function createScenario(appId, options = {}) {
       passkeyVerifications: [],
       registrationConfirms: [],
       registrationInviteChecks: [],
+      registrationVerificationChecks: [],
       registrationVerifications: [],
       totpBodies: [],
     },
@@ -525,6 +558,17 @@ async function startMockApiServer() {
         accepted: true,
         dev_verification_code: "654321",
         request_id: "registration-request",
+      });
+      return;
+    }
+
+    if (req.method === "POST" && url.pathname === "/auth/priestess/register/verification-check") {
+      const body = await readJsonBody(req);
+      scenario.records.registrationVerificationChecks.push(body);
+      writeJson(res, 200, {
+        accepted: true,
+        expires_at: Math.floor(Date.now() / 1000) + 600,
+        verification_challenge: "registration-verification-challenge",
       });
       return;
     }

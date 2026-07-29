@@ -51,7 +51,7 @@ export function getPriestessApiErrorCode(error: unknown) {
 export function redactSensitiveAuthText(value: string) {
   // 错误消息可能来自后端或浏览器异常；展示前统一隐藏凭证、cookie、会话和一次性授权码。
   return value.replace(
-    /(^|[?#&\s,;])((?:access_token|choice_id|client_secret|cookie|id_token|invite_code|login_code|otp_code|password|private_key|refresh_token|secret|session|session_id|token|totp_code|verification_code)\s*[=:]\s*)[^\s&#&,;]+/gi,
+    /(^|[?#&\s,;])((?:access_token|choice_id|client_secret|cookie|id_token|invite_code|login_code|otp_code|password|private_key|refresh_token|secret|session|session_id|token|totp_code|verification_challenge|verification_code)\s*[=:]\s*)[^\s&#&,;]+/gi,
     `$1$2${translatePriestess("common:[已隐藏]")}`,
   );
 }
@@ -83,6 +83,7 @@ export function resolveErrorMessage(payload: unknown, status: number) {
   if (apiError?.code === "registration_invite_not_configured") return translatePriestess("errors:registrationInviteMissing");
   if (["registration_verification_invalid", "register_verification_invalid", "invalid_register_code", "invalid_registration_code"].includes(apiError?.code ?? "")) return translatePriestess("errors:registrationCodeInvalid");
   if (["registration_invite_challenge_required", "registration_invite_challenge_invalid"].includes(apiError?.code ?? "")) return translatePriestess("errors:registrationInviteChallengeInvalid");
+  if (["registration_verification_challenge_required", "registration_verification_challenge_invalid"].includes(apiError?.code ?? "")) return translatePriestess("errors:registrationCodeInvalid");
   if (["registration_turnstile_failed", "turnstile_invalid", "turnstile_required"].includes(apiError?.code ?? "")) return translatePriestess("errors:turnstileFailed");
   if (apiError?.code === "registration_turnstile_not_configured") return translatePriestess("errors:registrationTurnstileMissing");
   if (["registration_email_not_configured", "registration_sms_not_configured", "sms_provider_not_configured", "sms_signature_required", "sms_webhook_not_configured"].includes(apiError?.code ?? "")) return translatePriestess("errors:registrationChannelMissing");

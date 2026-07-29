@@ -46,7 +46,7 @@ try {
   ({ loginI18nResources } = loginI18nModule);
   const { resolveLoginLayoutState } = loginLayoutStateModule;
   ({ PriestessI18nProvider } = sharedI18nModule);
-  const { activateLocalAccountChoice, authorizeLocalSession, checkRegisterInvite, confirmLocalRegistration, getPriestessApiErrorMessage, listLocalAccountChoices, listLocalBrowserAccounts, loginLocalSession, removeLocalAccountChoice, PriestessApiError } = sharedApiModule;
+  const { activateLocalAccountChoice, authorizeLocalSession, checkRegisterInvite, checkRegisterVerification, confirmLocalRegistration, getPriestessApiErrorMessage, listLocalAccountChoices, listLocalBrowserAccounts, loginLocalSession, removeLocalAccountChoice, requestRegisterVerification, PriestessApiError } = sharedApiModule;
 
   testAuthRequestHelpers({ getAuthRequestAppLabel, getAuthRequestReturnToOrigin, readAuthRequest });
   testAccountAuthorizationHelpers({ buildAuthAccountAuthorizeParams, getAuthAccountAuthorizeBlocker, shouldShowAuthAccountPicker });
@@ -56,7 +56,7 @@ try {
   testMobileLoginRevealState({ MOBILE_LOGIN_BREAKPOINT_PX, MOBILE_LOGIN_REVEAL_TIMEOUT_MS, isMobileLoginDataReady, resolveMobileLoginRevealStep, shouldAnimateMobileLoginReveal });
   testAccountPickerMarkup({ AccountPickerActionsDialog, AccountPickerCard, getAccountKey, getAccountMoreActionsLabel, getAccountRemoveDescription, getAccountRemoveLabel, getAccountSelectLabel, getSafeAvatarUrl });
   testLoginFormBackButton({ LoginForm });
-  await testSharedApiContract({ activateLocalAccountChoice, authorizeLocalSession, checkRegisterInvite, confirmLocalRegistration, listLocalAccountChoices, listLocalBrowserAccounts, loginLocalSession, removeLocalAccountChoice });
+  await testSharedApiContract({ activateLocalAccountChoice, authorizeLocalSession, checkRegisterInvite, checkRegisterVerification, confirmLocalRegistration, listLocalAccountChoices, listLocalBrowserAccounts, loginLocalSession, removeLocalAccountChoice, requestRegisterVerification });
   await testLocalLoginTurnstileRetry({ loginLocalSessionWithTurnstileRetry, PriestessApiError });
   testAccountChoiceErrorRedaction({ getAuthAccountChoiceErrorMessage, getPriestessApiErrorMessage, redactSensitiveAuthText });
   await testAccountChoiceFallback({ readAuthAccountChoicesForRequest, readStandaloneBrowserAccounts });
@@ -558,7 +558,7 @@ function testLoginFormBackButton({ LoginForm }) {
   assert.match(totpHtml, /返回密码登录/);
 }
 
-async function testSharedApiContract({ activateLocalAccountChoice, authorizeLocalSession, checkRegisterInvite, confirmLocalRegistration, listLocalAccountChoices, listLocalBrowserAccounts, loginLocalSession, removeLocalAccountChoice }) {
+async function testSharedApiContract({ activateLocalAccountChoice, authorizeLocalSession, checkRegisterInvite, checkRegisterVerification, confirmLocalRegistration, listLocalAccountChoices, listLocalBrowserAccounts, loginLocalSession, removeLocalAccountChoice, requestRegisterVerification }) {
   const originalFetch = globalThis.fetch;
   const calls = [];
   const responses = [
@@ -629,6 +629,8 @@ async function testSharedApiContract({ activateLocalAccountChoice, authorizeLoca
     { authenticated: true, expires_at: "2026-05-24T12:30:00.000Z", user: { email: "snake@example.com", user_id: "user-snake", username: "snake" } },
     { authenticated: true, expires_at: "2026-05-24T12:00:00.000Z", user: { user_id: "user-login", username: "login-user" } },
     { accepted: true, expires_at: "2026-05-24T12:05:00.000Z", invite_challenge: "invite.challenge" },
+    { accepted: true, delivery: "email", expires_at: 1_779_600_300, request_id: "prv_test_request" },
+    { accepted: true, expires_at: 1_779_600_600, verification_challenge: "verification.challenge" },
     { authenticated: true, expires_at: "2026-05-24T13:00:00.000Z", user: { user_id: "user-register", username: "register-user" } },
   ];
 
@@ -762,6 +764,45 @@ async function testSharedApiContract({ activateLocalAccountChoice, authorizeLoca
       turnstile_token: "turnstile-register",
     });
 
+    const verificationRequest = await requestRegisterVerification({
+      identity: "register@example.com",
+      identityType: "email",
+      inviteChallenge: "invite.challenge",
+      inviteCode: "INVITE-2026",
+    });
+    assert.equal(verificationRequest.accepted, true);
+    assert.equal(verificationRequest.requestId, "prv_test_request");
+    const verificationRequestUrl = new URL(calls[9].url, testApiBaseUrl);
+    assert.equal(verificationRequestUrl.pathname, "/auth/priestess/register/verification-requests");
+    assert.deepEqual(calls[9].body, {
+      identity: "register@example.com",
+      identity_type: "email",
+      invite_challenge: "invite.challenge",
+      invite_code: "INVITE-2026",
+    });
+    assert.equal("turnstile_token" in calls[9].body, false);
+
+    const verificationCheck = await checkRegisterVerification({
+      identity: "register@example.com",
+      identityType: "email",
+      inviteChallenge: "invite.challenge",
+      inviteCode: "INVITE-2026",
+      verificationCode: "482913",
+      verificationRequestId: "prv_test_request",
+    });
+    assert.equal(verificationCheck.accepted, true);
+    assert.equal(verificationCheck.verificationChallenge, "verification.challenge");
+    const verificationCheckUrl = new URL(calls[10].url, testApiBaseUrl);
+    assert.equal(verificationCheckUrl.pathname, "/auth/priestess/register/verification-check");
+    assert.deepEqual(calls[10].body, {
+      identity: "register@example.com",
+      identity_type: "email",
+      invite_challenge: "invite.challenge",
+      invite_code: "INVITE-2026",
+      verification_code: "482913",
+      verification_request_id: "prv_test_request",
+    });
+
     const registration = await confirmLocalRegistration({
       displayName: "Register User",
       identity: "register@example.com",
@@ -770,13 +811,12 @@ async function testSharedApiContract({ activateLocalAccountChoice, authorizeLoca
       inviteCode: "INVITE-2026",
       password: "secret-register-password",
       username: "register-user",
-      verificationCode: "482913",
-      verificationRequestId: "prv_test_request",
+      verificationChallenge: "verification.challenge",
     });
     assert.equal(registration.authenticated, true);
-    const registrationUrl = new URL(calls[9].url, testApiBaseUrl);
+    const registrationUrl = new URL(calls[11].url, testApiBaseUrl);
     assert.equal(registrationUrl.pathname, "/auth/priestess/register/confirm");
-    assert.deepEqual(calls[9].body, {
+    assert.deepEqual(calls[11].body, {
       display_name: "Register User",
       identity: "register@example.com",
       identity_type: "email",
@@ -784,8 +824,7 @@ async function testSharedApiContract({ activateLocalAccountChoice, authorizeLoca
       invite_code: "INVITE-2026",
       password: "secret-register-password",
       username: "register-user",
-      verification_code: "482913",
-      verification_request_id: "prv_test_request",
+      verification_challenge: "verification.challenge",
     });
   } finally {
     globalThis.fetch = originalFetch;
