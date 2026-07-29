@@ -7,11 +7,13 @@ export const LOGIN_INTRO_QR_DELAY_MS = 1280;
 // 登录/注册切换共用这组时长，保证卡片位移、尺寸变化和二维码收合在同一段镜头里完成。
 export const AUTH_MODE_DRAWER_IN_MS = 760;
 export const AUTH_MODE_TRANSITION_MS = 820;
+// 二维码不提供手动刷新，按这个周期自动重建会话；最短加载时长保证转圈动画至少完整转一圈。
+export const QR_AUTO_REFRESH_INTERVAL_MS = 120 * 1000;
+export const QR_REFRESH_SPIN_MIN_MS = 700;
 export const LOCAL_LOGIN_FAILURE_LIMIT = 10;
 export const LOCAL_LOGIN_COOLDOWN_MS = 10 * 60 * 1000;
 
 const LOCAL_LOGIN_COOLDOWN_STORAGE_PREFIX = "priestess:local-login-cooldown:v1:";
-type QrPanelState = "confirmed" | "error" | "pending" | "scanned" | "terminal";
 
 export function getLoginCardOriginRect(node: HTMLElement | null) {
   if (!node || typeof window === "undefined") {
@@ -30,66 +32,6 @@ export function getLoginCardOriginRect(node: HTMLElement | null) {
     top: rect.top,
     width: rect.width,
   };
-}
-
-export function formatQrExpiresLabel(seconds: number) {
-  const safeSeconds = Math.max(Math.floor(seconds), 0);
-  const minutes = Math.floor(safeSeconds / 60);
-  const restSeconds = safeSeconds % 60;
-  return `${String(minutes).padStart(2, "0")}:${String(restSeconds).padStart(2, "0")}`;
-}
-
-export function getQrStatusText(status: string, error: string, t: (key: string) => string) {
-  if (error) {
-    return t("二维码服务不可用");
-  }
-  if (status === "scanned") {
-    return t("手机已扫码");
-  }
-  if (status === "pre_confirmed") {
-    return t("等待最终确认");
-  }
-  if (status === "confirmed") {
-    return t("已确认");
-  }
-  if (status === "rejected") {
-    return t("已拒绝");
-  }
-  if (status === "expired") {
-    return t("二维码已过期");
-  }
-  return t("二维码有效");
-}
-
-export function resolveQrPanelState(params: {
-  error: string;
-  expiresIn: number;
-  hasSession: boolean;
-  status: string;
-  t: (key: string) => string;
-}) {
-  const visualState: QrPanelState = params.error
-    ? "error"
-    : params.status === "scanned" || params.status === "pre_confirmed"
-      ? "scanned"
-      : params.status === "confirmed"
-        ? "confirmed"
-        : params.status === "expired" || params.status === "rejected"
-          ? "terminal"
-          : "pending";
-  const expiresLabel = visualState === "pending"
-    ? params.hasSession ? formatQrExpiresLabel(params.expiresIn) : "--:--"
-    : visualState === "scanned"
-      ? params.t("待确认")
-      : visualState === "confirmed"
-        ? params.t("已确认")
-        : params.status === "rejected"
-          ? params.t("已拒绝")
-          : params.status === "expired"
-            ? params.t("已过期")
-            : params.t("异常");
-
-  return { expiresLabel, visualState };
 }
 
 export function readLocalLoginCooldownUntil() {

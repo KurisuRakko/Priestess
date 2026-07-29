@@ -246,21 +246,25 @@ async function testRegistrationReturnsToAccountPicker(browserInstance, appUrl) {
     await page.locator("#register-terms-consent").check();
     await page.locator(".login-form .primary-button[type='submit']").click();
 
-    const passwordInputs = page.locator("input[autocomplete='new-password']");
-    await passwordInputs.first().waitFor({ state: "visible" });
-    await passwordInputs.nth(0).fill(TEST_PASSWORD);
-    await passwordInputs.nth(1).fill(TEST_PASSWORD);
-    await page.locator(".login-form .primary-button[type='submit']").click();
-
     const inviteInput = page.locator("input[placeholder='输入邀请码']");
     await inviteInput.waitFor({ state: "visible" });
+    await inviteInput.fill("INVITE-SMOKE");
+    await page.locator("[data-priestess-smoke-turnstile='ready']").click();
+    await page.getByRole("button", { name: "校验邀请码" }).click();
+    await page.getByRole("button", { name: "发送验证码" }).waitFor({ state: "visible" });
+
     await page.getByRole("button", { name: "发送验证码" }).click();
     await page.waitForSelector(".login-success-overlay.is-challenge", { timeout: 5000 });
     await page.locator("[data-priestess-smoke-turnstile='ready']").click();
     const verificationInput = page.locator("input[autocomplete='one-time-code']");
     await assertInputValue(verificationInput, "654321", 5000);
-    await inviteInput.fill("INVITE-SMOKE");
-    await page.getByRole("button", { name: "确认邀请码和验证码" }).click();
+    await page.getByRole("button", { name: "继续设置密码" }).click();
+
+    const passwordInputs = page.locator("input[autocomplete='new-password']");
+    await passwordInputs.first().waitFor({ state: "visible" });
+    await passwordInputs.nth(0).fill(TEST_PASSWORD);
+    await passwordInputs.nth(1).fill(TEST_PASSWORD);
+    await page.locator(".login-form .primary-button[type='submit']").click();
 
     const displayNameInput = page.locator("input[autocomplete='nickname']");
     await displayNameInput.waitFor({ state: "visible" });
@@ -270,10 +274,26 @@ async function testRegistrationReturnsToAccountPicker(browserInstance, appUrl) {
     await page.getByText("正在进入 Priestess").waitFor({ state: "visible", timeout: 5000 });
     await page.locator(".account-picker__row-main").first().waitFor({ state: "visible", timeout: 7000 });
 
+    assert.deepEqual(scenario.records.registrationInviteChecks, [{
+      identity: "first-login@example.com",
+      identity_type: "email",
+      invite_code: "INVITE-SMOKE",
+      turnstile_token: TURNSTILE_TOKEN,
+    }]);
     assert.equal(scenario.records.registrationVerifications.length, 1);
     assert.equal(scenario.records.registrationVerifications[0].turnstile_token, TURNSTILE_TOKEN);
     assert.equal(scenario.records.registrationConfirms.length, 1);
-    assert.equal(scenario.records.registrationConfirms[0].username, "firstloginuser");
+    assert.deepEqual(scenario.records.registrationConfirms[0], {
+      display_name: "First Login User",
+      identity: "first-login@example.com",
+      identity_type: "email",
+      invite_challenge: "registration-invite-challenge",
+      invite_code: "INVITE-SMOKE",
+      password: TEST_PASSWORD,
+      username: "firstloginuser",
+      verification_code: "654321",
+      verification_request_id: "registration-request",
+    });
     assert.equal(scenario.records.authorizations.length, 0);
   });
 }
@@ -355,6 +375,7 @@ function createScenario(appId, options = {}) {
       passkeyOptions: 0,
       passkeyVerifications: [],
       registrationConfirms: [],
+      registrationInviteChecks: [],
       registrationVerifications: [],
       totpBodies: [],
     },
@@ -504,6 +525,17 @@ async function startMockApiServer() {
         accepted: true,
         dev_verification_code: "654321",
         request_id: "registration-request",
+      });
+      return;
+    }
+
+    if (req.method === "POST" && url.pathname === "/auth/priestess/register/invite-check") {
+      const body = await readJsonBody(req);
+      scenario.records.registrationInviteChecks.push(body);
+      writeJson(res, 200, {
+        accepted: true,
+        expires_at: "2026-07-29T12:00:00.000Z",
+        invite_challenge: "registration-invite-challenge",
       });
       return;
     }
