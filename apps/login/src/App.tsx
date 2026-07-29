@@ -3,10 +3,8 @@ import { startAuthentication } from "@simplewebauthn/browser";
 import { useReducedMotion } from "motion/react";
 import {
   activateLocalAccountChoice,
-  authorizeLocalSession,
   createLocalPasskeyAuthenticationOptions,
   createQrSession,
-  getLocalSession,
   getQrSessionStatus,
   getPriestessApiErrorCode,
   getPriestessApiErrorMessage,
@@ -29,7 +27,8 @@ import { startLoginTransitionOverlay, type LoginTransitionOverlayController, typ
 import { NotFoundPage } from "./components/NotFoundPage";
 import { QrLoginConfirmPage } from "./components/QrLoginConfirmPage";
 import { ResetPasswordPage } from "./components/ResetPasswordPage";
-import { buildAuthAccountAuthorizeParams, getAuthAccountAuthorizeBlocker, shouldShowAuthAccountPicker } from "./lib/accountAuthorization";
+import { getAuthAccountAuthorizeBlocker, shouldShowAuthAccountPicker } from "./lib/accountAuthorization";
+import { completeAccountSelection } from "./lib/accountSelection";
 import { isAccountEditableInBrowser, resolveAccountManagementActionTarget } from "./lib/accountManagementAction";
 import { getAuthRequestKey, readAuthRequest, type AuthRequest } from "./lib/authRequest";
 import { loginLocalSessionWithTurnstileRetry } from "./lib/localLoginTurnstileRetry";
@@ -37,7 +36,7 @@ import {
   AUTH_MODE_DRAWER_IN_MS,
   AUTH_MODE_TRANSITION_MS,
   clearLocalLoginCooldownUntil,
-  formatQrExpiresLabel,
+  getLoginCardOriginRect,
   getQrStatusText,
   isLocalPasswordLoginRiskError,
   LOCAL_LOGIN_COOLDOWN_MS,
@@ -46,6 +45,7 @@ import {
   LOGIN_RESULT_ANIMATION_MS,
   LOGIN_SUCCESS_HOLD_MS,
   readLocalLoginCooldownUntil,
+  resolveQrPanelState,
   writeLocalLoginCooldownUntil,
 } from "./lib/loginAppState";
 import { buildLoginPathWithNext, getCurrentAccountNextPath, readLoginNext } from "./lib/loginNext";
@@ -100,7 +100,7 @@ export function App() {
   const [localLoginCooldownUntil, setLocalLoginCooldownUntil] = useState(readLocalLoginCooldownUntil);
   const [localLoginFailureCount, setLocalLoginFailureCount] = useState(0);
   const [removingAccountId, setRemovingAccountId] = useState("");
-  const [showLoginFormForAuthRequest, setShowLoginFormForAuthRequest] = useState(false);
+  const [showLoginFormForAccountPicker, setShowLoginFormForAccountPicker] = useState(false);
   const [totpChallenge, setTotpChallenge] = useState<TotpChallenge | null>(null);
   const authRequest = route === "login" ? readAuthRequest() : null;
   const authRequestKey = getAuthRequestKey(authRequest);
@@ -108,7 +108,8 @@ export function App() {
   const isLocalLoginCooldownActive = route === "login" && authMode === "login" && localLoginCooldownUntil > Date.now();
   const accountChoices = useAuthAccountChoices({
     authRequest,
-    enabled: route === "login" && authMode === "login" && hasQrRequest && !isLocalLoginCooldownActive,
+    enabled: route === "login" && authMode === "login" && !isLocalLoginCooldownActive,
+    standalone: !hasQrRequest,
   });
   const qrValue = qrSession?.qrUrl ?? "";
 
@@ -117,26 +118,9 @@ export function App() {
     window.setTimeout(() => setNotice((current) => current === message ? "" : current), 2600);
   };
 
-  const captureLoginCardOriginRect = (): LoginTransitionOverlayParams["originRect"] => {
-    const node = loginCardRef.current;
-    if (!node || typeof window === "undefined") {
-      return null;
-    }
-
-    const rect = node.getBoundingClientRect();
-    if (!rect || rect.width === 0 || rect.height === 0) {
-      return null;
-    }
-
-    const computedStyle = window.getComputedStyle(node);
-    return {
-      top: rect.top,
-      left: rect.left,
-      width: rect.width,
-      height: rect.height,
-      borderRadius: computedStyle.borderTopLeftRadius || "0px",
-    };
-  };
+  const captureLoginCardOriginRect = (): LoginTransitionOverlayParams["originRect"] => (
+    getLoginCardOriginRect(loginCardRef.current)
+  );
 
   const navigateTo = (path: string, options: { replace?: boolean } = {}) => {
     if (options.replace) {
@@ -245,7 +229,7 @@ export function App() {
     setIsAuthModeTransitioning(false);
     setIsLoginIntroStage(false);
     setIsRegisterDrawerStage(false);
-    setShowLoginFormForAuthRequest(false);
+    setShowLoginFormForAccountPicker(false);
     setAccountAuthorizeError("");
     setTotpChallenge(null);
     setLocalLoginFailureCount(LOCAL_LOGIN_FAILURE_LIMIT);
@@ -394,7 +378,7 @@ export function App() {
     if (request) {
       // 所有应用授权都在成功动画结束后回到账号选择器，避免读取账号或授权请求锁住成功遮罩。
       releaseLoginSubmitStage();
-      setShowLoginFormForAuthRequest(false);
+      setShowLoginFormForAccountPicker(false);
       setAccountAuthorizeError("");
       accountChoices.refresh();
       showNotice(t("已添加账号，请选择要继续使用的账号"));
@@ -413,7 +397,7 @@ export function App() {
     const request = readAuthRequest();
     if (request) {
       // 注册成功页结束后统一刷新账号列表；唯一账号也必须由用户明确选择后再授权。
-      setShowLoginFormForAuthRequest(false);
+      setShowLoginFormForAccountPicker(false);
       setAccountAuthorizeError("");
       accountChoices.refresh();
       switchAuthMode("login");
@@ -427,7 +411,7 @@ export function App() {
 
   const chooseAuthAccount = async(account: AuthAccountChoice) => {
     const request = readAuthRequest();
-    if (!request || directAuthorizeBusy || removingAccountId) {
+    if (directAuthorizeBusy || removingAccountId) {
       return;
     }
     const blocker = getAuthAccountAuthorizeBlocker(account);
@@ -444,15 +428,20 @@ export function App() {
     setDirectAuthorizeBusy(true);
 
     try {
-      const result = await authorizeLocalSession(buildAuthAccountAuthorizeParams(request, account));
-      if (!result.redirectUrl) {
-        throw new Error(t("后端未返回回跳地址"));
+      const result = await completeAccountSelection(account, request, t);
+      if (result.kind === "redirect") {
+        showNotice(t("正在返回应用"));
+        window.location.assign(result.redirectUrl);
+        return;
       }
 
-      showNotice(t("正在返回应用"));
-      window.location.assign(result.redirectUrl);
+      showNotice(t("正在进入 Priestess 个人中心"));
+      navigateTo(readLoginNext(), { replace: true });
     } catch (error) {
-      const message = getAuthAccountChoiceErrorMessage(error, t("授权失败，请重新选择账号"));
+      const message = getAuthAccountChoiceErrorMessage(
+        error,
+        request ? t("授权失败，请重新选择账号") : t("切换账号失败，请重新选择账号"),
+      );
       setAccountAuthorizeError(message);
       showNotice(message);
     } finally {
@@ -531,15 +520,15 @@ export function App() {
 
   const useAnotherAuthAccount = () => {
     setAccountAuthorizeError("");
-    setShowLoginFormForAuthRequest(true);
+    setShowLoginFormForAccountPicker(true);
     setTotpChallenge(null);
     showNotice(t("请登录另一个 Priestess 账号"));
   };
 
   const returnToAuthAccountPicker = () => {
-    // 授权入口添加账号时，返回只恢复账号选择态，不改动当前 app_id/return_to 请求。
+    // 返回只恢复账号选择态；应用授权参数和裸域的安全 next 路径都保持不变。
     setAccountAuthorizeError("");
-    setShowLoginFormForAuthRequest(false);
+    setShowLoginFormForAccountPicker(false);
     setTotpChallenge(null);
   };
 
@@ -824,22 +813,6 @@ export function App() {
   }, [route]);
 
   useEffect(() => {
-    if (route !== "login" || hasQrRequest || authMode !== "login" || isLocalLoginCooldownActive) {
-      return;
-    }
-
-    const abortController = new AbortController();
-    void getLocalSession({ signal: abortController.signal })
-      .then((session) => {
-        if (!abortController.signal.aborted && session.authenticated && session.user) {
-          navigateTo(readLoginNext(), { replace: true });
-        }
-      })
-      .catch(() => undefined);
-    return () => abortController.abort();
-  }, [authMode, hasQrRequest, isLocalLoginCooldownActive, route]);
-
-  useEffect(() => {
     if (route !== "login" || authMode !== "login" || isLocalLoginCooldownActive) {
       clearQrTimers();
       return;
@@ -858,7 +831,7 @@ export function App() {
     setAccountAuthorizeError("");
     setAuthorizingAccountId("");
     setRemovingAccountId("");
-    setShowLoginFormForAuthRequest(false);
+    setShowLoginFormForAccountPicker(false);
   }, [authRequestKey, route]);
 
   useEffect(() => {
@@ -896,7 +869,8 @@ export function App() {
     authMode,
     hasAuthRequest: hasQrRequest,
     hasTotpChallenge,
-    showLoginFormForAuthRequest,
+    showLoginFormForAccountPicker,
+    standalone: !hasQrRequest,
     status: accountChoices.status,
   });
   // 首屏、提交态、二步验证和账号选择共用居中布局，避免确认阶段重新滑回二维码侧栏。
@@ -920,26 +894,13 @@ export function App() {
   const authUiLocked = isAuthModeTransitioning || isLoginSubmitStage || directAuthorizeBusy || Boolean(removingAccountId || accountActionBusyId);
   const qrStatusText = hasQrRequest ? getQrStatusText(qrStatus, qrError, t) : t("等待应用发起登录");
   const qrRefreshLabel = hasQrRequest ? t("刷新二维码") : t("等待应用");
-  const qrVisualState = qrError
-    ? "error"
-    : qrStatus === "scanned" || qrStatus === "pre_confirmed"
-      ? "scanned"
-      : qrStatus === "confirmed"
-        ? "confirmed"
-        : qrStatus === "expired" || qrStatus === "rejected"
-          ? "terminal"
-          : "pending";
-  const qrExpiresLabel = qrVisualState === "pending"
-    ? qrSession ? formatQrExpiresLabel(qrExpiresIn) : "--:--"
-    : qrVisualState === "scanned"
-      ? t("待确认")
-      : qrVisualState === "confirmed"
-        ? t("已确认")
-        : qrStatus === "rejected"
-          ? t("已拒绝")
-          : qrStatus === "expired"
-          ? t("已过期")
-            : t("异常");
+  const { expiresLabel: qrExpiresLabel, visualState: qrVisualState } = resolveQrPanelState({
+    error: qrError,
+    expiresIn: qrExpiresIn,
+    hasSession: Boolean(qrSession),
+    status: qrStatus,
+    t,
+  });
   const accountPickerError = accountAuthorizeError || accountChoices.error;
   const refreshQrFromPanel = () => {
     if (isAuthModeTransitioning || authMode !== "login" || !hasQrRequest) {
@@ -952,6 +913,7 @@ export function App() {
     <LoginExperience
       accountChoices={accountChoices}
       accountPickerError={accountPickerError}
+      accountPickerMode={hasQrRequest ? "authorization" : "standalone"}
       authGridClassName={authGridClassName}
       authMode={authMode}
       authUiLocked={authUiLocked}
@@ -992,7 +954,7 @@ export function App() {
       shouldReduceMotion={shouldReduceMotion}
       shouldShowAccountPicker={shouldShowAccountPicker}
       shouldUseCenteredWallpaper={shouldUseCenteredWallpaper}
-      showLoginFormForAuthRequest={showLoginFormForAuthRequest}
+      showLoginFormForAccountPicker={showLoginFormForAccountPicker}
       t={t}
       totpChallenge={totpChallenge}
     />

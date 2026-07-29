@@ -11,6 +11,7 @@ import type {
   LocalAccountChoice,
   LocalAccountChoicesResult,
   LocalAccountChoiceRemovalResult,
+  LocalBrowserAccountsResult,
   LocalAuthorizeResult,
   LocalLoginCredentials,
   LocalPasswordManagerPreference,
@@ -60,6 +61,13 @@ export async function listLocalAccountChoices(params: { appId: string; returnTo:
     signal: options.signal,
   });
   return normalizeLocalAccountChoices(payload);
+}
+
+export async function listLocalBrowserAccounts(options: Pick<RequestOptions, "signal"> = {}) {
+  const payload = await requestJson(`${PRIESTESS_AUTH_BASE}/browser-accounts`, {
+    signal: options.signal,
+  });
+  return normalizeLocalBrowserAccounts(payload);
 }
 
 export async function removeLocalAccountChoice(userId: string, options: Pick<RequestOptions, "signal"> = {}) {
@@ -438,6 +446,14 @@ function normalizeLocalAccountChoices(payload: unknown): LocalAccountChoicesResu
       raw: appPayload ?? null,
       returnToOrigin: readString(appRecord, ["return_to_origin", "returnToOrigin", "origin"]),
     },
+    raw: payload,
+  };
+}
+
+function normalizeLocalBrowserAccounts(payload: unknown): LocalBrowserAccountsResult {
+  const normalized = normalizeLocalAccountChoices(payload);
+  return {
+    accounts: normalized.accounts,
     raw: payload,
   };
 }

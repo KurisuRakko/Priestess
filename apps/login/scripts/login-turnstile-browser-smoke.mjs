@@ -45,6 +45,7 @@ try {
   await testEmptyAccountRefreshReturnsToLogin(browser, appUrl);
   await testAccountChoiceErrorCanRetry(browser, appUrl);
   await testMultipleAccountsRemainSelectable(browser, appUrl);
+  await testBareLoginSelectsSavedAccount(browser, appUrl);
   await testBareLoginRemainsUsable(browser, appUrl);
   await testTotpReturnsToAccountPicker(browser, appUrl);
   await testPasskeyReturnsToAccountPicker(browser, appUrl);
@@ -163,6 +164,35 @@ async function testBareLoginRemainsUsable(browserInstance, appUrl) {
     assert.equal(await usernameInput.isEnabled(), true);
     assert.equal(await page.getByRole("button", { name: /Passkey/ }).isEnabled(), true);
     assert.equal(scenario.records.accountChoices.length, 0, "plain /login must not request app account choices");
+    assert.ok(scenario.records.browserAccounts >= 1, "plain /login should check the browser account container");
+  });
+}
+
+async function testBareLoginSelectsSavedAccount(browserInstance, appUrl) {
+  const scenario = createScenario("bare-account", { browserAccountMode: "single" });
+
+  await withScenario(browserInstance, scenario, async(page) => {
+    await page.goto(`${appUrl}/`, { waitUntil: "domcontentloaded" });
+    const accountButton = page.locator(".account-picker__row-main").first();
+    await accountButton.waitFor({ state: "visible", timeout: 5000 });
+    assert.equal(new URL(page.url()).pathname, "/login");
+    assert.equal(await page.getByText("选择账号进入 Priestess 个人中心").count(), 1);
+    assert.equal(scenario.records.accountChoices.length, 0);
+    assert.ok(scenario.records.browserAccounts >= 1);
+
+    await page.locator(".account-picker__other").click();
+    await page.locator("input[autocomplete='username']").waitFor({ state: "visible" });
+    const backButton = page.getByRole("button", { name: "返回账号选择" });
+    await backButton.click();
+    await accountButton.waitFor({ state: "visible" });
+
+    await accountButton.click();
+    await page.waitForURL((url) => url.pathname === "/manage", { timeout: 5000 });
+    assert.deepEqual(scenario.records.activations, [{
+      body: {},
+      userId: "user-bare-account-primary",
+    }]);
+    assert.equal(scenario.records.authorizations.length, 0);
   });
 }
 
@@ -312,12 +342,15 @@ function createScenario(appId, options = {}) {
     accountError: options.accountError ?? false,
     accountModeAfterAuth: options.accountModeAfterAuth ?? "empty",
     accountModeBeforeAuth: options.accountModeBeforeAuth ?? "empty",
+    browserAccountMode: options.browserAccountMode ?? "empty",
     appId,
     authenticated: false,
     loginKind: options.loginKind ?? "password",
     records: {
       accountChoices: [],
+      activations: [],
       authorizations: [],
+      browserAccounts: 0,
       loginBodies: [],
       passkeyOptions: 0,
       passkeyVerifications: [],
@@ -375,7 +408,15 @@ async function startMockApiServer() {
     }
 
     if (req.method === "GET" && url.pathname === "/auth/priestess/session") {
-      writeJson(res, 200, { authenticated: false });
+      writeJson(res, 200, scenario.authenticated ? authenticatedSession(scenario) : { authenticated: false });
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/auth/priestess/browser-accounts") {
+      scenario.records.browserAccounts += 1;
+      writeJson(res, 200, {
+        accounts: buildAccounts(scenario, scenario.browserAccountMode).map(({ choice_id: _choiceId, ...account }) => account),
+      });
       return;
     }
 
@@ -485,6 +526,18 @@ async function startMockApiServer() {
       const redirectUrl = new URL(body.return_to);
       redirectUrl.searchParams.set("authorized", "1");
       writeJson(res, 200, { redirect_url: redirectUrl.toString() });
+      return;
+    }
+
+    const activationMatch = url.pathname.match(/^\/auth\/priestess\/account-choices\/([^/]+)\/activate$/);
+    if (req.method === "POST" && activationMatch) {
+      const body = await readJsonBody(req);
+      scenario.records.activations.push({
+        body,
+        userId: decodeURIComponent(activationMatch[1]),
+      });
+      scenario.authenticated = true;
+      writeJson(res, 200, authenticatedSession(scenario));
       return;
     }
 

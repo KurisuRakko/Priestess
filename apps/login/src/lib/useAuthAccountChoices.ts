@@ -3,6 +3,7 @@ import {
   getLocalSession,
   getPriestessApiErrorCode,
   getPriestessApiErrorMessage,
+  listLocalBrowserAccounts,
   listLocalAccountChoices,
   PriestessApiError,
   redactSensitiveAuthText,
@@ -17,7 +18,7 @@ export { redactSensitiveAuthText };
 
 export type AuthAccountChoice = LocalAccountChoice & {
   authorizeChoiceId: string | null;
-  source: "account-choices" | "current-session";
+  source: "account-choices" | "browser-accounts" | "current-session";
 };
 
 export type AuthAccountChoicesStatus = "empty" | "error" | "idle" | "loading" | "ready";
@@ -33,9 +34,10 @@ export type AuthAccountChoicesState = {
 type UseAuthAccountChoicesParams = {
   authRequest: AuthRequest | null;
   enabled: boolean;
+  standalone: boolean;
 };
 
-export function useAuthAccountChoices({ authRequest, enabled }: UseAuthAccountChoicesParams): AuthAccountChoicesState {
+export function useAuthAccountChoices({ authRequest, enabled, standalone }: UseAuthAccountChoicesParams): AuthAccountChoicesState {
   const [refreshVersion, setRefreshVersion] = useState(0);
   const [state, setState] = useState<Omit<AuthAccountChoicesState, "refresh">>({
     accounts: [],
@@ -43,7 +45,7 @@ export function useAuthAccountChoices({ authRequest, enabled }: UseAuthAccountCh
     error: "",
     status: "idle",
   });
-  const authRequestKey = getAuthRequestKey(authRequest);
+  const authRequestKey = authRequest ? getAuthRequestKey(authRequest) : standalone ? "standalone" : "";
 
   const refresh = useCallback(() => {
     setRefreshVersion((current) => current + 1);
@@ -51,7 +53,7 @@ export function useAuthAccountChoices({ authRequest, enabled }: UseAuthAccountCh
 
   useEffect(() => {
     const request = authRequest;
-    if (!enabled || !request) {
+    if (!enabled || (!request && !standalone)) {
       setState({
         accounts: [],
         app: null,
@@ -64,14 +66,16 @@ export function useAuthAccountChoices({ authRequest, enabled }: UseAuthAccountCh
     const abortController = new AbortController();
     setState((current) => ({
       accounts: current.accounts,
-      app: current.app ?? buildFallbackApp(request),
+      app: request ? current.app ?? buildFallbackApp(request) : null,
       error: "",
       status: "loading",
     }));
 
     void (async() => {
       try {
-        const choices = await readAuthAccountChoicesForRequest(request, abortController.signal);
+        const choices = request
+          ? await readAuthAccountChoicesForRequest(request, abortController.signal)
+          : await readStandaloneBrowserAccounts(abortController.signal);
         if (abortController.signal.aborted) {
           return;
         }
@@ -89,7 +93,7 @@ export function useAuthAccountChoices({ authRequest, enabled }: UseAuthAccountCh
 
         setState({
           accounts: [],
-          app: buildFallbackApp(request),
+          app: request ? buildFallbackApp(request) : null,
           error: getAuthAccountChoiceErrorMessage(error, translatePriestess("login:账号选择暂时不可用")),
           status: "error",
         });
@@ -97,7 +101,7 @@ export function useAuthAccountChoices({ authRequest, enabled }: UseAuthAccountCh
     })();
 
     return () => abortController.abort();
-  }, [authRequestKey, enabled, refreshVersion]);
+  }, [authRequestKey, enabled, refreshVersion, standalone]);
 
   return useMemo(() => ({
     ...state,
@@ -136,6 +140,32 @@ export async function readAuthAccountChoicesForRequest(authRequest: AuthRequest,
   return {
     accounts: session.authenticated && session.user ? [accountFromCurrentSession(session)] : [],
     app: buildFallbackApp(authRequest),
+    error: "",
+  };
+}
+
+export async function readStandaloneBrowserAccounts(signal: AbortSignal) {
+  try {
+    const result = await listLocalBrowserAccounts({ signal });
+    return {
+      accounts: result.accounts.map((account) => ({
+        ...account,
+        authorizeChoiceId: null,
+        source: "browser-accounts" as const,
+      })),
+      app: null,
+      error: "",
+    };
+  } catch (error) {
+    if (signal.aborted || !shouldFallbackToCurrentSession(error)) {
+      throw error;
+    }
+  }
+
+  const session = await getLocalSession({ signal });
+  return {
+    accounts: session.authenticated && session.user ? [accountFromCurrentSession(session)] : [],
+    app: null,
     error: "",
   };
 }

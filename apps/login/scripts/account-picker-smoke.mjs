@@ -37,14 +37,14 @@ try {
   const { buildAccountManagementActionPath, getAccountManagementActionSection, readAccountManagementAction, removeAccountManagementActionFromSearch, resolveAccountManagementActionTarget } = accountManagementActionModule;
   const { buildAuthAccountAuthorizeParams, getAuthAccountAuthorizeBlocker, shouldShowAuthAccountPicker } = accountAuthorizationModule;
   const { getAuthRequestAppLabel, getAuthRequestReturnToOrigin, readAuthRequest } = authRequestModule;
-  const { getAuthAccountChoiceErrorMessage, readAuthAccountChoicesForRequest, redactSensitiveAuthText } = authAccountChoicesModule;
+  const { getAuthAccountChoiceErrorMessage, readAuthAccountChoicesForRequest, readStandaloneBrowserAccounts, redactSensitiveAuthText } = authAccountChoicesModule;
   const { LoginForm } = loginFormModule;
   const { buildLoginPathWithNext, getCurrentAccountNextPath, normalizePriestessNextPath, readLoginNext } = loginNextModule;
   const { loginLocalSessionWithTurnstileRetry } = localLoginTurnstileRetryModule;
   ({ loginI18nResources } = loginI18nModule);
   const { resolveLoginLayoutState } = loginLayoutStateModule;
   ({ PriestessI18nProvider } = sharedI18nModule);
-  const { activateLocalAccountChoice, authorizeLocalSession, getPriestessApiErrorMessage, listLocalAccountChoices, loginLocalSession, removeLocalAccountChoice, PriestessApiError } = sharedApiModule;
+  const { activateLocalAccountChoice, authorizeLocalSession, getPriestessApiErrorMessage, listLocalAccountChoices, listLocalBrowserAccounts, loginLocalSession, removeLocalAccountChoice, PriestessApiError } = sharedApiModule;
 
   testAuthRequestHelpers({ getAuthRequestAppLabel, getAuthRequestReturnToOrigin, readAuthRequest });
   testAccountAuthorizationHelpers({ buildAuthAccountAuthorizeParams, getAuthAccountAuthorizeBlocker, shouldShowAuthAccountPicker });
@@ -53,10 +53,10 @@ try {
   testLoginLayoutState({ resolveLoginLayoutState });
   testAccountPickerMarkup({ AccountPickerActionsDialog, AccountPickerCard, getAccountKey, getAccountMoreActionsLabel, getAccountRemoveDescription, getAccountRemoveLabel, getAccountSelectLabel, getSafeAvatarUrl });
   testLoginFormBackButton({ LoginForm });
-  await testSharedApiContract({ activateLocalAccountChoice, authorizeLocalSession, listLocalAccountChoices, loginLocalSession, removeLocalAccountChoice });
+  await testSharedApiContract({ activateLocalAccountChoice, authorizeLocalSession, listLocalAccountChoices, listLocalBrowserAccounts, loginLocalSession, removeLocalAccountChoice });
   await testLocalLoginTurnstileRetry({ loginLocalSessionWithTurnstileRetry, PriestessApiError });
   testAccountChoiceErrorRedaction({ getAuthAccountChoiceErrorMessage, getPriestessApiErrorMessage, redactSensitiveAuthText });
-  await testAccountChoiceFallback({ readAuthAccountChoicesForRequest });
+  await testAccountChoiceFallback({ readAuthAccountChoicesForRequest, readStandaloneBrowserAccounts });
 
   console.log("account-picker smoke passed");
 } finally {
@@ -109,7 +109,8 @@ function testAccountAuthorizationHelpers({ buildAuthAccountAuthorizeParams, getA
     authMode: "login",
     hasAuthRequest: true,
     hasTotpChallenge: false,
-    showLoginFormForAuthRequest: false,
+    showLoginFormForAccountPicker: false,
+    standalone: false,
   };
   assert.equal(shouldShowAuthAccountPicker({ ...basePickerState, status: "loading" }), true);
   assert.equal(shouldShowAuthAccountPicker({ ...basePickerState, status: "ready" }), true);
@@ -118,8 +119,11 @@ function testAccountAuthorizationHelpers({ buildAuthAccountAuthorizeParams, getA
   assert.equal(shouldShowAuthAccountPicker({ ...basePickerState, status: "idle" }), false);
   assert.equal(shouldShowAuthAccountPicker({ ...basePickerState, authMode: "register", status: "ready" }), false);
   assert.equal(shouldShowAuthAccountPicker({ ...basePickerState, hasAuthRequest: false, status: "ready" }), false);
+  assert.equal(shouldShowAuthAccountPicker({ ...basePickerState, hasAuthRequest: false, standalone: true, status: "loading" }), true);
+  assert.equal(shouldShowAuthAccountPicker({ ...basePickerState, hasAuthRequest: false, standalone: true, status: "ready" }), true);
+  assert.equal(shouldShowAuthAccountPicker({ ...basePickerState, hasAuthRequest: false, standalone: true, status: "empty" }), false);
   assert.equal(shouldShowAuthAccountPicker({ ...basePickerState, hasTotpChallenge: true, status: "ready" }), false);
-  assert.equal(shouldShowAuthAccountPicker({ ...basePickerState, showLoginFormForAuthRequest: true, status: "ready" }), false);
+  assert.equal(shouldShowAuthAccountPicker({ ...basePickerState, showLoginFormForAccountPicker: true, status: "ready" }), false);
 }
 
 function testAccountManagementActionHelpers({ buildAccountManagementActionPath, getAccountManagementActionSection, normalizePriestessNextPath, readAccountManagementAction, removeAccountManagementActionFromSearch, resolveAccountManagementActionTarget }) {
@@ -318,6 +322,16 @@ function testAccountPickerMarkup({ AccountPickerActionsDialog, AccountPickerCard
   assert.match(readyHtml, /使用其他账号/);
   assert.doesNotMatch(readyHtml, /输入密码/);
 
+  const standaloneHtml = renderPicker(AccountPickerCard, {
+    accounts,
+    mode: "standalone",
+    status: "ready",
+  });
+  assert.match(standaloneHtml, /选择账号进入 Priestess 个人中心/);
+  assert.doesNotMatch(standaloneHtml, /继续访问/);
+  assert.doesNotMatch(standaloneHtml, /https:\/\/example\.com/);
+  assert.match(standaloneHtml, /aria-label="使用 Bowen Yang，z5717379@ad\.unsw\.edu\.au，已登录 进入 Priestess 个人中心"/);
+
   const currentActionsHtml = renderAccountActionsDialog(AccountPickerActionsDialog, {
     account: accounts[0],
   });
@@ -488,7 +502,7 @@ function testLoginFormBackButton({ LoginForm }) {
   assert.match(totpHtml, /返回密码登录/);
 }
 
-async function testSharedApiContract({ activateLocalAccountChoice, authorizeLocalSession, listLocalAccountChoices, loginLocalSession, removeLocalAccountChoice }) {
+async function testSharedApiContract({ activateLocalAccountChoice, authorizeLocalSession, listLocalAccountChoices, listLocalBrowserAccounts, loginLocalSession, removeLocalAccountChoice }) {
   const originalFetch = globalThis.fetch;
   const calls = [];
   const responses = [
@@ -539,6 +553,19 @@ async function testSharedApiContract({ activateLocalAccountChoice, authorizeLoca
         ],
         client: { client_id: "canvas-nested", origin: "https://nested.example.com" },
       },
+    },
+    {
+      accounts: [
+        {
+          current: true,
+          display_name: "Browser User",
+          email: "browser@example.com",
+          expires_at: "2026-05-24T15:00:00.000Z",
+          last_used_at: "2026-05-24T04:00:00.000Z",
+          user_id: "user-browser",
+          username: "browser",
+        },
+      ],
     },
     { redirect_url: "https://example.com/callback?login_code=mock", expires_in: 60, expires_at: 1_779_600_000 },
     { redirectUrl: "https://example.com/current", expiresIn: 30, expiresAt: 1_779_600_030 },
@@ -596,13 +623,22 @@ async function testSharedApiContract({ activateLocalAccountChoice, authorizeLoca
     assert.equal(nestedChoices.app.appId, "canvas-nested");
     assert.equal(nestedChoices.app.returnToOrigin, "https://nested.example.com");
 
+    const browserAccounts = await listLocalBrowserAccounts();
+    assert.equal(browserAccounts.accounts.length, 1);
+    assert.equal(browserAccounts.accounts[0].choiceId, "");
+    assert.equal(browserAccounts.accounts[0].current, true);
+    assert.equal(browserAccounts.accounts[0].displayName, "Browser User");
+    const browserListUrl = new URL(calls[2].url, testApiBaseUrl);
+    assert.equal(browserListUrl.pathname, "/auth/priestess/browser-accounts");
+    assert.equal(calls[2].credentials, "include");
+
     const selected = await authorizeLocalSession({
       appId: "canvas",
       choiceId: "choice-snake",
       returnTo: "https://example.com/callback",
     });
     assert.equal(selected.redirectUrl, "https://example.com/callback?login_code=mock");
-    assert.deepEqual(calls[2].body, {
+    assert.deepEqual(calls[3].body, {
       app_id: "canvas",
       choice_id: "choice-snake",
       return_to: "https://example.com/callback",
@@ -613,7 +649,7 @@ async function testSharedApiContract({ activateLocalAccountChoice, authorizeLoca
       returnTo: "https://example.com/current",
     });
     assert.equal(current.redirectUrl, "https://example.com/current");
-    assert.deepEqual(calls[3].body, {
+    assert.deepEqual(calls[4].body, {
       app_id: "canvas",
       return_to: "https://example.com/current",
     });
@@ -624,20 +660,20 @@ async function testSharedApiContract({ activateLocalAccountChoice, authorizeLoca
     assert.equal(removed.removed, true);
     assert.equal(removed.revoked, true);
     assert.equal(removed.userId, "user-snake");
-    const removeUrl = new URL(calls[4].url, testApiBaseUrl);
+    const removeUrl = new URL(calls[5].url, testApiBaseUrl);
     assert.equal(removeUrl.pathname, "/auth/priestess/account-choices/user-snake");
-    assert.equal(calls[4].method, "DELETE");
-    assert.equal(calls[4].credentials, "include");
+    assert.equal(calls[5].method, "DELETE");
+    assert.equal(calls[5].credentials, "include");
 
     const activated = await activateLocalAccountChoice("user-snake", { choiceId: "choice-snake" });
     assert.equal(activated.authenticated, true);
     assert.equal(activated.user?.userId, "user-snake");
     assert.equal(activated.user?.username, "snake");
-    const activateUrl = new URL(calls[5].url, testApiBaseUrl);
+    const activateUrl = new URL(calls[6].url, testApiBaseUrl);
     assert.equal(activateUrl.pathname, "/auth/priestess/account-choices/user-snake/activate");
-    assert.equal(calls[5].method, "POST");
-    assert.deepEqual(calls[5].body, { choice_id: "choice-snake" });
-    assert.equal(calls[5].credentials, "include");
+    assert.equal(calls[6].method, "POST");
+    assert.deepEqual(calls[6].body, { choice_id: "choice-snake" });
+    assert.equal(calls[6].credentials, "include");
 
     const login = await loginLocalSession({
       password: "secret-password",
@@ -645,7 +681,7 @@ async function testSharedApiContract({ activateLocalAccountChoice, authorizeLoca
       username: "login-user",
     });
     assert.equal(login.authenticated, true);
-    assert.deepEqual(calls[6].body, {
+    assert.deepEqual(calls[7].body, {
       password: "secret-password",
       turnstile_token: "turnstile-ok",
       username: "login-user",
@@ -751,7 +787,7 @@ async function rejectsWithValue(run) {
   assert.fail("expected promise to reject");
 }
 
-async function testAccountChoiceFallback({ readAuthAccountChoicesForRequest }) {
+async function testAccountChoiceFallback({ readAuthAccountChoicesForRequest, readStandaloneBrowserAccounts }) {
   const authRequest = {
     appId: "canvas",
     returnTo: "https://example.com/callback",
@@ -791,6 +827,26 @@ async function testAccountChoiceFallback({ readAuthAccountChoicesForRequest }) {
 
   assert.equal(emptyFallback.accounts.length, 0);
   assert.equal(emptyFallback.error, "");
+
+  const standaloneAccounts = await withMockFetch([
+    jsonResponse({
+      accounts: [{
+        current: true,
+        display_name: "Standalone User",
+        email: "standalone@example.com",
+        user_id: "user-standalone",
+        username: "standalone",
+      }],
+    }),
+  ], async(calls) => {
+    const result = await readStandaloneBrowserAccounts(new AbortController().signal);
+    assert.equal(new URL(calls[0].url, "https://priestess.test").pathname, "/auth/priestess/browser-accounts");
+    return result;
+  });
+  assert.equal(standaloneAccounts.accounts.length, 1);
+  assert.equal(standaloneAccounts.accounts[0].source, "browser-accounts");
+  assert.equal(standaloneAccounts.accounts[0].authorizeChoiceId, null);
+  assert.equal(standaloneAccounts.app, null);
 
   const missingChoiceId = await withMockFetch([
     jsonResponse({
@@ -845,6 +901,7 @@ function renderPicker(AccountPickerCard, props) {
     busyAccountId: props.busyAccountId ?? "",
     disabled: false,
     error: props.error ?? "",
+    mode: props.mode ?? "authorization",
     removingAccountId: props.removingAccountId ?? "",
     onOpenAccountAction() {},
     onRemoveAccount() {},

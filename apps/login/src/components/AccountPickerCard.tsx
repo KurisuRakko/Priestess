@@ -12,6 +12,7 @@ import type { AuthAccountChoice, AuthAccountChoicesStatus } from "../lib/useAuth
 import "./AccountPickerCard.css";
 
 export type AccountPickerAction = "avatar" | "password" | "profile";
+export type AccountPickerMode = "authorization" | "standalone";
 
 const ACTION_DIALOG_EXIT_DELAY_MS = 170;
 
@@ -21,6 +22,7 @@ type AccountPickerCardProps = {
   busyAccountId: string;
   disabled?: boolean;
   error: string;
+  mode: AccountPickerMode;
   removingAccountId: string;
   onOpenAccountAction: (account: AuthAccountChoice, action: AccountPickerAction) => Promise<void> | void;
   onRemoveAccount: (account: AuthAccountChoice) => Promise<void> | void;
@@ -36,6 +38,7 @@ export function AccountPickerCard({
   busyAccountId,
   disabled = false,
   error,
+  mode,
   removingAccountId,
   onOpenAccountAction,
   onRemoveAccount,
@@ -51,6 +54,7 @@ export function AccountPickerCard({
   const [removeAccount, setRemoveAccount] = useState<AuthAccountChoice | null>(null);
   const appLabel = app?.appId || t("当前应用");
   const originLabel = app?.returnToOrigin || t("等待后端确认回跳地址");
+  const isStandalone = mode === "standalone";
   const isLoading = status === "loading";
   const isError = status === "error";
   const isBusy = Boolean(busyAccountId || removingAccountId);
@@ -132,10 +136,14 @@ export function AccountPickerCard({
 
       <div className="login-card__heading account-picker__heading">
         <h1 id="login-title">{t("选择账号")}</h1>
-        <p>
-          {t("继续访问")} <strong>{appLabel}</strong>
-          <span>{originLabel}</span>
-        </p>
+        {isStandalone ? (
+          <p>{t("选择账号进入 Priestess 个人中心")}</p>
+        ) : (
+          <p>
+            {t("继续访问")} <strong>{appLabel}</strong>
+            <span>{originLabel}</span>
+          </p>
+        )}
       </div>
 
       <div className="account-picker" aria-busy={isLoading}>
@@ -168,7 +176,7 @@ export function AccountPickerCard({
                   className={`account-picker__row${isAccountLocked ? " account-picker__row--disabled" : ""}${isAccountRemoving ? " account-picker__row--removing" : ""}${isAccountSignedOut ? " account-picker__row--signed-out" : ""}`}
                 >
                   <button
-                    aria-label={getAccountSelectLabel(account, appLabel, isAccountBusy, t)}
+                    aria-label={getAccountSelectLabel(account, appLabel, isAccountBusy, t, mode)}
                     className="account-picker__row-main"
                     disabled={isSelectLocked}
                     onClick={() => onSelectAccount(account)}
@@ -293,6 +301,7 @@ export function getAccountSelectLabel(
   appLabel: string,
   isBusy = false,
   translate: (key: string, options?: Record<string, unknown>) => string = interpolateSourceText,
+  mode: AccountPickerMode = "authorization",
 ) {
   const displayLabel = getAccountDisplayLabel(account, translate);
   const metaLabel = getAccountMetaLabel(account);
@@ -300,13 +309,17 @@ export function getAccountSelectLabel(
   const metaText = metaLabel && metaLabel !== displayLabel ? `，${metaLabel}` : "";
   const currentText = account.current ? translate("，已登录") : "";
 
-  return translate("{{action}} {{displayLabel}}{{metaText}}{{currentText}} 继续访问 {{appLabel}}", {
+  const options = {
     action: actionLabel,
     appLabel: appLabel || translate("当前应用"),
     currentText,
     displayLabel,
     metaText,
-  });
+  };
+
+  return mode === "standalone"
+    ? translate("{{action}} {{displayLabel}}{{metaText}}{{currentText}} 进入 Priestess 个人中心", options)
+    : translate("{{action}} {{displayLabel}}{{metaText}}{{currentText}} 继续访问 {{appLabel}}", options);
 }
 
 export function AccountPickerActionsDialog({ account, busy, onClose, onOpenAccountAction, onSignOut }: {

@@ -27,13 +27,14 @@ export function shouldShowAuthAccountPicker(params: {
   authMode: string;
   hasAuthRequest: boolean;
   hasTotpChallenge: boolean;
-  showLoginFormForAuthRequest: boolean;
+  standalone: boolean;
+  showLoginFormForAccountPicker: boolean;
   status: AuthAccountChoicesStatus;
 }) {
   // 空账号直接回到登录表单，避免把尚未登录的用户带进账号选择确认态。
-  return params.hasAuthRequest
+  return (params.hasAuthRequest || params.standalone)
     && params.authMode === "login"
-    && !params.showLoginFormForAuthRequest
+    && !params.showLoginFormForAccountPicker
     && !params.hasTotpChallenge
     && ["error", "loading", "ready"].includes(params.status);
 }

@@ -11,6 +11,26 @@ export const LOCAL_LOGIN_FAILURE_LIMIT = 10;
 export const LOCAL_LOGIN_COOLDOWN_MS = 10 * 60 * 1000;
 
 const LOCAL_LOGIN_COOLDOWN_STORAGE_PREFIX = "priestess:local-login-cooldown:v1:";
+type QrPanelState = "confirmed" | "error" | "pending" | "scanned" | "terminal";
+
+export function getLoginCardOriginRect(node: HTMLElement | null) {
+  if (!node || typeof window === "undefined") {
+    return null;
+  }
+
+  const rect = node.getBoundingClientRect();
+  if (!rect || rect.width === 0 || rect.height === 0) {
+    return null;
+  }
+
+  return {
+    borderRadius: window.getComputedStyle(node).borderTopLeftRadius || "0px",
+    height: rect.height,
+    left: rect.left,
+    top: rect.top,
+    width: rect.width,
+  };
+}
 
 export function formatQrExpiresLabel(seconds: number) {
   const safeSeconds = Math.max(Math.floor(seconds), 0);
@@ -39,6 +59,37 @@ export function getQrStatusText(status: string, error: string, t: (key: string) 
     return t("二维码已过期");
   }
   return t("二维码有效");
+}
+
+export function resolveQrPanelState(params: {
+  error: string;
+  expiresIn: number;
+  hasSession: boolean;
+  status: string;
+  t: (key: string) => string;
+}) {
+  const visualState: QrPanelState = params.error
+    ? "error"
+    : params.status === "scanned" || params.status === "pre_confirmed"
+      ? "scanned"
+      : params.status === "confirmed"
+        ? "confirmed"
+        : params.status === "expired" || params.status === "rejected"
+          ? "terminal"
+          : "pending";
+  const expiresLabel = visualState === "pending"
+    ? params.hasSession ? formatQrExpiresLabel(params.expiresIn) : "--:--"
+    : visualState === "scanned"
+      ? params.t("待确认")
+      : visualState === "confirmed"
+        ? params.t("已确认")
+        : params.status === "rejected"
+          ? params.t("已拒绝")
+          : params.status === "expired"
+            ? params.t("已过期")
+            : params.t("异常");
+
+  return { expiresLabel, visualState };
 }
 
 export function readLocalLoginCooldownUntil() {

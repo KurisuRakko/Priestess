@@ -64,6 +64,11 @@ export type LocalAccountChoicesResult = {
   raw: unknown;
 };
 
+export type LocalBrowserAccountsResult = {
+  accounts: LocalAccountChoice[];
+  raw: unknown;
+};
+
 export type LocalAccountChoiceRemovalResult = {
   authenticated: boolean;
   current: boolean;

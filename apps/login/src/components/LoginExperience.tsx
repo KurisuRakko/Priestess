@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type ComponentProps, type RefObject } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { BrandMark, FloatingBackdrop } from "@priestess/shared";
-import { AccountPickerCard, type AccountPickerAction } from "./AccountPickerCard";
+import { AccountPickerCard, type AccountPickerAction, type AccountPickerMode } from "./AccountPickerCard";
 import { ForgotPasswordForm } from "./ForgotPasswordForm";
 import { LoginForm, type LoginCredentials, type LoginTotpChallenge } from "./LoginForm";
 import { QrPanel } from "./QrPanel";
@@ -15,6 +15,7 @@ type TranslationFn = (key: string, options?: Record<string, unknown>) => string;
 type LoginExperienceProps = {
   accountChoices: AccountChoicesState;
   accountPickerError: string;
+  accountPickerMode: AccountPickerMode;
   authGridClassName: string;
   authMode: LoginLayoutAuthMode;
   authUiLocked: boolean;
@@ -55,7 +56,7 @@ type LoginExperienceProps = {
   shouldReduceMotion: boolean | null;
   shouldShowAccountPicker: boolean;
   shouldUseCenteredWallpaper: boolean;
-  showLoginFormForAuthRequest: boolean;
+  showLoginFormForAccountPicker: boolean;
   t: TranslationFn;
   totpChallenge: LoginTotpChallenge | null;
 };
@@ -63,6 +64,7 @@ type LoginExperienceProps = {
 export function LoginExperience({
   accountChoices,
   accountPickerError,
+  accountPickerMode,
   authGridClassName,
   authMode,
   authUiLocked,
@@ -103,7 +105,7 @@ export function LoginExperience({
   shouldReduceMotion,
   shouldShowAccountPicker,
   shouldUseCenteredWallpaper,
-  showLoginFormForAuthRequest,
+  showLoginFormForAccountPicker,
   t,
   totpChallenge,
 }: LoginExperienceProps) {
@@ -256,6 +258,7 @@ export function LoginExperience({
                             busyAccountId={authorizingAccountId}
                             disabled={authUiLocked}
                             error={accountPickerError}
+                            mode={accountPickerMode}
                             removingAccountId={removingAccountId}
                             onOpenAccountAction={onOpenAuthAccountAction}
                             onRemoveAccount={onRemoveAuthAccount}
@@ -275,7 +278,7 @@ export function LoginExperience({
                             onCancelTotp={onTotpCancel}
                             onTotpSubmit={onTotpSubmit}
                             onValidSubmit={onValidLoginSubmit}
-                            showBackToAccountPicker={hasQrRequest && showLoginFormForAuthRequest && !totpChallenge}
+                            showBackToAccountPicker={showLoginFormForAccountPicker && !totpChallenge}
                             showCreateAccount={!totpChallenge}
                             totpChallenge={totpChallenge}
                           />
