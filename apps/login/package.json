@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 127.0.0.1 --port 4173",
     "test:account-picker": "node scripts/account-picker-smoke.mjs",
+    "test:mobile-login-browser": "npx --yes --package playwright node scripts/mobile-login-reveal-smoke.mjs",
     "test:login-turnstile-browser": "npx --yes --package playwright node scripts/login-turnstile-browser-smoke.mjs"
   },
   "dependencies": {

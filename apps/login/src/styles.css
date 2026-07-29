@@ -24,7 +24,7 @@
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
   --font-sans: "HarmonyOS Sans SC", "HarmonyOS Sans", "PingFang SC", "Noto Sans SC", "Microsoft YaHei", Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   /* 登录页背景使用压缩后的多档图片，避免把 4.5M 原图直接打进首屏资源。 */
-  --dwall-background-image: url("./assets/dwall-960.jpg");
+  --dwall-background-image: none;
   --login-lockout-background-image: url("./assets/login-lockout-bg.jpg");
   color: var(--color-text);
   background: var(--color-page);

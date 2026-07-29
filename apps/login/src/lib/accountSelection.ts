@@ -1,6 +1,8 @@
 import {
   activateLocalAccountChoice,
   authorizeLocalSession,
+  getPriestessApiErrorCode,
+  getPriestessApiErrorMessage,
 } from "@priestess/shared";
 import { buildAuthAccountAuthorizeParams } from "./accountAuthorization";
 import type { AuthRequest } from "./authRequest";
@@ -30,4 +32,13 @@ export async function completeAccountSelection(
     throw new Error(t("当前账号状态已变化，请重新选择账号"));
   }
   return { kind: "manage" };
+}
+
+export function getAuthAccountActivationErrorMessage(error: unknown, t: TranslationFn) {
+  const code = getPriestessApiErrorCode(error);
+  // 这些错误都表示浏览器账号容器或短时选择项已经过期，统一回到账号选择刷新流程。
+  if (["account_choice_invalid", "account_choice_not_found", "local_browser_required"].includes(code)) {
+    return t("当前账号状态已变化，请重新选择账号");
+  }
+  return getPriestessApiErrorMessage(error, t("当前账号状态已变化，请重新选择账号"));
 }

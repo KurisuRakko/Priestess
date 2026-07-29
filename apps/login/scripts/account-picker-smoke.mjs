@@ -28,6 +28,7 @@ try {
   const loginI18nModule = await server.ssrLoadModule("/src/i18n/index.ts");
   const loginNextModule = await server.ssrLoadModule("/src/lib/loginNext.ts");
   const loginLayoutStateModule = await server.ssrLoadModule("/src/lib/loginLayoutState.ts");
+  const mobileLoginRevealStateModule = await server.ssrLoadModule("/src/lib/mobileLoginRevealState.ts");
   const localLoginTurnstileRetryModule = await server.ssrLoadModule("/src/lib/localLoginTurnstileRetry.ts");
   // 共享包路径从脚本位置推导，避免硬编码仓库绝对路径在 worktree/其它机器上加载出第二份 React。
   const sharedLibDir = new URL("../../../packages/priestess-shared/src/lib/", import.meta.url).pathname;
@@ -41,6 +42,7 @@ try {
   const { LoginForm } = loginFormModule;
   const { buildLoginPathWithNext, getCurrentAccountNextPath, normalizePriestessNextPath, readLoginNext } = loginNextModule;
   const { loginLocalSessionWithTurnstileRetry } = localLoginTurnstileRetryModule;
+  const { MOBILE_LOGIN_BREAKPOINT_PX, MOBILE_LOGIN_REVEAL_TIMEOUT_MS, isMobileLoginDataReady, resolveMobileLoginRevealStep, shouldAnimateMobileLoginReveal } = mobileLoginRevealStateModule;
   ({ loginI18nResources } = loginI18nModule);
   const { resolveLoginLayoutState } = loginLayoutStateModule;
   ({ PriestessI18nProvider } = sharedI18nModule);
@@ -51,6 +53,7 @@ try {
   testAccountManagementActionHelpers({ buildAccountManagementActionPath, getAccountManagementActionSection, normalizePriestessNextPath, readAccountManagementAction, removeAccountManagementActionFromSearch, resolveAccountManagementActionTarget });
   testLoginNextHelpers({ buildLoginPathWithNext, getCurrentAccountNextPath, normalizePriestessNextPath, readLoginNext });
   testLoginLayoutState({ resolveLoginLayoutState });
+  testMobileLoginRevealState({ MOBILE_LOGIN_BREAKPOINT_PX, MOBILE_LOGIN_REVEAL_TIMEOUT_MS, isMobileLoginDataReady, resolveMobileLoginRevealStep, shouldAnimateMobileLoginReveal });
   testAccountPickerMarkup({ AccountPickerActionsDialog, AccountPickerCard, getAccountKey, getAccountMoreActionsLabel, getAccountRemoveDescription, getAccountRemoveLabel, getAccountSelectLabel, getSafeAvatarUrl });
   testLoginFormBackButton({ LoginForm });
   await testSharedApiContract({ activateLocalAccountChoice, authorizeLocalSession, listLocalAccountChoices, listLocalBrowserAccounts, loginLocalSession, removeLocalAccountChoice });
@@ -233,6 +236,51 @@ function testLoginLayoutState({ resolveLoginLayoutState }) {
   assert.equal(registerLayout.isSoloAuthMode, true);
   assert.equal(registerLayout.isQrDrawerOpen, false);
   assert.match(registerLayout.authGridClassName, /auth-grid--register/);
+}
+
+function testMobileLoginRevealState({
+  MOBILE_LOGIN_BREAKPOINT_PX,
+  MOBILE_LOGIN_REVEAL_TIMEOUT_MS,
+  isMobileLoginDataReady,
+  resolveMobileLoginRevealStep,
+  shouldAnimateMobileLoginReveal,
+}) {
+  assert.equal(MOBILE_LOGIN_BREAKPOINT_PX, 820);
+  assert.equal(MOBILE_LOGIN_REVEAL_TIMEOUT_MS, 5000);
+
+  const plainLogin = {
+    accountChoicesStatus: "loading",
+    hasAuthRequest: false,
+    localSessionStatus: "loading",
+  };
+  assert.equal(isMobileLoginDataReady(plainLogin), false);
+  assert.equal(isMobileLoginDataReady({ ...plainLogin, localSessionStatus: "ready" }), true);
+  assert.equal(isMobileLoginDataReady({ ...plainLogin, localSessionStatus: "error" }), true);
+
+  const authorizationLogin = {
+    accountChoicesStatus: "loading",
+    hasAuthRequest: true,
+    localSessionStatus: "idle",
+  };
+  assert.equal(isMobileLoginDataReady(authorizationLogin), false);
+  for (const accountChoicesStatus of ["ready", "empty", "error"]) {
+    assert.equal(isMobileLoginDataReady({ ...authorizationLogin, accountChoicesStatus }), true);
+  }
+
+  const waitingReveal = {
+    dataReady: false,
+    hasRevealed: false,
+    isMobileViewport: true,
+    timedOut: false,
+  };
+  assert.equal(resolveMobileLoginRevealStep(waitingReveal), "waiting");
+  assert.equal(resolveMobileLoginRevealStep({ ...waitingReveal, dataReady: true }), "schedule-after-paint");
+  assert.equal(resolveMobileLoginRevealStep({ ...waitingReveal, timedOut: true }), "schedule-after-paint");
+  assert.equal(resolveMobileLoginRevealStep({ ...waitingReveal, isMobileViewport: false }), "revealed");
+  assert.equal(resolveMobileLoginRevealStep({ ...waitingReveal, hasRevealed: true }), "revealed");
+
+  assert.equal(shouldAnimateMobileLoginReveal(false), true);
+  assert.equal(shouldAnimateMobileLoginReveal(true), false);
 }
 
 function testAuthRequestHelpers({ getAuthRequestAppLabel, getAuthRequestReturnToOrigin, readAuthRequest }) {

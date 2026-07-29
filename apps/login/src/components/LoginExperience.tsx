@@ -8,6 +8,7 @@ import { QrPanel } from "./QrPanel";
 import { RegisterFirstStepForm } from "./RegisterFirstStepForm";
 import { type AuthAccountChoice, type useAuthAccountChoices } from "../lib/useAuthAccountChoices";
 import { type LoginLayoutAuthMode } from "../lib/loginLayoutState";
+import type { MobileLoginRevealState } from "../lib/useMobileLoginReveal";
 
 type AccountChoicesState = ReturnType<typeof useAuthAccountChoices>;
 type TranslationFn = (key: string, options?: Record<string, unknown>) => string;
@@ -30,6 +31,7 @@ type LoginExperienceProps = {
   isRegisterMode: boolean;
   isSoloAuthMode: boolean;
   loginCardRef: RefObject<HTMLDivElement | null>;
+  mobileLoginReveal: MobileLoginRevealState;
   onBackToLogin: () => void;
   onChooseAuthAccount: (account: AuthAccountChoice) => void;
   onCreateAccount: () => void;
@@ -79,6 +81,7 @@ export function LoginExperience({
   isRegisterMode,
   isSoloAuthMode,
   loginCardRef,
+  mobileLoginReveal,
   onBackToLogin,
   onChooseAuthAccount,
   onCreateAccount,
@@ -117,7 +120,11 @@ export function LoginExperience({
   const authContentTransition = shouldReduceMotion
     ? { duration: 0 }
     : { duration: 0.4, ease: drawerEase };
-  const loginEnter = shouldReduceMotion ? false : { opacity: 0, x: 360, y: 24, scale: 0.972, filter: "blur(10px)" };
+  const loginEnter = shouldReduceMotion
+    ? false
+    : mobileLoginReveal.isMobileViewport
+      ? { opacity: 1, y: "100%", scale: 1, filter: "blur(0px)" }
+      : { opacity: 0, x: 360, y: 24, scale: 0.972, filter: "blur(10px)" };
 
   // 登录/注册/找回密码共用一个高度视口：面板切换或内部内容变化时，
   // 卡片高度用测量值平滑过渡，替代 popLayout 交换内容瞬间的高度跳变。
@@ -156,11 +163,17 @@ export function LoginExperience({
   const isAccountPickerCardMode = shouldShowAccountPicker && !isRegisterMode && !isForgotPasswordMode;
 
   return (
-    <main className="app-shell">
+    <main
+      className="app-shell"
+      data-mobile-login={mobileLoginReveal.isMobileViewport ? "true" : "false"}
+      data-mobile-reveal={mobileLoginReveal.revealed ? "ready" : "waiting"}
+      data-mobile-reveal-timeout={mobileLoginReveal.didTimeout ? "true" : "false"}
+      data-mobile-data-ready={mobileLoginReveal.dataReady ? "true" : "false"}
+    >
       {/* 壁纸层：独立 DOM 元素，通过 CSS transform 在登录/注册间平滑缩放和平移。 */}
       <div className={dwallBgClassName} aria-hidden="true" />
       <FloatingBackdrop />
-      {!isLocalLoginCooldownActive ? (
+      {!isLocalLoginCooldownActive && mobileLoginReveal.revealed ? (
         <>
           <header className="topbar" aria-label="Priestess">
             <BrandMark size="sm" />
@@ -185,7 +198,9 @@ export function LoginExperience({
                 animate={{ opacity: 1, x: 0, y: 0, scale: 1, filter: "blur(0px)" }}
                 transition={shouldReduceMotion
                   ? { duration: 0 }
-                  : { delay: loginDelay, duration: loginDuration, ease: [0.16, 1, 0.3, 1] }}
+                  : mobileLoginReveal.shouldAnimateReveal && mobileLoginReveal.isMobileViewport
+                    ? { delay: 0, duration: 0.52, ease: drawerEase }
+                    : { delay: loginDelay, duration: loginDuration, ease: [0.16, 1, 0.3, 1] }}
               >
                 <motion.div
                   ref={loginCardRef}

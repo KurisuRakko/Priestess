@@ -4,6 +4,7 @@ import { PriestessI18nProvider } from "@priestess/shared";
 import { App } from "./App";
 import { loginI18nResources } from "./i18n";
 import "./styles.css";
+import "./mobile-login-reveal.css";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

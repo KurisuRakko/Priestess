@@ -28,7 +28,7 @@ import { NotFoundPage } from "./components/NotFoundPage";
 import { QrLoginConfirmPage } from "./components/QrLoginConfirmPage";
 import { ResetPasswordPage } from "./components/ResetPasswordPage";
 import { getAuthAccountAuthorizeBlocker, shouldShowAuthAccountPicker } from "./lib/accountAuthorization";
-import { completeAccountSelection } from "./lib/accountSelection";
+import { completeAccountSelection, getAuthAccountActivationErrorMessage } from "./lib/accountSelection";
 import { isAccountEditableInBrowser, resolveAccountManagementActionTarget } from "./lib/accountManagementAction";
 import { getAuthRequestKey, readAuthRequest, type AuthRequest } from "./lib/authRequest";
 import { loginLocalSessionWithTurnstileRetry } from "./lib/localLoginTurnstileRetry";
@@ -52,6 +52,7 @@ import { buildLoginPathWithNext, getCurrentAccountNextPath, readLoginNext } from
 import { resolveLoginLayoutState, type LoginLayoutAuthMode } from "./lib/loginLayoutState";
 import { getCurrentRoute, LOGIN_ROUTE_PATH, LEGACY_LOGIN_ROUTE_PATH, matchesRoutePath, type AppRoute } from "./lib/routes";
 import { getAuthAccountChoiceErrorMessage, type AuthAccountChoice, useAuthAccountChoices } from "./lib/useAuthAccountChoices";
+import { useMobileLoginReveal } from "./lib/useMobileLoginReveal";
 import { readTurnstileSiteKey } from "./components/TurnstileWidget";
 
 type AuthMode = LoginLayoutAuthMode;
@@ -110,6 +111,12 @@ export function App() {
     authRequest,
     enabled: route === "login" && authMode === "login" && !isLocalLoginCooldownActive,
     standalone: !hasQrRequest,
+  });
+  const mobileLoginReveal = useMobileLoginReveal({
+    accountChoicesStatus: accountChoices.status,
+    enabled: route === "login",
+    hasAuthRequest: hasQrRequest,
+    prefersReducedMotion: Boolean(shouldReduceMotion),
   });
   const qrValue = qrSession?.qrUrl ?? "";
 
@@ -813,7 +820,7 @@ export function App() {
   }, [route]);
 
   useEffect(() => {
-    if (route !== "login" || authMode !== "login" || isLocalLoginCooldownActive) {
+    if (route !== "login" || authMode !== "login" || isLocalLoginCooldownActive || mobileLoginReveal.isMobileViewport) {
       clearQrTimers();
       return;
     }
@@ -824,7 +831,7 @@ export function App() {
       abortController.abort();
       clearQrTimers();
     };
-  }, [authMode, authRequestKey, isLocalLoginCooldownActive, route]);
+  }, [authMode, authRequestKey, isLocalLoginCooldownActive, mobileLoginReveal.isMobileViewport, route]);
 
   useEffect(() => {
     setAccountActionBusyId("");
@@ -928,6 +935,7 @@ export function App() {
       isRegisterMode={isRegisterMode}
       isSoloAuthMode={isSoloAuthMode}
       loginCardRef={loginCardRef}
+      mobileLoginReveal={mobileLoginReveal}
       onBackToLogin={() => switchAuthMode("login")}
       onChooseAuthAccount={chooseAuthAccount}
       onCreateAccount={() => switchAuthMode("register")}
@@ -984,13 +992,4 @@ export function App() {
       <Toast message={notice} />
     </>
   );
-}
-
-function getAuthAccountActivationErrorMessage(error: unknown, t: (key: string, options?: Record<string, unknown>) => string) {
-  const code = getPriestessApiErrorCode(error);
-  // 这些错误都表示浏览器账号容器或短时选择项已经过期，统一回到账号选择刷新流程。
-  if (["account_choice_invalid", "account_choice_not_found", "local_browser_required"].includes(code)) {
-    return t("当前账号状态已变化，请重新选择账号");
-  }
-  return getPriestessApiErrorMessage(error, t("当前账号状态已变化，请重新选择账号"));
 }
