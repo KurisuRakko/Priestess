@@ -82,6 +82,7 @@ export function resolveErrorMessage(payload: unknown, status: number) {
   if (["registration_invite_invalid", "registration_invite_required"].includes(apiError?.code ?? "")) return translatePriestess("errors:registrationInviteInvalid");
   if (apiError?.code === "registration_invite_not_configured") return translatePriestess("errors:registrationInviteMissing");
   if (["registration_verification_invalid", "register_verification_invalid", "invalid_register_code", "invalid_registration_code"].includes(apiError?.code ?? "")) return translatePriestess("errors:registrationCodeInvalid");
+  if (["registration_invite_challenge_required", "registration_invite_challenge_invalid"].includes(apiError?.code ?? "")) return translatePriestess("errors:registrationInviteChallengeInvalid");
   if (["registration_turnstile_failed", "turnstile_invalid", "turnstile_required"].includes(apiError?.code ?? "")) return translatePriestess("errors:turnstileFailed");
   if (apiError?.code === "registration_turnstile_not_configured") return translatePriestess("errors:registrationTurnstileMissing");
   if (["registration_email_not_configured", "registration_sms_not_configured", "sms_provider_not_configured", "sms_signature_required", "sms_webhook_not_configured"].includes(apiError?.code ?? "")) return translatePriestess("errors:registrationChannelMissing");

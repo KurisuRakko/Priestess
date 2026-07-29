@@ -46,7 +46,7 @@ try {
   ({ loginI18nResources } = loginI18nModule);
   const { resolveLoginLayoutState } = loginLayoutStateModule;
   ({ PriestessI18nProvider } = sharedI18nModule);
-  const { activateLocalAccountChoice, authorizeLocalSession, getPriestessApiErrorMessage, listLocalAccountChoices, listLocalBrowserAccounts, loginLocalSession, removeLocalAccountChoice, PriestessApiError } = sharedApiModule;
+  const { activateLocalAccountChoice, authorizeLocalSession, checkRegisterInvite, confirmLocalRegistration, getPriestessApiErrorMessage, listLocalAccountChoices, listLocalBrowserAccounts, loginLocalSession, removeLocalAccountChoice, PriestessApiError } = sharedApiModule;
 
   testAuthRequestHelpers({ getAuthRequestAppLabel, getAuthRequestReturnToOrigin, readAuthRequest });
   testAccountAuthorizationHelpers({ buildAuthAccountAuthorizeParams, getAuthAccountAuthorizeBlocker, shouldShowAuthAccountPicker });
@@ -56,7 +56,7 @@ try {
   testMobileLoginRevealState({ MOBILE_LOGIN_BREAKPOINT_PX, MOBILE_LOGIN_REVEAL_TIMEOUT_MS, isMobileLoginDataReady, resolveMobileLoginRevealStep, shouldAnimateMobileLoginReveal });
   testAccountPickerMarkup({ AccountPickerActionsDialog, AccountPickerCard, getAccountKey, getAccountMoreActionsLabel, getAccountRemoveDescription, getAccountRemoveLabel, getAccountSelectLabel, getSafeAvatarUrl });
   testLoginFormBackButton({ LoginForm });
-  await testSharedApiContract({ activateLocalAccountChoice, authorizeLocalSession, listLocalAccountChoices, listLocalBrowserAccounts, loginLocalSession, removeLocalAccountChoice });
+  await testSharedApiContract({ activateLocalAccountChoice, authorizeLocalSession, checkRegisterInvite, confirmLocalRegistration, listLocalAccountChoices, listLocalBrowserAccounts, loginLocalSession, removeLocalAccountChoice });
   await testLocalLoginTurnstileRetry({ loginLocalSessionWithTurnstileRetry, PriestessApiError });
   testAccountChoiceErrorRedaction({ getAuthAccountChoiceErrorMessage, getPriestessApiErrorMessage, redactSensitiveAuthText });
   await testAccountChoiceFallback({ readAuthAccountChoicesForRequest, readStandaloneBrowserAccounts });
@@ -550,7 +550,7 @@ function testLoginFormBackButton({ LoginForm }) {
   assert.match(totpHtml, /返回密码登录/);
 }
 
-async function testSharedApiContract({ activateLocalAccountChoice, authorizeLocalSession, listLocalAccountChoices, listLocalBrowserAccounts, loginLocalSession, removeLocalAccountChoice }) {
+async function testSharedApiContract({ activateLocalAccountChoice, authorizeLocalSession, checkRegisterInvite, confirmLocalRegistration, listLocalAccountChoices, listLocalBrowserAccounts, loginLocalSession, removeLocalAccountChoice }) {
   const originalFetch = globalThis.fetch;
   const calls = [];
   const responses = [
@@ -620,6 +620,8 @@ async function testSharedApiContract({ activateLocalAccountChoice, authorizeLoca
     { authenticated: true, current: false, removed: true, revoked: true, user_id: "user-snake" },
     { authenticated: true, expires_at: "2026-05-24T12:30:00.000Z", user: { email: "snake@example.com", user_id: "user-snake", username: "snake" } },
     { authenticated: true, expires_at: "2026-05-24T12:00:00.000Z", user: { user_id: "user-login", username: "login-user" } },
+    { accepted: true, expires_at: "2026-05-24T12:05:00.000Z", invite_challenge: "invite.challenge" },
+    { authenticated: true, expires_at: "2026-05-24T13:00:00.000Z", user: { user_id: "user-register", username: "register-user" } },
   ];
 
   globalThis.fetch = async(url, init = {}) => {
@@ -733,6 +735,49 @@ async function testSharedApiContract({ activateLocalAccountChoice, authorizeLoca
       password: "secret-password",
       turnstile_token: "turnstile-ok",
       username: "login-user",
+    });
+
+    const inviteCheck = await checkRegisterInvite({
+      identity: "register@example.com",
+      identityType: "email",
+      inviteCode: "INVITE-2026",
+      turnstileToken: "turnstile-register",
+    });
+    assert.equal(inviteCheck.accepted, true);
+    assert.equal(inviteCheck.inviteChallenge, "invite.challenge");
+    const inviteCheckUrl = new URL(calls[8].url, testApiBaseUrl);
+    assert.equal(inviteCheckUrl.pathname, "/auth/priestess/register/invite-check");
+    assert.deepEqual(calls[8].body, {
+      identity: "register@example.com",
+      identity_type: "email",
+      invite_code: "INVITE-2026",
+      turnstile_token: "turnstile-register",
+    });
+
+    const registration = await confirmLocalRegistration({
+      displayName: "Register User",
+      identity: "register@example.com",
+      identityType: "email",
+      inviteChallenge: "invite.challenge",
+      inviteCode: "INVITE-2026",
+      password: "secret-register-password",
+      username: "register-user",
+      verificationCode: "482913",
+      verificationRequestId: "prv_test_request",
+    });
+    assert.equal(registration.authenticated, true);
+    const registrationUrl = new URL(calls[9].url, testApiBaseUrl);
+    assert.equal(registrationUrl.pathname, "/auth/priestess/register/confirm");
+    assert.deepEqual(calls[9].body, {
+      display_name: "Register User",
+      identity: "register@example.com",
+      identity_type: "email",
+      invite_challenge: "invite.challenge",
+      invite_code: "INVITE-2026",
+      password: "secret-register-password",
+      username: "register-user",
+      verification_code: "482913",
+      verification_request_id: "prv_test_request",
     });
   } finally {
     globalThis.fetch = originalFetch;

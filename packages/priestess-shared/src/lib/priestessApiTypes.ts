@@ -204,6 +204,13 @@ export type PasswordResetLinkVisitResult = {
 
 export type RegisterIdentityType = "email" | "phone";
 
+export type RegisterInviteCheckResult = {
+  accepted: boolean;
+  expiresAt: number;
+  inviteChallenge: string;
+  raw: unknown;
+};
+
 export type RegisterVerificationRequestResult = {
   accepted: boolean;
   cooldownSeconds: number | null;

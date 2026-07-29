@@ -3,6 +3,7 @@ import { ArrowLeft, ArrowRight, AtSign, CheckCircle2, KeyRound, Mail, Phone, Shi
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { pinyin } from "pinyin-pro";
 import {
+  checkRegisterInvite,
   confirmLocalRegistration,
   getPriestessApiErrorCode,
   getPriestessApiErrorMessage,
@@ -22,7 +23,7 @@ import {
 } from "./registerIdentityOptions";
 import { startLoginTransitionOverlay } from "./LoginTransitionOverlay";
 import { getStepCopy, REGISTER_STEP_LABELS, REGISTER_STEPS, type RegisterStep, STEP_PANEL_EASE, STEP_PANEL_VARIANTS } from "./registerStepConfig";
-import { readTurnstileSiteKey } from "./TurnstileWidget";
+import { readTurnstileSiteKey, TurnstileWidget } from "./TurnstileWidget";
 import "./RegisterFirstStepForm.css";
 
 const SUCCESS_REDIRECT_DELAY_MS = 700;
@@ -44,6 +45,7 @@ type FieldErrors = {
   password?: string;
   passwordConfirm?: string;
   terms?: string;
+  turnstile?: string;
   verificationCode?: string;
   username?: string;
 };
@@ -97,6 +99,7 @@ export function RegisterFirstStepForm({
   const shouldReduceStepMotion = useReducedMotion();
   const successTimerRef = useRef<number | null>(null);
   const submitAbortRef = useRef<AbortController | null>(null);
+  const verificationAbortRef = useRef<AbortController | null>(null);
   const [step, setStep] = useState<RegisterStep>("identity");
   const [stepDirection, setStepDirection] = useState(1);
   const [emailIdentity, setEmailIdentity] = useState("");
@@ -107,6 +110,7 @@ export function RegisterFirstStepForm({
   const [committedIdentity, setCommittedIdentity] = useState("");
   const [committedIdentityKey, setCommittedIdentityKey] = useState("");
   const [inviteCode, setInviteCode] = useState("");
+  const [inviteChallenge, setInviteChallenge] = useState("");
   const [verificationCode, setVerificationCode] = useState("");
   const [verificationIdentityKey, setVerificationIdentityKey] = useState("");
   const [verificationRequestId, setVerificationRequestId] = useState("");
@@ -118,6 +122,8 @@ export function RegisterFirstStepForm({
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [submitBusy, setSubmitBusy] = useState(false);
   const [verificationBusy, setVerificationBusy] = useState(false);
+  const [turnstileResetSignal, setTurnstileResetSignal] = useState(0);
+  const [turnstileToken, setTurnstileToken] = useState("");
   const [errors, setErrors] = useState<FieldErrors>({});
   const [panelElement, setPanelElement] = useState<HTMLDivElement | null>(null);
   const [panelHeight, setPanelHeight] = useState<number | null>(null);
@@ -127,19 +133,29 @@ export function RegisterFirstStepForm({
     if (identityMode === "phone") return normalizePhoneIdentity(phoneRegionId, phoneLocalNumber);
     return normalizeEmailIdentity(emailIdentity);
   }, [emailIdentity, identityMode, phoneLocalNumber, phoneRegionId]);
+  const turnstileSiteKey = useMemo(() => readTurnstileSiteKey(), []);
   const copy = getStepCopy(step, step === "identity" ? identityMode : identityType);
   const stepIndex = REGISTER_STEPS.findIndex((item) => item === step);
   const progressFill = stepIndex <= 0 ? 0 : stepIndex / (REGISTER_STEPS.length - 1);
   const progressStyle = { "--register-progress-fill": `${progressFill * 100}%` } as CSSProperties;
-  const isFormLocked = disabled || submitBusy || step === "success";
+  const isFormLocked = disabled || submitBusy || verificationBusy || step === "success";
   const isVerificationReady = Boolean(verificationRequestId && verificationIdentityKey === committedIdentityKey);
+  const canCheckInvite = Boolean(inviteCode.trim() && turnstileSiteKey && turnstileToken && !isFormLocked);
   const termsLinkSeparator = i18n.language.toLowerCase().startsWith("en") ? t("协议链接分隔符") : "";
+
+  useEffect(() => {
+    if (step !== "verification" || inviteChallenge || turnstileSiteKey) return;
+    setErrors((current) => current.turnstile
+      ? current
+      : { ...current, turnstile: t("验证码组件未配置，请联系管理员") });
+  }, [inviteChallenge, step, t, turnstileSiteKey]);
 
   useEffect(() => {
     return () => {
       if (successTimerRef.current !== null) {
         window.clearTimeout(successTimerRef.current);
       }
+      verificationAbortRef.current?.abort();
       submitAbortRef.current?.abort();
     };
   }, []);
@@ -166,7 +182,7 @@ export function RegisterFirstStepForm({
     const observer = new ResizeObserver(updateHeight);
     observer.observe(panelElement);
     return () => observer.disconnect();
-  }, [errors.displayName, errors.identity, errors.inviteCode, errors.password, errors.passwordConfirm, errors.terms, errors.username, errors.verificationCode, identityMode, panelElement, shouldReduceStepMotion, step, verificationBusy, verificationCode, verificationRequestId]);
+  }, [errors.displayName, errors.identity, errors.inviteCode, errors.password, errors.passwordConfirm, errors.terms, errors.turnstile, errors.username, errors.verificationCode, identityMode, inviteChallenge, panelElement, shouldReduceStepMotion, step, verificationBusy, verificationCode, verificationRequestId]);
 
   const clearError = (key: keyof FieldErrors) => {
     setErrors((current) => ({ ...current, [key]: undefined }));
@@ -179,6 +195,9 @@ export function RegisterFirstStepForm({
 
   const resetInviteState = () => {
     setInviteCode("");
+    setInviteChallenge("");
+    setTurnstileToken("");
+    setTurnstileResetSignal((current) => current + 1);
     setVerificationCode("");
     setVerificationIdentityKey("");
     setVerificationRequestId("");
@@ -199,7 +218,7 @@ export function RegisterFirstStepForm({
     setCommittedIdentity("");
     setCommittedIdentityKey("");
     resetCredentialState();
-    setErrors((current) => ({ ...current, identity: undefined, inviteCode: undefined, verificationCode: undefined }));
+    setErrors((current) => ({ ...current, identity: undefined, inviteCode: undefined, turnstile: undefined, verificationCode: undefined }));
   };
 
   const submitIdentity = (event: FormEvent<HTMLFormElement>) => {
@@ -225,7 +244,7 @@ export function RegisterFirstStepForm({
     setCommittedIdentity(nextIdentity.value);
     setIdentityType(nextIdentity.type);
     setErrors({});
-    moveToStep("password", 1);
+    moveToStep("verification", 1);
   };
 
   const submitPassword = (event: FormEvent<HTMLFormElement>) => {
@@ -238,11 +257,15 @@ export function RegisterFirstStepForm({
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
 
-    moveToStep("verification", 1);
+    moveToStep("profile", 1);
   };
 
   const sendVerificationCode = async() => {
     if (isFormLocked || verificationBusy) return;
+    if (!inviteChallenge) {
+      setErrors((current) => ({ ...current, inviteCode: t("请先校验邀请码") }));
+      return;
+    }
     if (!committedIdentity || !committedIdentityKey) {
       setErrors((current) => ({ ...current, verificationCode: t("账号信息已变化，请重新发送验证码") }));
       return;
@@ -290,16 +313,75 @@ export function RegisterFirstStepForm({
     }
   };
 
-  const submitVerification = (event: FormEvent<HTMLFormElement>) => {
+  const submitVerification = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (isFormLocked || verificationBusy) return;
 
     const normalizedInviteCode = inviteCode.trim();
+    if (!normalizedInviteCode) {
+      setErrors((current) => ({ ...current, inviteCode: t("请输入邀请码") }));
+      return;
+    }
+
+    if (!inviteChallenge) {
+      if (!turnstileSiteKey) {
+        setErrors((current) => ({ ...current, turnstile: t("验证码组件未配置，请联系管理员") }));
+        return;
+      }
+      if (!turnstileToken) {
+        setErrors((current) => ({ ...current, turnstile: t("请先完成人机验证") }));
+        return;
+      }
+
+      setVerificationBusy(true);
+      setErrors((current) => ({ ...current, inviteCode: undefined, turnstile: undefined }));
+      const abortController = new AbortController();
+      verificationAbortRef.current?.abort();
+      verificationAbortRef.current = abortController;
+      try {
+        const result = await checkRegisterInvite({
+          identity: committedIdentity,
+          identityType,
+          inviteCode: normalizedInviteCode,
+          turnstileToken,
+        }, { signal: abortController.signal });
+        if (!result.accepted || !result.inviteChallenge) {
+          throw new Error(t("后端未返回邀请码校验结果"));
+        }
+        setInviteCode(normalizedInviteCode);
+        setInviteChallenge(result.inviteChallenge);
+        setTurnstileToken("");
+        setTurnstileResetSignal((current) => current + 1);
+        onNotice(t("邀请码已验证，请继续完成账号验证"));
+      } catch (error) {
+        if (abortController.signal.aborted) return;
+        const errorCode = getPriestessApiErrorCode(error);
+        const message = getPriestessApiErrorMessage(error, t("邀请码校验失败"));
+        if (["local_user_exists", "invalid_registration_identity", "invalid_registration_identity_type"].includes(errorCode)) {
+          resetCredentialState();
+          moveToStep("identity", -1);
+          setErrors({ identity: message });
+          return;
+        }
+        if (["registration_turnstile_failed", "registration_turnstile_not_configured", "turnstile_invalid", "turnstile_required"].includes(errorCode)) {
+          setErrors((current) => ({ ...current, turnstile: message }));
+        } else {
+          setErrors((current) => ({ ...current, inviteCode: message }));
+        }
+        setInviteChallenge("");
+        setTurnstileToken("");
+        setTurnstileResetSignal((current) => current + 1);
+      } finally {
+        if (verificationAbortRef.current === abortController) {
+          verificationAbortRef.current = null;
+          setVerificationBusy(false);
+        }
+      }
+      return;
+    }
+
     const normalizedVerificationCode = verificationCode.trim();
     const nextErrors: FieldErrors = {};
-    if (!normalizedInviteCode) {
-      nextErrors.inviteCode = t("请输入邀请码");
-    }
     if (!isVerificationReady) {
       nextErrors.verificationCode = t("请先发送验证码");
     } else if (!/^[0-9]{6}$/.test(normalizedVerificationCode)) {
@@ -313,7 +395,7 @@ export function RegisterFirstStepForm({
     setInviteCode(normalizedInviteCode);
     setVerificationCode(normalizedVerificationCode);
     setErrors((current) => ({ ...current, inviteCode: undefined, verificationCode: undefined }));
-    moveToStep("profile", 1);
+    moveToStep("password", 1);
   };
 
   const submitProfile = async(event: FormEvent<HTMLFormElement>) => {
@@ -334,6 +416,16 @@ export function RegisterFirstStepForm({
       setErrors((current) => ({ ...current, ...nextErrors }));
       return;
     }
+    if (!inviteChallenge) {
+      moveToStep("verification", -1);
+      setErrors({ inviteCode: t("请先校验邀请码") });
+      return;
+    }
+    if (!isVerificationReady || !/^[0-9]{6}$/.test(verificationCode.trim())) {
+      moveToStep("verification", -1);
+      setErrors({ verificationCode: t("请先完成账号验证") });
+      return;
+    }
 
     setUsername(usernameValidation.value);
     setSubmitBusy(true);
@@ -346,6 +438,7 @@ export function RegisterFirstStepForm({
         displayName: normalizedDisplayName,
         identity: committedIdentity,
         identityType,
+        inviteChallenge,
         inviteCode,
         password,
         verificationCode,
@@ -371,7 +464,8 @@ export function RegisterFirstStepForm({
       const message = getPriestessApiErrorMessage(error, t("注册失败"));
 
       // 后端最终确认会重新校验跨步骤状态；错误回到对应步骤，避免用户在昵称页处理邀请码或密码问题。
-      if (["registration_invite_invalid", "registration_invite_not_configured", "registration_invite_required"].includes(errorCode)) {
+      if (["registration_invite_invalid", "registration_invite_not_configured", "registration_invite_required", "registration_invite_challenge_required", "registration_invite_challenge_invalid"].includes(errorCode)) {
+        setInviteChallenge("");
         moveToStep("verification", -1);
         setErrors({ inviteCode: message });
         return;
@@ -410,9 +504,9 @@ export function RegisterFirstStepForm({
       onBackToLogin();
       return;
     }
-    if (step === "password") moveToStep("identity", -1);
-    if (step === "verification") moveToStep("password", -1);
-    if (step === "profile") moveToStep("verification", -1);
+    if (step === "verification") moveToStep("identity", -1);
+    if (step === "password") moveToStep("verification", -1);
+    if (step === "profile") moveToStep("password", -1);
   };
 
   return (
@@ -661,7 +755,12 @@ export function RegisterFirstStepForm({
                 disabled={isFormLocked}
                 onChange={(event) => {
                   setInviteCode(event.target.value);
+                  // 邀请码变化后，旧 challenge 不再可信，必须重新完成人机校验。
+                  setInviteChallenge("");
+                  setTurnstileToken("");
+                  setTurnstileResetSignal((current) => current + 1);
                   if (errors.inviteCode) clearError("inviteCode");
+                  if (errors.turnstile) clearError("turnstile");
                 }}
                 placeholder={t("输入邀请码")}
                 type="text"
@@ -671,37 +770,73 @@ export function RegisterFirstStepForm({
             {errors.inviteCode && <span className="field-error" id="register-invite-code-error">{errors.inviteCode}</span>}
           </label>
 
-          <label className="field-group">
-            <span className="field-group__label">{identityType === "email" ? t("邮箱验证码") : t("手机验证码")}</span>
-            <span className={`text-field ${errors.verificationCode ? "text-field--error" : ""}`}>
-              <AtSign aria-hidden="true" size={20} strokeWidth={1.8} />
-              <input
-                aria-invalid={Boolean(errors.verificationCode)}
-                aria-describedby={errors.verificationCode ? "register-verification-code-error" : undefined}
-                autoComplete="one-time-code"
-                disabled={isFormLocked || verificationBusy}
-                inputMode="numeric"
-                maxLength={6}
-                onChange={(event) => {
-                  setVerificationCode(event.target.value.replace(/\D/g, "").slice(0, 6));
-                  if (errors.verificationCode) clearError("verificationCode");
-                }}
-                placeholder={t("请输入 6 位数字验证码")}
-                type="text"
-                value={verificationCode}
-              />
-            </span>
-            {errors.verificationCode && <span className="field-error" id="register-verification-code-error">{errors.verificationCode}</span>}
-          </label>
+          {!inviteChallenge ? (
+            <>
+              <label className="field-group">
+                <span className="field-group__label">{t("Cloudflare 人机验证")}</span>
+                <TurnstileWidget
+                  disabled={disabled || verificationBusy || submitBusy || !turnstileSiteKey}
+                  onError={() => {
+                    setInviteChallenge("");
+                    setTurnstileToken("");
+                    setErrors((current) => ({ ...current, turnstile: t("验证码组件加载失败，请重试") }));
+                  }}
+                  onExpire={() => {
+                    setInviteChallenge("");
+                    setTurnstileToken("");
+                    setErrors((current) => ({ ...current, turnstile: t("人机验证已过期，请重新完成") }));
+                  }}
+                  onToken={(token) => {
+                    setInviteChallenge("");
+                    setTurnstileToken(token);
+                    setErrors((current) => ({ ...current, turnstile: undefined }));
+                  }}
+                  resetSignal={turnstileResetSignal}
+                  siteKey={turnstileSiteKey}
+                />
+                {errors.turnstile && <span className="field-error">{errors.turnstile}</span>}
+              </label>
 
-          <button className="secondary-button" disabled={isFormLocked || verificationBusy} onClick={sendVerificationCode} type="button">
-            {verificationBusy ? t("发送中") : verificationRequestId ? t("重新发送验证码") : t("发送验证码")}
-          </button>
+              <button className="primary-button" disabled={!canCheckInvite} type="submit">
+                <span>{verificationBusy ? t("正在校验") : turnstileSiteKey ? t("校验邀请码") : t("等待人机验证配置")}</span>
+                <ShieldCheck aria-hidden="true" size={19} strokeWidth={1.8} />
+              </button>
+            </>
+          ) : (
+            <>
+              <label className="field-group">
+                <span className="field-group__label">{identityType === "email" ? t("邮箱验证码") : t("手机验证码")}</span>
+                <span className={`text-field ${errors.verificationCode ? "text-field--error" : ""}`}>
+                  <AtSign aria-hidden="true" size={20} strokeWidth={1.8} />
+                  <input
+                    aria-invalid={Boolean(errors.verificationCode)}
+                    aria-describedby={errors.verificationCode ? "register-verification-code-error" : undefined}
+                    autoComplete="one-time-code"
+                    disabled={isFormLocked || verificationBusy}
+                    inputMode="numeric"
+                    maxLength={6}
+                    onChange={(event) => {
+                      setVerificationCode(event.target.value.replace(/\D/g, "").slice(0, 6));
+                      if (errors.verificationCode) clearError("verificationCode");
+                    }}
+                    placeholder={t("请输入 6 位数字验证码")}
+                    type="text"
+                    value={verificationCode}
+                  />
+                </span>
+                {errors.verificationCode && <span className="field-error" id="register-verification-code-error">{errors.verificationCode}</span>}
+              </label>
 
-          <button className="primary-button" disabled={isFormLocked || verificationBusy} type="submit">
-            <span>{t("确认邀请码和验证码")}</span>
-            <ArrowRight aria-hidden="true" size={21} strokeWidth={1.8} />
-          </button>
+              <button className="secondary-button" disabled={isFormLocked || verificationBusy} onClick={sendVerificationCode} type="button">
+                {verificationBusy ? t("发送中") : verificationRequestId ? t("重新发送验证码") : t("发送验证码")}
+              </button>
+
+              <button className="primary-button" disabled={isFormLocked || verificationBusy} type="submit">
+                <span>{t("继续设置密码")}</span>
+                <ArrowRight aria-hidden="true" size={21} strokeWidth={1.8} />
+              </button>
+            </>
+          )}
             </form>
           ) : null}
 
