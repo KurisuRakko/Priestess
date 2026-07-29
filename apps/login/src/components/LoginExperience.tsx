@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState, type ComponentProps, type RefObject } from "react";
-import { AnimatePresence, motion } from "motion/react";
+import { useCallback, useEffect, useState, type ComponentProps, type ReactNode, type RefObject } from "react";
+import { AnimatePresence, motion, useIsPresent } from "motion/react";
 import { BrandMark, FloatingBackdrop } from "@priestess/shared";
 import { AccountPickerCard, type AccountPickerAction, type AccountPickerMode } from "./AccountPickerCard";
 import { ForgotPasswordForm } from "./ForgotPasswordForm";
@@ -12,6 +12,47 @@ import type { MobileLoginRevealState } from "../lib/useMobileLoginReveal";
 
 type AccountChoicesState = ReturnType<typeof useAuthAccountChoices>;
 type TranslationFn = (key: string, options?: Record<string, unknown>) => string;
+type AccountSwitchPanel = "account-picker" | "login-form";
+
+type MobileAccountSwitchPanelProps = {
+  children: ReactNode;
+  isMobileViewport: boolean;
+  panel: AccountSwitchPanel;
+  shouldReduceMotion: boolean | null;
+};
+
+function MobileAccountSwitchPanel({
+  children,
+  isMobileViewport,
+  panel,
+  shouldReduceMotion,
+}: MobileAccountSwitchPanelProps) {
+  const isPresent = useIsPresent();
+  const shouldAnimate = isMobileViewport && !shouldReduceMotion;
+  const offset = panel === "account-picker" ? -22 : 22;
+
+  return (
+    <motion.div
+      animate={{ opacity: 1, x: 0 }}
+      className="auth-account-switch-panel"
+      data-auth-account-motion-origin={panel === "account-picker" ? "left" : "right"}
+      data-auth-account-panel={panel}
+      exit={shouldAnimate ? { opacity: 0, x: offset } : { opacity: 0 }}
+      initial={shouldAnimate ? { opacity: 0, x: offset } : false}
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        pointerEvents: isPresent ? "auto" : "none",
+        width: "100%",
+      }}
+      transition={shouldAnimate
+        ? { duration: 0.26, ease: [0.2, 0.8, 0.2, 1] }
+        : { duration: 0 }}
+    >
+      {children}
+    </motion.div>
+  );
+}
 
 type LoginExperienceProps = {
   accountChoices: AccountChoicesState;
@@ -126,7 +167,12 @@ export function LoginExperience({
   }, []);
 
   useEffect(() => {
-    if (shouldReduceMotion || !activePanelElement) return undefined;
+    if (shouldReduceMotion || mobileLoginReveal.isMobileViewport) {
+      // 手机卡片自身负责整页滚动，不能保留桌面测量出的固定内容高度。
+      setPanelHeight(null);
+      return undefined;
+    }
+    if (!activePanelElement) return undefined;
     const updateHeight = () => {
       const nextHeight = Math.ceil(activePanelElement.getBoundingClientRect().height);
       if (nextHeight > 0) {
@@ -138,7 +184,7 @@ export function LoginExperience({
     const observer = new ResizeObserver(updateHeight);
     observer.observe(activePanelElement);
     return () => observer.disconnect();
-  }, [activePanelElement, shouldReduceMotion]);
+  }, [activePanelElement, mobileLoginReveal.isMobileViewport, shouldReduceMotion]);
   const qrDrawerVariants = {
     closed: { x: "-96%", opacity: 0, clipPath: "inset(0 100% 0 0)" },
     open: { x: "0%", opacity: 1, clipPath: "inset(0 0% 0 0)" },
@@ -205,7 +251,10 @@ export function LoginExperience({
                       返回时整体向右回退，两块内容始终朝同一方向流动，避免同侧进出的折返感。 */}
                   <motion.div
                     className="auth-card-viewport"
-                    animate={shouldReduceMotion || panelHeight === null ? undefined : { height: panelHeight }}
+                    animate={shouldReduceMotion || mobileLoginReveal.isMobileViewport || panelHeight === null
+                      ? undefined
+                      : { height: panelHeight }}
+                    style={mobileLoginReveal.isMobileViewport ? { height: "auto" } : undefined}
                     transition={shouldReduceMotion ? { duration: 0 } : { duration: 0.44, ease: drawerEase }}
                   >
                   <AnimatePresence initial={false} mode="popLayout">
@@ -256,38 +305,49 @@ export function LoginExperience({
                         exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, x: -24, filter: "blur(4px)" }}
                         transition={authContentTransition}
                       >
-                        {shouldShowAccountPicker ? (
-                          <AccountPickerCard
-                            accounts={accountChoices.accounts}
-                            app={accountChoices.app}
-                            busyAccountId={authorizingAccountId}
-                            disabled={authUiLocked}
-                            error={accountPickerError}
-                            mode={accountPickerMode}
-                            removingAccountId={removingAccountId}
-                            onOpenAccountAction={onOpenAuthAccountAction}
-                            onRemoveAccount={onRemoveAuthAccount}
-                            onRetry={accountChoices.refresh}
-                            onSelectAccount={onChooseAuthAccount}
-                            onUseAnotherAccount={onUseAnotherAuthAccount}
-                            status={accountChoices.status}
-                          />
-                        ) : (
-                          <LoginForm
-                            disabled={authUiLocked}
-                            isAuthorizing={directAuthorizeBusy}
-                            onCreateAccount={onCreateAccount}
-                            onForgotPassword={onForgotPassword}
-                            onPasskeyLogin={onPasskeyLogin}
-                            onBackToAccountPicker={onReturnToAuthAccountPicker}
-                            onCancelTotp={onTotpCancel}
-                            onTotpSubmit={onTotpSubmit}
-                            onValidSubmit={onValidLoginSubmit}
-                            showBackToAccountPicker={showLoginFormForAccountPicker && !totpChallenge}
-                            showCreateAccount={!totpChallenge}
-                            totpChallenge={totpChallenge}
-                          />
-                        )}
+                        <AnimatePresence initial={false} mode="popLayout">
+                          <MobileAccountSwitchPanel
+                            key={mobileLoginReveal.isMobileViewport
+                              ? shouldShowAccountPicker ? "account-picker" : "login-form"
+                              : "desktop-login-panel"}
+                            isMobileViewport={mobileLoginReveal.isMobileViewport}
+                            panel={shouldShowAccountPicker ? "account-picker" : "login-form"}
+                            shouldReduceMotion={shouldReduceMotion}
+                          >
+                            {shouldShowAccountPicker ? (
+                              <AccountPickerCard
+                                accounts={accountChoices.accounts}
+                                app={accountChoices.app}
+                                busyAccountId={authorizingAccountId}
+                                disabled={authUiLocked}
+                                error={accountPickerError}
+                                mode={accountPickerMode}
+                                removingAccountId={removingAccountId}
+                                onOpenAccountAction={onOpenAuthAccountAction}
+                                onRemoveAccount={onRemoveAuthAccount}
+                                onRetry={accountChoices.refresh}
+                                onSelectAccount={onChooseAuthAccount}
+                                onUseAnotherAccount={onUseAnotherAuthAccount}
+                                status={accountChoices.status}
+                              />
+                            ) : (
+                              <LoginForm
+                                disabled={authUiLocked}
+                                isAuthorizing={directAuthorizeBusy}
+                                onCreateAccount={onCreateAccount}
+                                onForgotPassword={onForgotPassword}
+                                onPasskeyLogin={onPasskeyLogin}
+                                onBackToAccountPicker={onReturnToAuthAccountPicker}
+                                onCancelTotp={onTotpCancel}
+                                onTotpSubmit={onTotpSubmit}
+                                onValidSubmit={onValidLoginSubmit}
+                                showBackToAccountPicker={showLoginFormForAccountPicker && !totpChallenge}
+                                showCreateAccount={!totpChallenge}
+                                totpChallenge={totpChallenge}
+                              />
+                            )}
+                          </MobileAccountSwitchPanel>
+                        </AnimatePresence>
                       </motion.div>
                     )}
                   </AnimatePresence>

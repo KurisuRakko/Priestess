@@ -37,6 +37,7 @@ try {
   await testMobilePlainLoginReveal(browser, appUrl);
   await testHungAuthorizationFallsBack(browser, appUrl);
   await testViewportSwitchRestoresDesktopQr(browser, appUrl);
+  await testDesktopPanelHeightClearsOnMobile(browser, appUrl);
   await testDesktopLoginKeepsQrLayout(browser, appUrl);
 
   console.log("mobile login reveal browser smoke passed");
@@ -168,6 +169,51 @@ async function testDesktopLoginKeepsQrLayout(browserInstance, appUrl) {
     assert.ok(cardLayout.height < DESKTOP_VIEWPORT.height);
     assert.notEqual(cardLayout.borderRadius, "0px");
     assert.notEqual(cardLayout.boxShadow, "none");
+  });
+}
+
+async function testDesktopPanelHeightClearsOnMobile(browserInstance, appUrl) {
+  const scenario = createScenario();
+
+  await withScenario(browserInstance, scenario, {
+    reducedMotion: "no-preference",
+    viewport: { height: 800, width: 1024 },
+  }, async(page) => {
+    await page.goto(buildAuthUrl(appUrl, "desktop-panel-height"), { waitUntil: "domcontentloaded" });
+    await page.waitForSelector('.app-shell[data-mobile-login="false"] .login-card');
+    await page.waitForFunction(() => {
+      const viewport = document.querySelector(".auth-card-viewport");
+      return viewport instanceof HTMLElement && viewport.style.height.endsWith("px");
+    }, { timeout: 3000 });
+
+    await page.getByRole("button", { name: "创建账号" }).click();
+    await page.locator("input[autocomplete='email']").waitFor({ state: "visible", timeout: 5000 });
+    await page.waitForFunction(() => document.querySelectorAll(".auth-card-content").length === 1, { timeout: 2000 });
+    await page.waitForFunction(() => {
+      const viewport = document.querySelector(".auth-card-viewport");
+      return viewport instanceof HTMLElement && viewport.style.height.endsWith("px");
+    }, { timeout: 2000 });
+
+    await page.setViewportSize(MOBILE_VIEWPORT);
+    await page.waitForSelector('.app-shell[data-mobile-login="true"][data-mobile-reveal="ready"]');
+    await page.waitForFunction(() => {
+      const viewport = document.querySelector(".auth-card-viewport");
+      return viewport instanceof HTMLElement && viewport.style.height === "auto";
+    }, { timeout: 2000 });
+    await page.waitForFunction(() => document.querySelectorAll(".auth-card-content").length === 1, { timeout: 2000 });
+
+    const mobileViewportLayout = await page.locator(".auth-card-viewport").evaluate((element) => ({
+      clientHeight: element.clientHeight,
+      inlineHeight: element.style.height,
+      overflowY: getComputedStyle(element).overflowY,
+      scrollHeight: element.scrollHeight,
+    }));
+    assert.equal(mobileViewportLayout.inlineHeight, "auto");
+    assert.equal(mobileViewportLayout.overflowY, "visible");
+    assert.ok(
+      mobileViewportLayout.scrollHeight <= mobileViewportLayout.clientHeight + 1,
+      `desktop panel height must not clip content after switching to mobile: ${JSON.stringify(mobileViewportLayout)}`,
+    );
   });
 }
 

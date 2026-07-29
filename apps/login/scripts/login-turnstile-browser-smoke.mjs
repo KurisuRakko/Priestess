@@ -46,6 +46,7 @@ try {
   await testAccountChoiceErrorCanRetry(browser, appUrl);
   await testMultipleAccountsRemainSelectable(browser, appUrl);
   await testBareLoginSelectsSavedAccount(browser, appUrl);
+  await testReducedMotionAccountSwitch(browser, appUrl);
   await testBareLoginRemainsUsable(browser, appUrl);
   await testTotpReturnsToAccountPicker(browser, appUrl);
   await testPasskeyReturnsToAccountPicker(browser, appUrl);
@@ -182,9 +183,71 @@ async function testBareLoginSelectsSavedAccount(browserInstance, appUrl) {
     assert.ok(scenario.records.browserAccounts >= 1);
 
     await page.locator(".account-picker__other").click();
-    await page.locator("input[autocomplete='username']").waitFor({ state: "visible" });
+    await page.waitForSelector('[data-auth-account-panel="login-form"]');
+    const outgoingPicker = page.locator('[data-auth-account-panel="account-picker"]');
+    if (await outgoingPicker.count()) {
+      assert.equal(
+        await outgoingPicker.evaluate((element) => getComputedStyle(element).pointerEvents),
+        "none",
+        "exiting account picker must stop intercepting taps immediately",
+      );
+    }
+    await page.waitForTimeout(320);
+
+    const accountSwitchLayout = await page.evaluate(() => {
+      const card = document.querySelector(".login-card");
+      const viewport = document.querySelector(".auth-card-viewport");
+      if (!(card instanceof HTMLElement) || !(viewport instanceof HTMLElement)) return null;
+      const cardStyle = getComputedStyle(card);
+      const viewportStyle = getComputedStyle(viewport);
+      return {
+        cardClientHeight: card.clientHeight,
+        cardOverflowY: cardStyle.overflowY,
+        cardScrollHeight: card.scrollHeight,
+        panelCount: document.querySelectorAll("[data-auth-account-panel]").length,
+        viewportClientHeight: viewport.clientHeight,
+        viewportInlineHeight: viewport.style.height,
+        viewportOverflowY: viewportStyle.overflowY,
+        viewportScrollHeight: viewport.scrollHeight,
+      };
+    });
+    assert.ok(accountSwitchLayout);
+    assert.equal(accountSwitchLayout.panelCount, 1);
+    assert.equal(accountSwitchLayout.cardOverflowY, "auto");
+    assert.ok(accountSwitchLayout.cardScrollHeight > accountSwitchLayout.cardClientHeight, "short mobile viewport should scroll the full login form");
+    assert.equal(accountSwitchLayout.viewportInlineHeight, "auto");
+    assert.equal(accountSwitchLayout.viewportOverflowY, "visible");
+    assert.ok(
+      accountSwitchLayout.viewportScrollHeight <= accountSwitchLayout.viewportClientHeight + 1,
+      `mobile auth viewport must expand instead of clipping its content: ${JSON.stringify(accountSwitchLayout)}`,
+    );
+
+    assert.equal(
+      await page.locator('[data-auth-account-panel="login-form"]').getAttribute("data-auth-account-motion-origin"),
+      "right",
+    );
+    await assertControlCanReceivePointer(page, page.locator("input[autocomplete='username']"), "username input");
+    await assertControlCanReceivePointer(page, page.locator("input[autocomplete='current-password']"), "password input");
+    await assertControlCanReceivePointer(page, page.getByRole("button", { name: "忘记密码？" }), "forgot password");
+    await assertControlCanReceivePointer(page, page.getByRole("button", { name: "使用 Passkey 登录" }), "Passkey");
+    await assertControlCanReceivePointer(page, page.getByRole("button", { name: "创建账号" }), "create account");
+
     const backButton = page.getByRole("button", { name: "返回账号选择" });
     await backButton.click();
+    await page.waitForSelector('[data-auth-account-panel="account-picker"]');
+    const outgoingLoginForm = page.locator('[data-auth-account-panel="login-form"]');
+    if (await outgoingLoginForm.count()) {
+      assert.equal(
+        await outgoingLoginForm.evaluate((element) => getComputedStyle(element).pointerEvents),
+        "none",
+        "exiting login form must stop intercepting taps immediately",
+      );
+    }
+    assert.equal(
+      await page.locator('[data-auth-account-panel="account-picker"]').getAttribute("data-auth-account-motion-origin"),
+      "left",
+    );
+    await page.waitForTimeout(320);
     await accountButton.waitFor({ state: "visible" });
 
     await accountButton.click();
@@ -194,7 +257,52 @@ async function testBareLoginSelectsSavedAccount(browserInstance, appUrl) {
       userId: "user-bare-account-primary",
     }]);
     assert.equal(scenario.records.authorizations.length, 0);
-  });
+  }, { reducedMotion: "no-preference", viewport: { height: 667, width: 375 } });
+}
+
+async function testReducedMotionAccountSwitch(browserInstance, appUrl) {
+  const scenario = createScenario("bare-account-reduced-motion", { browserAccountMode: "single" });
+
+  await withScenario(browserInstance, scenario, async(page) => {
+    await page.goto(`${appUrl}/login`, { waitUntil: "domcontentloaded" });
+    await page.locator(".account-picker__other").waitFor({ state: "visible", timeout: 5000 });
+    await page.locator(".account-picker__other").click();
+    await page.waitForSelector('[data-auth-account-panel="login-form"]');
+    assert.equal(await page.locator('[data-auth-account-panel="account-picker"]').count(), 0);
+    assert.equal(
+      await page.locator('[data-auth-account-panel="login-form"]').evaluate((element) => getComputedStyle(element).transform),
+      "none",
+    );
+    const reducedMotionLayout = await page.evaluate(() => {
+      const card = document.querySelector(".login-card");
+      const viewport = document.querySelector(".auth-card-viewport");
+      if (!(card instanceof HTMLElement) || !(viewport instanceof HTMLElement)) return null;
+      return {
+        cardOverflowY: getComputedStyle(card).overflowY,
+        viewportClientHeight: viewport.clientHeight,
+        viewportInlineHeight: viewport.style.height,
+        viewportOverflowY: getComputedStyle(viewport).overflowY,
+        viewportScrollHeight: viewport.scrollHeight,
+      };
+    });
+    assert.ok(reducedMotionLayout);
+    assert.equal(reducedMotionLayout.cardOverflowY, "auto");
+    assert.equal(reducedMotionLayout.viewportInlineHeight, "auto");
+    assert.equal(reducedMotionLayout.viewportOverflowY, "visible");
+    assert.ok(
+      reducedMotionLayout.viewportScrollHeight <= reducedMotionLayout.viewportClientHeight + 1,
+      `reduced-motion mobile viewport must not clip the login form: ${JSON.stringify(reducedMotionLayout)}`,
+    );
+    await assertControlCanReceivePointer(page, page.locator("input[autocomplete='username']"), "reduced-motion username input");
+    await assertControlCanReceivePointer(page, page.locator("input[autocomplete='current-password']"), "reduced-motion password input");
+    await assertControlCanReceivePointer(page, page.getByRole("button", { name: "忘记密码？" }), "reduced-motion forgot password");
+    await assertControlCanReceivePointer(page, page.getByRole("button", { name: "使用 Passkey 登录" }), "reduced-motion Passkey");
+    await assertControlCanReceivePointer(page, page.getByRole("button", { name: "创建账号" }), "reduced-motion create account");
+
+    await page.getByRole("button", { name: "返回账号选择" }).click();
+    await page.waitForSelector('[data-auth-account-panel="account-picker"]');
+    assert.equal(await page.locator('[data-auth-account-panel="login-form"]').count(), 0);
+  }, { reducedMotion: "reduce", viewport: { height: 844, width: 390 } });
 }
 
 async function testTotpReturnsToAccountPicker(browserInstance, appUrl) {
@@ -330,9 +438,13 @@ async function testRegistrationReturnsToAccountPicker(browserInstance, appUrl) {
   });
 }
 
-async function withScenario(browserInstance, scenario, callback) {
+async function withScenario(browserInstance, scenario, callback, options = {}) {
   activeScenario = scenario;
-  const context = await browserInstance.newContext({ locale: "zh-CN", reducedMotion: "reduce" });
+  const context = await browserInstance.newContext({
+    locale: "zh-CN",
+    reducedMotion: options.reducedMotion ?? "reduce",
+    viewport: options.viewport,
+  });
   const page = await context.newPage();
   await installBrowserStubs(page);
   try {
@@ -341,6 +453,20 @@ async function withScenario(browserInstance, scenario, callback) {
     await context.close();
     activeScenario = null;
   }
+}
+
+async function assertControlCanReceivePointer(page, locator, label) {
+  assert.equal(await locator.count(), 1, `${label} must be unique`);
+  assert.equal(await locator.isEnabled(), true, `${label} must be enabled`);
+  const canReceivePointer = await locator.evaluate((element) => {
+    element.scrollIntoView({ block: "center", inline: "nearest" });
+    const rect = element.getBoundingClientRect();
+    const pointX = Math.min(window.innerWidth - 1, Math.max(0, rect.left + rect.width / 2));
+    const pointY = Math.min(window.innerHeight - 1, Math.max(0, rect.top + rect.height / 2));
+    const hit = document.elementFromPoint(pointX, pointY);
+    return Boolean(hit && (hit === element || element.contains(hit)));
+  });
+  assert.equal(canReceivePointer, true, `${label} must not be covered by an exiting panel`);
 }
 
 async function installBrowserStubs(page) {

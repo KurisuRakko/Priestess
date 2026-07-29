@@ -62,24 +62,41 @@
     height: 100svh;
     min-height: 100vh;
     min-height: 100svh;
+    justify-content: flex-start;
     overflow-x: hidden;
     overflow-y: auto;
+    overscroll-behavior-y: contain;
     border: 0;
     border-radius: 0;
     box-shadow: none;
     padding:
-      max(30px, env(safe-area-inset-top))
-      max(26px, env(safe-area-inset-right))
-      max(32px, env(safe-area-inset-bottom))
-      max(26px, env(safe-area-inset-left));
+      max(28px, env(safe-area-inset-top))
+      max(20px, env(safe-area-inset-right))
+      max(30px, env(safe-area-inset-bottom))
+      max(20px, env(safe-area-inset-left));
+    scroll-padding-bottom: max(30px, env(safe-area-inset-bottom));
   }
 
   .app-shell[data-mobile-login="true"] .login-card--account-picker {
+    /* 账号卡与添加账号表单使用同一内容原点，切换时只发生共享轴位移。 */
     padding:
       max(28px, env(safe-area-inset-top))
-      max(22px, env(safe-area-inset-right))
+      max(20px, env(safe-area-inset-right))
       max(30px, env(safe-area-inset-bottom))
-      max(22px, env(safe-area-inset-left));
+      max(20px, env(safe-area-inset-left));
+  }
+
+  .app-shell[data-mobile-login="true"] .auth-card-viewport {
+    /* 手机端由 login-card 统一滚动，不能让桌面高度动画裁掉表单底部。 */
+    flex: 0 0 auto;
+    height: auto !important;
+    min-height: 0;
+    overflow: visible;
+  }
+
+  .app-shell[data-mobile-login="true"] .auth-card-content,
+  .app-shell[data-mobile-login="true"] .auth-account-switch-panel {
+    min-height: 0;
   }
 
   .app-shell[data-mobile-reveal="waiting"] .floating-backdrop {
@@ -90,13 +107,6 @@
 @media (min-width: 821px) and (max-width: 899px) {
   :root {
     --dwall-background-image: url("./assets/dwall-960.jpg");
-  }
-}
-
-@media (max-width: 440px) {
-  .app-shell[data-mobile-login="true"] .login-card {
-    padding-right: max(20px, env(safe-area-inset-right));
-    padding-left: max(20px, env(safe-area-inset-left));
   }
 }
 
