@@ -99,6 +99,13 @@
     min-height: 0;
   }
 
+  .app-shell[data-mobile-login="true"] .register-step-viewport {
+    /* 注册五步与外层卡片共用同一个滚动容器，步骤切换只负责共享轴动效。 */
+    height: auto !important;
+    min-height: 0;
+    overflow: visible;
+  }
+
   .app-shell[data-mobile-reveal="waiting"] .floating-backdrop {
     opacity: 0;
   }

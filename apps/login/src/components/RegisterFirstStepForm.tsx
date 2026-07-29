@@ -22,8 +22,9 @@ import {
   normalizePhoneLocalInput,
   REGISTER_PHONE_REGIONS,
 } from "./registerIdentityOptions";
-import { getStepCopy, getStepLabel, REGISTER_STEPS, type RegisterStep, STEP_PANEL_EASE, STEP_PANEL_VARIANTS } from "./registerStepConfig";
+import { getStepCopy, getStepLabel, REGISTER_STEPS, type RegisterStep, STEP_PANEL_EASE } from "./registerStepConfig";
 import { RegisterPasswordStep } from "./RegisterPasswordStep";
+import { RegisterStepMotionPanel } from "./RegisterStepMotionPanel";
 import { RegisterInvitationStep, RegisterVerificationStep } from "./RegisterVerificationSteps";
 import { readTurnstileSiteKey } from "./TurnstileWidget";
 import "./RegisterFirstStepForm.css";
@@ -36,6 +37,7 @@ const USERNAME_MAX_LENGTH = 32;
 const RESERVED_USERNAMES = new Set(["admin", "api", "assets", "auth", "help", "login", "me", "priestess", "register", "root", "settings", "static", "support", "system"]);
 type RegisterFirstStepFormProps = {
   disabled: boolean;
+  isMobileViewport: boolean;
   onBackToLogin: () => void;
   onNotice: (message: string) => void;
   onRegistered: (session: LocalSession, fallbackIdentity: string) => Promise<void>;
@@ -96,7 +98,13 @@ function isRegistrationVerificationActive(challenge: string, expiresAt: number, 
   return Boolean(challenge && expiresAt > Math.floor(Date.now() / 1000) && identityKey === committedIdentityKey);
 }
 
-export function RegisterFirstStepForm({ disabled, onBackToLogin, onNotice, onRegistered }: RegisterFirstStepFormProps) {
+export function RegisterFirstStepForm({
+  disabled,
+  isMobileViewport,
+  onBackToLogin,
+  onNotice,
+  onRegistered,
+}: RegisterFirstStepFormProps) {
   const { i18n, t } = usePriestessTranslation("login");
   const shouldReduceStepMotion = useReducedMotion();
   const successTimerRef = useRef<number | null>(null);
@@ -180,7 +188,8 @@ export function RegisterFirstStepForm({ disabled, onBackToLogin, onNotice, onReg
   }, []);
 
   useEffect(() => {
-    if (shouldReduceStepMotion) {
+    if (shouldReduceStepMotion || isMobileViewport) {
+      // 手机端由全屏登录卡统一滚动，注册步骤不能继续保留桌面测量高度。
       setPanelHeight(null);
       return undefined;
     }
@@ -201,7 +210,7 @@ export function RegisterFirstStepForm({ disabled, onBackToLogin, onNotice, onReg
     const observer = new ResizeObserver(updateHeight);
     observer.observe(panelElement);
     return () => observer.disconnect();
-  }, [errors.displayName, errors.identity, errors.inviteCode, errors.password, errors.passwordConfirm, errors.terms, errors.turnstile, errors.username, errors.verificationCode, identityMode, inviteChallenge, panelElement, resendCooldownSeconds, shouldReduceStepMotion, step, verificationBusy, verificationChallenge, verificationCode, verificationRequestId]);
+  }, [errors.displayName, errors.identity, errors.inviteCode, errors.password, errors.passwordConfirm, errors.terms, errors.turnstile, errors.username, errors.verificationCode, identityMode, inviteChallenge, isMobileViewport, panelElement, resendCooldownSeconds, shouldReduceStepMotion, step, verificationBusy, verificationChallenge, verificationCode, verificationRequestId]);
 
   const clearError = (key: keyof FieldErrors) => {
     setErrors((current) => ({ ...current, [key]: undefined }));
@@ -650,21 +659,19 @@ export function RegisterFirstStepForm({ disabled, onBackToLogin, onNotice, onReg
       </div>
 
       <motion.div
-        animate={shouldReduceStepMotion || panelHeight === null ? undefined : { height: panelHeight }}
+        animate={shouldReduceStepMotion || isMobileViewport || panelHeight === null ? undefined : { height: panelHeight }}
         className="register-step-viewport"
+        style={isMobileViewport ? { height: "auto" } : undefined}
         transition={shouldReduceStepMotion ? { duration: 0 } : { duration: 0.34, ease: STEP_PANEL_EASE }}
       >
-        <AnimatePresence custom={stepDirection} initial={false} mode="wait">
-          <motion.div
-            ref={setPanelElement}
-            animate="center"
-            className="register-step-panel"
-            custom={stepDirection}
-            exit="exit"
-            initial={shouldReduceStepMotion ? false : "enter"}
+        <AnimatePresence custom={stepDirection} initial={false} mode={isMobileViewport ? "popLayout" : "wait"}>
+          <RegisterStepMotionPanel
+            direction={stepDirection}
+            isMobileViewport={isMobileViewport}
             key={step}
-            transition={shouldReduceStepMotion ? { duration: 0 } : { duration: 0.28, ease: STEP_PANEL_EASE }}
-            variants={STEP_PANEL_VARIANTS}
+            panelRef={setPanelElement}
+            shouldReduceMotion={shouldReduceStepMotion}
+            step={step}
           >
           <div className="login-card__heading">
             <h1 id="register-title">{t(copy.title)}</h1>
@@ -977,7 +984,7 @@ export function RegisterFirstStepForm({ disabled, onBackToLogin, onNotice, onReg
           </button>
             </p>
           ) : null}
-          </motion.div>
+          </RegisterStepMotionPanel>
         </AnimatePresence>
       </motion.div>
     </>

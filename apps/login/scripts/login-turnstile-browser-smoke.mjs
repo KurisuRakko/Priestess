@@ -299,6 +299,40 @@ async function testReducedMotionAccountSwitch(browserInstance, appUrl) {
     await assertControlCanReceivePointer(page, page.getByRole("button", { name: "使用 Passkey 登录" }), "reduced-motion Passkey");
     await assertControlCanReceivePointer(page, page.getByRole("button", { name: "创建账号" }), "reduced-motion create account");
 
+    await page.getByRole("button", { name: "创建账号" }).click();
+    await page.waitForSelector('[data-auth-mode-panel="register"]');
+    assert.equal(await page.locator('[data-auth-mode-panel="login"]').count(), 0);
+    assert.equal(
+      await page.locator('[data-auth-mode-panel="register"]').evaluate((element) => getComputedStyle(element).transform),
+      "none",
+    );
+    await page.locator("input[autocomplete='email']").fill("reduced-motion@example.com");
+    await page.locator("#register-terms-consent").check();
+    await page.locator(".login-form .primary-button[type='submit']").click();
+    await page.waitForSelector('[data-register-step-panel="invitation"]');
+    assert.equal(await page.locator('[data-register-step-panel="identity"]').count(), 0);
+    assert.equal(
+      await page.locator('[data-register-step-panel="invitation"]').evaluate((element) => getComputedStyle(element).transform),
+      "none",
+    );
+    await page.getByRole("button", { name: "上一步" }).click();
+    await page.waitForSelector('[data-register-step-panel="identity"]');
+    assert.equal(await page.locator('[data-register-step-panel="invitation"]').count(), 0);
+    await page.getByRole("button", { name: "返回登录" }).click();
+    await page.waitForSelector('[data-auth-mode-panel="login"]');
+    assert.equal(await page.locator('[data-auth-mode-panel="register"]').count(), 0);
+
+    await page.getByRole("button", { name: "忘记密码？" }).click();
+    await page.waitForSelector('[data-auth-mode-panel="forgot-password"]');
+    assert.equal(await page.locator('[data-auth-mode-panel="login"]').count(), 0);
+    assert.equal(
+      await page.locator('[data-auth-mode-panel="forgot-password"]').evaluate((element) => getComputedStyle(element).transform),
+      "none",
+    );
+    await page.getByRole("button", { name: "返回登录" }).click();
+    await page.waitForSelector('[data-auth-mode-panel="login"]');
+    assert.equal(await page.locator('[data-auth-mode-panel="forgot-password"]').count(), 0);
+
     await page.getByRole("button", { name: "返回账号选择" }).click();
     await page.waitForSelector('[data-auth-account-panel="account-picker"]');
     assert.equal(await page.locator('[data-auth-account-panel="login-form"]').count(), 0);

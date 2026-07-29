@@ -13,6 +13,7 @@ import type { MobileLoginRevealState } from "../lib/useMobileLoginReveal";
 type AccountChoicesState = ReturnType<typeof useAuthAccountChoices>;
 type TranslationFn = (key: string, options?: Record<string, unknown>) => string;
 type AccountSwitchPanel = "account-picker" | "login-form";
+type AuthModePanel = "forgot-password" | "login" | "register";
 
 type MobileAccountSwitchPanelProps = {
   children: ReactNode;
@@ -48,6 +49,55 @@ function MobileAccountSwitchPanel({
       transition={shouldAnimate
         ? { duration: 0.26, ease: [0.2, 0.8, 0.2, 1] }
         : { duration: 0 }}
+    >
+      {children}
+    </motion.div>
+  );
+}
+
+type AuthModeMotionPanelProps = {
+  children: ReactNode;
+  isMobileViewport: boolean;
+  panel: AuthModePanel;
+  panelRef: (element: HTMLDivElement | null) => void;
+  shouldReduceMotion: boolean | null;
+};
+
+function AuthModeMotionPanel({
+  children,
+  isMobileViewport,
+  panel,
+  panelRef,
+  shouldReduceMotion,
+}: AuthModeMotionPanelProps) {
+  const isPresent = useIsPresent();
+  const offset = panel === "login" ? (isMobileViewport ? -22 : -24) : (isMobileViewport ? 22 : 24);
+  const motionState = isMobileViewport
+    ? { opacity: 0, x: offset }
+    : { filter: "blur(4px)", opacity: 0, x: offset };
+
+  return (
+    <motion.div
+      animate={isMobileViewport
+        ? { opacity: 1, x: 0 }
+        : { filter: "blur(0px)", opacity: 1, x: 0 }}
+      className="auth-card-content"
+      data-auth-mode-motion-origin={panel === "login" ? "left" : "right"}
+      data-auth-mode-panel={panel}
+      exit={shouldReduceMotion ? { opacity: 0 } : motionState}
+      initial={shouldReduceMotion ? false : motionState}
+      ref={panelRef}
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        pointerEvents: isPresent ? "auto" : "none",
+        width: "100%",
+      }}
+      transition={shouldReduceMotion
+        ? { duration: 0 }
+        : isMobileViewport
+          ? { duration: 0.26, ease: [0.2, 0.8, 0.2, 1] }
+          : { duration: 0.4, ease: [0.2, 0.8, 0.2, 1] }}
     >
       {children}
     </motion.div>
@@ -148,9 +198,6 @@ export function LoginExperience({
   const drawerDelay = loginDelay + loginDuration + 0.06;
   const qrContentDelay = drawerDelay + 0.34;
   const drawerEase = [0.2, 0.8, 0.2, 1] as const;
-  const authContentTransition = shouldReduceMotion
-    ? { duration: 0 }
-    : { duration: 0.4, ease: drawerEase };
   const loginEnter = shouldReduceMotion
     ? false
     : mobileLoginReveal.isMobileViewport
@@ -259,33 +306,28 @@ export function LoginExperience({
                   >
                   <AnimatePresence initial={false} mode="popLayout">
                     {isRegisterMode ? (
-                      <motion.div
+                      <AuthModeMotionPanel
                         key="register"
-                        ref={assignActivePanel}
-                        className="auth-card-content"
-                        style={{ width: "100%", display: "flex", flexDirection: "column" }}
-                        initial={shouldReduceMotion ? false : { opacity: 0, x: 24, filter: "blur(4px)" }}
-                        animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
-                        exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, x: 24, filter: "blur(4px)" }}
-                        transition={authContentTransition}
+                        isMobileViewport={mobileLoginReveal.isMobileViewport}
+                        panel="register"
+                        panelRef={assignActivePanel}
+                        shouldReduceMotion={shouldReduceMotion}
                       >
                         <RegisterFirstStepForm
                           disabled={authUiLocked}
+                          isMobileViewport={mobileLoginReveal.isMobileViewport}
                           onBackToLogin={onBackToLogin}
                           onNotice={onRegisterNotice}
                           onRegistered={onRegistered}
                         />
-                      </motion.div>
+                      </AuthModeMotionPanel>
                     ) : isForgotPasswordMode ? (
-                      <motion.div
+                      <AuthModeMotionPanel
                         key="forgot-password"
-                        ref={assignActivePanel}
-                        className="auth-card-content"
-                        style={{ width: "100%", display: "flex", flexDirection: "column" }}
-                        initial={shouldReduceMotion ? false : { opacity: 0, x: 24, filter: "blur(4px)" }}
-                        animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
-                        exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, x: 24, filter: "blur(4px)" }}
-                        transition={authContentTransition}
+                        isMobileViewport={mobileLoginReveal.isMobileViewport}
+                        panel="forgot-password"
+                        panelRef={assignActivePanel}
+                        shouldReduceMotion={shouldReduceMotion}
                       >
                         <ForgotPasswordForm
                           defaultIdentity={forgotPasswordIdentity}
@@ -293,17 +335,14 @@ export function LoginExperience({
                           onBackToLogin={onBackToLogin}
                           onNotice={onRegisterNotice}
                         />
-                      </motion.div>
+                      </AuthModeMotionPanel>
                     ) : (
-                      <motion.div
+                      <AuthModeMotionPanel
                         key="login"
-                        ref={assignActivePanel}
-                        className="auth-card-content"
-                        style={{ width: "100%", display: "flex", flexDirection: "column" }}
-                        initial={shouldReduceMotion ? false : { opacity: 0, x: -24, filter: "blur(4px)" }}
-                        animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
-                        exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, x: -24, filter: "blur(4px)" }}
-                        transition={authContentTransition}
+                        isMobileViewport={mobileLoginReveal.isMobileViewport}
+                        panel="login"
+                        panelRef={assignActivePanel}
+                        shouldReduceMotion={shouldReduceMotion}
                       >
                         <AnimatePresence initial={false} mode="popLayout">
                           <MobileAccountSwitchPanel
@@ -348,7 +387,7 @@ export function LoginExperience({
                             )}
                           </MobileAccountSwitchPanel>
                         </AnimatePresence>
-                      </motion.div>
+                      </AuthModeMotionPanel>
                     )}
                   </AnimatePresence>
                   </motion.div>
