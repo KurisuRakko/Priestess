@@ -37,14 +37,14 @@ import {
   AUTH_MODE_DRAWER_IN_MS,
   AUTH_MODE_TRANSITION_MS,
   clearLocalLoginCooldownUntil,
-  formatQrExpiresLabel,
-  getQrStatusText,
   isLocalPasswordLoginRiskError,
   LOCAL_LOGIN_COOLDOWN_MS,
   LOCAL_LOGIN_FAILURE_LIMIT,
   LOGIN_INTRO_QR_DELAY_MS,
   LOGIN_RESULT_ANIMATION_MS,
   LOGIN_SUCCESS_HOLD_MS,
+  QR_AUTO_REFRESH_INTERVAL_MS,
+  QR_REFRESH_SPIN_MIN_MS,
   readLocalLoginCooldownUntil,
   writeLocalLoginCooldownUntil,
 } from "./lib/loginAppState";
@@ -80,6 +80,7 @@ export function App() {
   const qrPollInFlightRef = useRef(false);
   const qrPollRef = useRef<number | null>(null);
   const qrRefreshIdRef = useRef(0);
+  const qrStatusRef = useRef<QrSessionPollStatus["status"]>("pending");
   const [notice, setNotice] = useState("");
   const [accountActionBusyId, setAccountActionBusyId] = useState("");
   const [accountAuthorizeError, setAccountAuthorizeError] = useState("");
@@ -194,14 +195,17 @@ export function App() {
 
     clearAuthModeTransitionTimeout();
     setIsAuthModeTransitioning(true);
-    setIsLoginIntroStage(false);
     setAuthMode(nextMode);
-    // 两段式（先收二维码抽屉、再变卡片）只在抽屉真的展开时才需要；
-    // 居中布局下直接一段过渡，否则卡片会先弹回带抽屉的宽布局再缩回中间，看起来像抽搐。
-    const shouldDrawerSlideIn = nextMode !== "login" && authMode === "login" && isQrDrawerOpen && !shouldReduceMotion;
-    setIsRegisterDrawerStage(shouldDrawerSlideIn);
 
-    if (shouldDrawerSlideIn) {
+    // 抽屉可见（桌面宽度且已展开）时保留镜头编排：离开登录先收抽屉、再变卡片；
+    // 抽屉不可见（窄屏或本来就没展开）时一段过渡直达，不白等收抽屉的时长。
+    const isDrawerVisuallyOpen = isQrDrawerOpen && window.matchMedia("(min-width: 821px)").matches;
+    const shouldDrawerSlideOutFirst = nextMode !== "login" && authMode === "login" && isDrawerVisuallyOpen && !shouldReduceMotion;
+    setIsRegisterDrawerStage(shouldDrawerSlideOutFirst);
+    // 回到登录时重放首屏节奏：卡片先居中稳定，intro 阶段结束后才展开二维码抽屉。
+    setIsLoginIntroStage(nextMode === "login" && hasQrRequest && !shouldReduceMotion);
+
+    if (shouldDrawerSlideOutFirst) {
       authModeLayoutTimeoutRef.current = window.setTimeout(() => {
         setIsRegisterDrawerStage(false);
         authModeLayoutTimeoutRef.current = null;
@@ -211,7 +215,7 @@ export function App() {
     // 布局动画结束后才解锁按钮，避免双击时 QR 抽屉和卡片状态互相打架。
     const transitionMs = shouldReduceMotion
       ? 120
-      : shouldDrawerSlideIn
+      : shouldDrawerSlideOutFirst
         ? AUTH_MODE_DRAWER_IN_MS + AUTH_MODE_TRANSITION_MS
         : AUTH_MODE_TRANSITION_MS;
     authModeTransitionTimeoutRef.current = window.setTimeout(() => {
@@ -337,6 +341,9 @@ export function App() {
       return false;
     }
 
+    // 无论接口多快返回，加载态至少保留一整圈转动时长，避免转圈动画一闪而过。
+    const minSpinDelay = new Promise<void>((resolve) => window.setTimeout(resolve, QR_REFRESH_SPIN_MIN_MS));
+
     try {
       const created = await createQrSession(request, { signal: options.signal });
       if (options.signal?.aborted || qrRefreshIdRef.current !== refreshId) {
@@ -360,6 +367,7 @@ export function App() {
       setQrError(getPriestessApiErrorMessage(error, t("二维码暂时不可用")));
       return false;
     } finally {
+      await minSpinDelay;
       if (!options.signal?.aborted && qrRefreshIdRef.current === refreshId) {
         setQrRefreshing(false);
       }
@@ -881,6 +889,35 @@ export function App() {
   }, [authMode, authRequestKey, isLocalLoginCooldownActive, route]);
 
   useEffect(() => {
+    // 状态镜像到 ref，让自动刷新定时器读取最新扫码状态而不重置刷新周期。
+    qrStatusRef.current = qrStatus;
+  }, [qrStatus]);
+
+  useEffect(() => {
+    if (route !== "login" || authMode !== "login" || !hasQrRequest || isLocalLoginCooldownActive) {
+      return;
+    }
+
+    // 二维码不提供手动刷新：按固定周期自动重建会话；手机端已接管确认流程时跳过，避免打断扫码。
+    const autoRefreshTimer = window.setInterval(() => {
+      if (["confirmed", "pre_confirmed", "scanned"].includes(qrStatusRef.current)) {
+        return;
+      }
+      void refreshQrSession(readAuthRequest());
+    }, QR_AUTO_REFRESH_INTERVAL_MS);
+    return () => window.clearInterval(autoRefreshTimer);
+  }, [authMode, authRequestKey, hasQrRequest, isLocalLoginCooldownActive, route]);
+
+  useEffect(() => {
+    if (qrStatus !== "expired" || route !== "login" || authMode !== "login" || !hasQrRequest || isLocalLoginCooldownActive) {
+      return;
+    }
+
+    // 倒计时走完或后端上报过期时立即换新码，不用等下一个自动刷新周期。
+    void refreshQrSession(readAuthRequest());
+  }, [authMode, hasQrRequest, isLocalLoginCooldownActive, qrStatus, route]);
+
+  useEffect(() => {
     setAccountActionBusyId("");
     setAccountAuthorizeError("");
     setAuthorizingAccountId("");
@@ -945,8 +982,6 @@ export function App() {
     shouldShowAccountPicker,
   });
   const authUiLocked = isAuthModeTransitioning || isLoginSubmitStage || directAuthorizeBusy || Boolean(removingAccountId || accountActionBusyId);
-  const qrStatusText = hasQrRequest ? getQrStatusText(qrStatus, qrError, t) : t("等待应用发起登录");
-  const qrRefreshLabel = hasQrRequest ? t("刷新二维码") : t("等待应用");
   const qrVisualState = qrError
     ? "error"
     : qrStatus === "scanned" || qrStatus === "pre_confirmed"
@@ -956,25 +991,7 @@ export function App() {
         : qrStatus === "expired" || qrStatus === "rejected"
           ? "terminal"
           : "pending";
-  const qrExpiresLabel = qrVisualState === "pending"
-    ? qrSession ? formatQrExpiresLabel(qrExpiresIn) : "--:--"
-    : qrVisualState === "scanned"
-      ? t("待确认")
-      : qrVisualState === "confirmed"
-        ? t("已确认")
-        : qrStatus === "rejected"
-          ? t("已拒绝")
-          : qrStatus === "expired"
-          ? t("已过期")
-            : t("异常");
   const accountPickerError = accountAuthorizeError || accountChoices.error;
-  const refreshQrFromPanel = () => {
-    if (isAuthModeTransitioning || authMode !== "login" || !hasQrRequest) {
-      return;
-    }
-    void refreshQrSession(readAuthRequest()).then((refreshed) => showNotice(refreshed ? t("二维码已刷新") : t("二维码暂时不可用")));
-  };
-
   const loginExperience = (
     <LoginExperience
       accountChoices={accountChoices}
@@ -998,7 +1015,6 @@ export function App() {
       onCreateAccount={() => switchAuthMode("register")}
       onForgotPassword={openForgotPassword}
       onPasskeyLogin={startPasskeyLogin}
-      onQrRefresh={refreshQrFromPanel}
       onOpenAuthAccountAction={openAuthAccountAction}
       onRegisterNotice={showNotice}
       onRemoveAuthAccount={removeAuthAccount}
@@ -1008,11 +1024,7 @@ export function App() {
       onTotpSubmit={submitTotpLogin}
       onUseAnotherAuthAccount={useAnotherAuthAccount}
       onValidLoginSubmit={startBackendLoginTransition}
-      qrExpiresLabel={qrExpiresLabel}
-      qrRefreshDisabled={isAuthModeTransitioning || !hasQrRequest}
-      qrRefreshLabel={qrRefreshLabel}
       qrRefreshing={qrRefreshing}
-      qrStatusText={qrStatusText}
       qrValue={qrValue}
       qrVisualState={qrVisualState}
       removingAccountId={removingAccountId}

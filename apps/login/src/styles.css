@@ -284,8 +284,9 @@ input:focus-visible {
   transition: flex-basis 680ms var(--ease-out), max-width 680ms var(--ease-out), margin-left 680ms var(--ease-out);
 }
 
-.auth-grid--register .qr-drawer-slot { flex-basis: 0; height: 0; max-width: 0; min-height: 0; margin-left: 0; pointer-events: none; }
+.auth-grid--register .qr-drawer-slot { flex-basis: 0; max-width: 0; min-height: 0; margin-left: 0; pointer-events: none; }
 .auth-grid--login-centered .qr-drawer-slot { flex-basis: 0; max-width: 0; margin-left: 0; pointer-events: none; }
+/* register-drawer 阶段维持宽布局，放开裁剪让 Motion 抽屉先完整滑出，之后才切 --register 收拢卡片。 */
 .auth-grid--register-drawer .qr-drawer-slot { overflow: visible; }
 /* 二维码可视层只保留外观，transform / opacity / clip-path 交给 Motion 抽屉动画。 */
 .qr-drawer-surface {
@@ -481,52 +482,43 @@ input:focus-visible {
   opacity: 0.76;
 }
 
-.qr-panel__status {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  width: min(100%, 248px);
-  margin: 0 auto;
-  color: var(--color-muted);
-  font-size: 14px;
+/* 刷新二维码时的加载态：旧码退为模糊底，转圈指示器盖在中间。 */
+.qr-frame--refreshing .qr-frame__code {
+  filter: blur(7px);
+  opacity: 0.34;
+  transform: scale(0.98);
 }
 
-.qr-panel__status strong {
-  margin-left: auto;
-  color: var(--color-heading);
-  font-weight: 500;
+.qr-frame--refreshing .qr-frame__empty {
+  opacity: 0.4;
 }
 
-.ghost-button {
-  position: relative;
-  z-index: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  width: min(100%, 248px);
-  min-height: 44px;
-  margin: 0 auto;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-control);
-  color: var(--color-text);
-  background: rgba(255, 255, 255, 0.42);
-  cursor: pointer;
-  transition: background-color 160ms var(--ease-out), border-color 160ms var(--ease-out), transform 160ms var(--ease-out);
+.qr-frame__loading {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
 }
 
-.ghost-button:hover {
-  border-color: var(--color-border-strong);
-  background: rgba(255, 255, 255, 0.64);
-  transform: translateY(-1px);
+.qr-frame__spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid rgba(198, 95, 114, 0.2);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: qr-spinner-rotate 700ms linear infinite;
 }
 
-.ghost-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.68;
-  transform: none;
+.qr-refresh-icon--spinning {
+  animation: qr-spinner-rotate 700ms linear infinite;
+}
+
+@keyframes qr-spinner-rotate {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .login-card {
@@ -1048,9 +1040,7 @@ input:focus-visible {
     padding: 32px 28px;
   }
 
-  .qr-frame,
-  .qr-panel__status,
-  .ghost-button {
+  .qr-frame {
     width: min(100%, 236px);
   }
 }
@@ -1090,9 +1080,7 @@ input:focus-visible {
     padding: 24px 30px;
   }
 
-  .qr-frame,
-  .qr-panel__status,
-  .ghost-button {
+  .qr-frame {
     width: min(100%, 224px);
   }
 

@@ -35,7 +35,6 @@ type LoginExperienceProps = {
   onForgotPassword: (identity: string) => void;
   onOpenAuthAccountAction: (account: AuthAccountChoice, action: AccountPickerAction) => Promise<void> | void;
   onPasskeyLogin: () => void;
-  onQrRefresh: () => void;
   onRegisterNotice: (message: string) => void;
   onRemoveAuthAccount: (account: AuthAccountChoice) => Promise<void> | void;
   onRegistered: ComponentProps<typeof RegisterFirstStepForm>["onRegistered"];
@@ -44,11 +43,7 @@ type LoginExperienceProps = {
   onTotpSubmit: (code: string) => void;
   onUseAnotherAuthAccount: () => void;
   onValidLoginSubmit: (credentials: LoginCredentials) => void;
-  qrExpiresLabel: string;
-  qrRefreshDisabled: boolean;
-  qrRefreshLabel: string;
   qrRefreshing: boolean;
-  qrStatusText: string;
   qrValue: string;
   qrVisualState: ComponentProps<typeof QrPanel>["visualState"];
   removingAccountId: string;
@@ -83,7 +78,6 @@ export function LoginExperience({
   onForgotPassword,
   onOpenAuthAccountAction,
   onPasskeyLogin,
-  onQrRefresh,
   onRegisterNotice,
   onRemoveAuthAccount,
   onRegistered,
@@ -92,11 +86,7 @@ export function LoginExperience({
   onTotpSubmit,
   onUseAnotherAuthAccount,
   onValidLoginSubmit,
-  qrExpiresLabel,
-  qrRefreshDisabled,
-  qrRefreshLabel,
   qrRefreshing,
-  qrStatusText,
   qrValue,
   qrVisualState,
   removingAccountId,
@@ -264,14 +254,9 @@ export function LoginExperience({
                 >
                   <QrPanel
                     contentDelay={qrContentDelay}
-                    expiresLabel={qrExpiresLabel}
                     isRefreshing={qrRefreshing}
                     qrValue={qrValue}
                     visualState={qrVisualState}
-                    onRefresh={onQrRefresh}
-                    refreshDisabled={qrRefreshDisabled}
-                    refreshLabel={qrRefreshLabel}
-                    statusText={qrStatusText}
                   />
                 </motion.div>
               </div>

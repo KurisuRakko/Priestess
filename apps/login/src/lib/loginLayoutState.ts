@@ -17,7 +17,6 @@ export type LoginLayoutState = {
   isLoginSubmitCardStage: boolean;
   isQrDrawerOpen: boolean;
   isSoloAuthMode: boolean;
-  isSoloLayoutMode: boolean;
   shouldUseCenteredWallpaper: boolean;
 };
 
@@ -31,21 +30,21 @@ export function resolveLoginLayoutState(params: LoginLayoutStateParams): LoginLa
     || params.hasTotpChallenge
     || shouldKeepLoginCardSolo
   ) && !isSoloAuthMode;
-  const isSoloLayoutMode = isSoloAuthMode && !params.isRegisterDrawerStage;
 
   return {
+    // 抽屉可见时先保持宽布局让抽屉收回（register-drawer 阶段），随后才切到 --register 收拢卡片；
+    // 抽屉不可见时 App 不会开启 drawer 阶段，注册/忘记密码一段过渡直达。
     authGridClassName: [
       "auth-grid",
       isLoginCenteredStage ? "auth-grid--login-centered" : "",
       params.isLoginIntroStage && !isSoloAuthMode ? "auth-grid--login-intro" : "",
       params.isRegisterDrawerStage ? "auth-grid--register-drawer" : "",
-      isSoloLayoutMode ? "auth-grid--register" : "",
+      isSoloAuthMode && !params.isRegisterDrawerStage ? "auth-grid--register" : "",
     ].filter(Boolean).join(" "),
     isLoginCenteredStage,
     isLoginSubmitCardStage: params.isLoginSubmitStage && !isSoloAuthMode,
     isQrDrawerOpen: params.isLoginRoute && params.authMode === "login" && params.hasAuthRequest && !isLoginCenteredStage,
     isSoloAuthMode,
-    isSoloLayoutMode,
     shouldUseCenteredWallpaper: isSoloAuthMode || isLoginCenteredStage,
   };
 }

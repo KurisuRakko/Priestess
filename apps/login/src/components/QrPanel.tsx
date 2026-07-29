@@ -1,4 +1,4 @@
-import { CheckCircle2, RefreshCw, ScanLine, Smartphone } from "lucide-react";
+import { CheckCircle2, ScanLine, Smartphone } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
 import { QRCodeSVG } from "qrcode.react";
 import { usePriestessTranslation } from "@priestess/shared";
@@ -7,25 +7,16 @@ export type QrPanelVisualState = "pending" | "scanned" | "confirmed" | "terminal
 
 type QrPanelProps = {
   contentDelay?: number;
-  expiresLabel?: string;
   isRefreshing?: boolean;
   qrValue: string;
-  onRefresh: () => void;
-  refreshDisabled?: boolean;
-  refreshLabel?: string;
-  statusText?: string;
   visualState?: QrPanelVisualState;
 };
 
+// 二维码不提供手动刷新：App 侧按固定周期自动重建会话，这里只负责展示当前状态。
 export function QrPanel({
   contentDelay = 0,
-  expiresLabel = "02:00",
   isRefreshing = false,
   qrValue,
-  onRefresh,
-  refreshDisabled = false,
-  refreshLabel,
-  statusText,
   visualState = "pending",
 }: QrPanelProps) {
   const { t } = usePriestessTranslation("login");
@@ -37,8 +28,6 @@ export function QrPanel({
   const shouldShowQrOverlay = hasQrValue && (visualState === "scanned" || visualState === "confirmed");
   const overlayTitle = visualState === "confirmed" ? t("已确认") : t("扫描成功");
   const overlayDescription = visualState === "confirmed" ? t("正在返回应用") : t("请在手机上确认");
-  const resolvedRefreshLabel = refreshLabel ?? t("刷新二维码");
-  const resolvedStatusText = statusText ?? t("二维码有效");
 
   return (
     <section className="qr-panel" aria-labelledby="qr-title">
@@ -61,6 +50,7 @@ export function QrPanel({
         className={[
           "qr-frame",
           shouldShowQrOverlay ? "qr-frame--blurred" : "",
+          isRefreshing ? "qr-frame--refreshing" : "",
           visualState === "terminal" || visualState === "error" ? "qr-frame--inactive" : "",
         ].filter(Boolean).join(" ")}
         initial={shouldReduceMotion ? false : { opacity: 0, y: 16, scale: 0.94 }}
@@ -94,31 +84,12 @@ export function QrPanel({
             <span>{t("暂无二维码")}</span>
           </span>
         )}
+        {isRefreshing ? (
+          <span className="qr-frame__loading" role="status" aria-label={t("正在生成二维码")}>
+            <span className="qr-frame__spinner" aria-hidden="true" />
+          </span>
+        ) : null}
       </motion.div>
-
-      <motion.div
-        className="qr-panel__status"
-        initial={itemEnter}
-        animate={itemAnimate}
-        transition={shouldReduceMotion ? { duration: 0 } : { delay: contentDelay + 0.22, duration: 0.38, ease: [0.2, 0.8, 0.2, 1] }}
-      >
-        <ScanLine size={18} strokeWidth={1.8} />
-        <span>{resolvedStatusText}</span>
-        <strong>{expiresLabel}</strong>
-      </motion.div>
-
-      <motion.button
-        className="ghost-button"
-        disabled={refreshDisabled || isRefreshing}
-        initial={itemEnter}
-        animate={itemAnimate}
-        onClick={onRefresh}
-        transition={shouldReduceMotion ? { duration: 0 } : { delay: contentDelay + 0.32, duration: 0.38, ease: [0.2, 0.8, 0.2, 1] }}
-        type="button"
-      >
-        <RefreshCw size={17} strokeWidth={1.8} />
-        <span>{isRefreshing ? t("生成中") : resolvedRefreshLabel}</span>
-      </motion.button>
     </section>
   );
 }

@@ -229,6 +229,14 @@ function testLoginLayoutState({ resolveLoginLayoutState }) {
   assert.equal(registerLayout.isSoloAuthMode, true);
   assert.equal(registerLayout.isQrDrawerOpen, false);
   assert.match(registerLayout.authGridClassName, /auth-grid--register/);
+
+  // 抽屉收回阶段维持宽布局（register-drawer），此时不应同时出现 --register 收拢样式。
+  const registerDrawerStage = resolveLoginLayoutState({
+    ...baseState,
+    authMode: "register",
+    isRegisterDrawerStage: true,
+  });
+  assert.equal(registerDrawerStage.authGridClassName, "auth-grid auth-grid--register-drawer");
 }
 
 function testAuthRequestHelpers({ getAuthRequestAppLabel, getAuthRequestReturnToOrigin, readAuthRequest }) {
