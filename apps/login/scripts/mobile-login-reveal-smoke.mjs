@@ -60,8 +60,15 @@ async function testMobilePlainLoginReveal(browserInstance, appUrl) {
     assert.equal(await shell.getAttribute("data-mobile-reveal"), "waiting");
     assert.equal(await page.locator(".login-stage").count(), 0, "data pending should leave only the wallpaper shell");
 
-    const backgroundImage = await page.locator(".dwall-bg").evaluate((element) => getComputedStyle(element).backgroundImage);
-    assert.match(backgroundImage, /dwall-placeholder\.jpg|data:image\/jpeg/, "mobile should use the tiny wallpaper placeholder");
+    const mobileWallpaperStyle = await page.locator(".dwall-bg").evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        backgroundImage: style.backgroundImage,
+        backgroundPosition: style.backgroundPosition,
+      };
+    });
+    assert.match(mobileWallpaperStyle.backgroundImage, /dwall-placeholder\.jpg|data:image\/jpeg/, "mobile should use the tiny wallpaper placeholder");
+    assert.equal(mobileWallpaperStyle.backgroundPosition, "35% 50%", "mobile wallpaper should keep the character face centered");
     const desktopWallpaperRequests = resourceUrls.filter((url) => /dwall-(?:960|1600|2400).*\.jpg/.test(url));
     assert.deepEqual(desktopWallpaperRequests, [], "mobile must not request desktop wallpapers");
 

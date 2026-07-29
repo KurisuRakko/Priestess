@@ -14,6 +14,8 @@
   }
 
   .app-shell[data-mobile-login="true"] .dwall-bg {
+    /* 横向焦点对准人物面部；竖屏 cover 裁切时保留双眼和完整脸型。 */
+    background-position: 35% center;
     filter: blur(10px);
     transform: scale(1.08);
   }
@@ -24,6 +26,7 @@
 
   .app-shell[data-mobile-login="true"] .dwall-bg--lockout {
     /* 冷却页继续使用既有带文案壁纸，不套用低清首屏模糊。 */
+    background-position: center;
     filter: none;
     transform: none;
   }
