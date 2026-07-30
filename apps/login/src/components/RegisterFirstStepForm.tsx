@@ -22,7 +22,8 @@ import {
   normalizePhoneLocalInput,
   REGISTER_PHONE_REGIONS,
 } from "./registerIdentityOptions";
-import { getStepCopy, getStepLabel, REGISTER_STEPS, type RegisterStep, STEP_PANEL_EASE } from "./registerStepConfig";
+import { DESKTOP_HEIGHT_SPRING } from "./authSharedAxisMotion";
+import { getStepCopy, getStepLabel, REGISTER_STEPS, type RegisterStep } from "./registerStepConfig";
 import { RegisterPasswordStep } from "./RegisterPasswordStep";
 import { RegisterStepMotionPanel } from "./RegisterStepMotionPanel";
 import { RegisterInvitationStep, RegisterVerificationStep } from "./RegisterVerificationSteps";
@@ -666,9 +667,9 @@ export function RegisterFirstStepForm({
         animate={shouldReduceStepMotion || isMobileViewport || panelHeight === null ? undefined : { height: panelHeight }}
         className="register-step-viewport"
         style={isMobileViewport ? { height: "auto" } : undefined}
-        transition={shouldReduceStepMotion ? { duration: 0 } : { duration: 0.34, ease: STEP_PANEL_EASE }}
+        transition={shouldReduceStepMotion ? { duration: 0 } : DESKTOP_HEIGHT_SPRING}
       >
-        <AnimatePresence custom={stepDirection} initial={false} mode={isMobileViewport ? "popLayout" : "wait"}>
+        <AnimatePresence custom={stepDirection} initial={false} mode={isMobileViewport ? "wait" : "popLayout"}>
           <RegisterStepMotionPanel
             direction={stepDirection}
             isMobileViewport={isMobileViewport}

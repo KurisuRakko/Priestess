@@ -1,7 +1,10 @@
 import { type ReactNode } from "react";
 import { motion, useIsPresent } from "motion/react";
-import { MOBILE_STEP_SHARED_AXIS_VARIANTS } from "./mobileSharedAxisMotion";
-import { STEP_PANEL_EASE, STEP_PANEL_VARIANTS, type RegisterStep } from "./registerStepConfig";
+import {
+  DESKTOP_STEP_SHARED_AXIS_VARIANTS,
+  MOBILE_STEP_SHARED_AXIS_VARIANTS,
+} from "./authSharedAxisMotion";
+import { type RegisterStep } from "./registerStepConfig";
 
 type RegisterStepMotionPanelProps = {
   children: ReactNode;
@@ -22,7 +25,9 @@ export function RegisterStepMotionPanel({
 }: RegisterStepMotionPanelProps) {
   const isPresent = useIsPresent();
   const shouldAnimateMobile = isMobileViewport && !shouldReduceMotion;
+  const shouldAnimateDesktop = !isMobileViewport && !shouldReduceMotion;
   const mobileMotionMode = isMobileViewport ? (shouldAnimateMobile ? "fade-through" : "direct") : undefined;
+  const desktopMotionMode = !isMobileViewport ? (shouldAnimateDesktop ? "shared-axis" : "direct") : undefined;
 
   return (
     <motion.div
@@ -32,6 +37,7 @@ export function RegisterStepMotionPanel({
       custom={direction}
       data-register-step-motion-origin={direction > 0 ? "right" : "left"}
       data-register-step-panel={step}
+      data-desktop-motion={desktopMotionMode}
       data-mobile-motion={mobileMotionMode}
       exit={shouldReduceMotion
         ? { opacity: 0 }
@@ -40,14 +46,12 @@ export function RegisterStepMotionPanel({
       style={{ pointerEvents: isPresent ? "auto" : "none" }}
       transition={shouldReduceMotion
         ? { duration: 0 }
-        : shouldAnimateMobile
-          ? undefined
-          : { duration: 0.28, ease: STEP_PANEL_EASE }}
+        : undefined}
       variants={shouldReduceMotion
         ? undefined
         : isMobileViewport
           ? MOBILE_STEP_SHARED_AXIS_VARIANTS
-          : STEP_PANEL_VARIANTS}
+          : DESKTOP_STEP_SHARED_AXIS_VARIANTS}
     >
       {children}
     </motion.div>

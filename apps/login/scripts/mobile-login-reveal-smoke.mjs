@@ -39,6 +39,7 @@ try {
   await testMobileSecondaryAuthTransitions(browser, appUrl);
   await testHungAuthorizationFallsBack(browser, appUrl);
   await testViewportSwitchRestoresDesktopQr(browser, appUrl);
+  await testDesktopAccountSwitchMotion(browser, appUrl);
   await testDesktopPanelHeightClearsOnMobile(browser, appUrl);
   await testDesktopLoginKeepsQrLayout(browser, appUrl);
 
@@ -251,17 +252,53 @@ async function testViewportSwitchRestoresDesktopQr(browserInstance, appUrl) {
   });
 }
 
+async function testDesktopAccountSwitchMotion(browserInstance, appUrl) {
+  const scenario = createScenario({ browserAccountMode: "single" });
+
+  await withScenario(browserInstance, scenario, {
+    reducedMotion: "no-preference",
+    viewport: DESKTOP_VIEWPORT,
+  }, async(page) => {
+    await page.goto(`${appUrl}/login`, { waitUntil: "domcontentloaded" });
+    await page.waitForSelector('[data-auth-account-panel="account-picker"]');
+    assert.equal(await page.locator('[data-auth-account-panel="account-picker"]').getAttribute("data-desktop-motion"), "shared-axis");
+
+    await page.locator(".account-picker__other").click();
+    await waitForExitingPanelStopsPointer(page, '[data-auth-account-panel="account-picker"]', "desktop account picker");
+    await page.waitForSelector('[data-auth-account-panel="login-form"]');
+    assert.equal(await page.locator('[data-auth-account-panel="login-form"]').getAttribute("data-desktop-motion"), "shared-axis");
+    assert.equal(await page.locator('[data-auth-account-panel="login-form"]').getAttribute("data-auth-account-motion-origin"), "right");
+    await page.locator('[data-auth-account-panel="account-picker"]').waitFor({ state: "detached", timeout: 1000 });
+    await waitForPanelSettled(page, '[data-auth-account-panel="login-form"]');
+    assert.equal(await page.locator(".auth-card-viewport").getAttribute("data-desktop-height-motion"), "spring");
+
+    await page.getByRole("button", { name: "返回账号选择" }).click();
+    await waitForExitingPanelStopsPointer(page, '[data-auth-account-panel="login-form"]', "desktop login form");
+    await page.waitForSelector('[data-auth-account-panel="account-picker"]');
+    await page.locator('[data-auth-account-panel="login-form"]').waitFor({ state: "detached", timeout: 1000 });
+    await waitForPanelSettled(page, '[data-auth-account-panel="account-picker"]');
+    assert.equal(await page.locator('[data-auth-account-panel="account-picker"]').getAttribute("data-auth-account-motion-origin"), "left");
+  });
+}
+
 async function testDesktopLoginKeepsQrLayout(browserInstance, appUrl) {
   const scenario = createScenario();
 
   await withScenario(browserInstance, scenario, {
-    reducedMotion: "reduce",
+    reducedMotion: "no-preference",
     viewport: DESKTOP_VIEWPORT,
   }, async(page) => {
     await page.goto(buildAuthUrl(appUrl, "desktop"), { waitUntil: "domcontentloaded" });
     await page.waitForSelector('.app-shell[data-mobile-login="false"] .login-card');
     await waitFor(() => scenario.records.qrCreates > 0, 2500, "desktop should create a QR session");
     await page.locator(".qr-panel").waitFor({ state: "visible" });
+    await waitForPanelSettled(page, ".qr-drawer-surface");
+    assert.equal(await page.locator(".auth-grid").getAttribute("data-desktop-layout-motion"), "coordinated");
+    assert.equal(await page.locator(".qr-drawer-surface").getAttribute("data-desktop-qr-motion"), "smooth");
+    assert.ok(
+      (await page.locator(".auth-grid").evaluate((element) => getComputedStyle(element).transitionDuration)).includes("0.54s"),
+      "desktop layout transitions must share the coordinated 540ms duration",
+    );
 
     const cardLayout = await page.locator(".login-card").evaluate((element) => {
       const rect = element.getBoundingClientRect();
@@ -293,14 +330,37 @@ async function testDesktopPanelHeightClearsOnMobile(browserInstance, appUrl) {
       const viewport = document.querySelector(".auth-card-viewport");
       return viewport instanceof HTMLElement && viewport.style.height.endsWith("px");
     }, { timeout: 3000 });
+    assert.equal(await page.locator(".auth-card-viewport").getAttribute("data-desktop-height-motion"), "spring");
+    assert.equal(await page.locator('[data-auth-mode-panel="login"]').getAttribute("data-desktop-motion"), "shared-axis");
 
+    const outgoingLogin = page.locator('[data-auth-mode-panel="login"]');
     await page.getByRole("button", { name: "创建账号" }).click();
+    await waitForExitingPanelStopsPointer(page, '[data-auth-mode-panel="login"]', "desktop login");
+    await page.waitForSelector('[data-auth-mode-panel="register"]');
+    assert.equal(await page.locator('[data-auth-mode-panel="register"]').getAttribute("data-desktop-motion"), "shared-axis");
+    assert.equal(await page.locator('[data-auth-mode-panel="register"]').getAttribute("data-auth-mode-motion-origin"), "right");
+    await outgoingLogin.waitFor({ state: "detached", timeout: 1000 });
+    await waitForPanelSettled(page, '[data-auth-mode-panel="register"]');
     await page.locator("input[autocomplete='email']").waitFor({ state: "visible", timeout: 5000 });
     await page.waitForFunction(() => document.querySelectorAll(".auth-card-content").length === 1, { timeout: 2000 });
     await page.waitForFunction(() => {
       const viewport = document.querySelector(".auth-card-viewport");
       return viewport instanceof HTMLElement && viewport.style.height.endsWith("px");
     }, { timeout: 2000 });
+
+    await page.waitForFunction(() => {
+      const input = document.querySelector("input[autocomplete='email']");
+      return input instanceof HTMLInputElement && !input.disabled;
+    }, { timeout: 1500 });
+    await page.locator("input[autocomplete='email']").fill("desktop-motion@example.com");
+    await page.locator("#register-terms-consent").check();
+    await page.locator(".login-form .primary-button[type='submit']").click();
+    await waitForExitingPanelStopsPointer(page, '[data-register-step-panel="identity"]', "desktop registration identity");
+    await page.waitForSelector('[data-register-step-panel="invitation"]');
+    assert.equal(await page.locator('[data-register-step-panel="invitation"]').getAttribute("data-desktop-motion"), "shared-axis");
+    assert.equal(await page.locator('[data-register-step-panel="invitation"]').getAttribute("data-register-step-motion-origin"), "right");
+    await page.locator('[data-register-step-panel="identity"]').waitFor({ state: "detached", timeout: 1000 });
+    await waitForPanelSettled(page, '[data-register-step-panel="invitation"]');
 
     await page.setViewportSize(MOBILE_VIEWPORT);
     await page.waitForSelector('.app-shell[data-mobile-login="true"][data-mobile-reveal="ready"]');
@@ -355,8 +415,19 @@ async function waitForExitingPanelStopsPointer(page, selector, label) {
   );
 }
 
+async function waitForPanelSettled(page, selector) {
+  await page.waitForFunction((panelSelector) => {
+    const panel = document.querySelector(panelSelector);
+    if (!(panel instanceof HTMLElement)) return false;
+    const style = getComputedStyle(panel);
+    const transform = style.transform === "none" ? null : new DOMMatrixReadOnly(style.transform);
+    return Number.parseFloat(style.opacity) > 0.99 && (!transform || Math.abs(transform.m41) < 0.5);
+  }, selector, { timeout: 2500 });
+}
+
 function createScenario(options = {}) {
   return {
+    browserAccountMode: options.browserAccountMode ?? "empty",
     hangAccountChoices: options.hangAccountChoices ?? false,
     records: {
       accountChoices: 0,
@@ -407,7 +478,18 @@ async function startMockApiServer() {
 
     if (req.method === "GET" && url.pathname === "/auth/priestess/browser-accounts") {
       scenario.records.browserAccounts += 1;
-      writeJson(res, 200, { accounts: [] });
+      writeJson(res, 200, {
+        accounts: scenario.browserAccountMode === "single"
+          ? [{
+              authenticated: true,
+              current: true,
+              display_name: "Desktop Motion User",
+              email: "desktop-motion@example.com",
+              user_id: "desktop-motion-user",
+              username: "desktop-motion",
+            }]
+          : [],
+      });
       return;
     }
 

@@ -5,10 +5,14 @@ import { AccountPickerCard, type AccountPickerAction, type AccountPickerMode } f
 import { ForgotPasswordForm } from "./ForgotPasswordForm";
 import { LoginForm, type LoginCredentials, type LoginTotpChallenge } from "./LoginForm";
 import {
+  DESKTOP_HEIGHT_SPRING,
+  getDesktopSharedAxisEnter,
+  getDesktopSharedAxisExit,
+  getDesktopSharedAxisInitial,
   getMobileSharedAxisEnter,
   getMobileSharedAxisExit,
   getMobileSharedAxisInitial,
-} from "./mobileSharedAxisMotion";
+} from "./authSharedAxisMotion";
 import { QrPanel } from "./QrPanel";
 import { RegisterFirstStepForm } from "./RegisterFirstStepForm";
 import { type AuthAccountChoice, type useAuthAccountChoices } from "../lib/useAuthAccountChoices";
@@ -20,40 +24,55 @@ type TranslationFn = (key: string, options?: Record<string, unknown>) => string;
 type AccountSwitchPanel = "account-picker" | "login-form";
 type AuthModePanel = "forgot-password" | "login" | "register";
 
-type MobileAccountSwitchPanelProps = {
+type AccountSwitchMotionPanelProps = {
   children: ReactNode;
   isMobileViewport: boolean;
   panel: AccountSwitchPanel;
   shouldReduceMotion: boolean | null;
 };
 
-function MobileAccountSwitchPanel({
+function AccountSwitchMotionPanel({
   children,
   isMobileViewport,
   panel,
   shouldReduceMotion,
-}: MobileAccountSwitchPanelProps) {
+}: AccountSwitchMotionPanelProps) {
   const isPresent = useIsPresent();
-  const shouldAnimate = isMobileViewport && !shouldReduceMotion;
+  const shouldAnimateMobile = isMobileViewport && !shouldReduceMotion;
+  const shouldAnimateDesktop = !isMobileViewport && !shouldReduceMotion;
   const direction = panel === "account-picker" ? -1 : 1;
-  const mobileMotionMode = isMobileViewport ? (shouldAnimate ? "fade-through" : "direct") : undefined;
+  const mobileMotionMode = isMobileViewport ? (shouldAnimateMobile ? "fade-through" : "direct") : undefined;
+  const desktopMotionMode = !isMobileViewport ? (shouldAnimateDesktop ? "shared-axis" : "direct") : undefined;
 
   return (
     <motion.div
-      animate={shouldAnimate ? getMobileSharedAxisEnter() : { opacity: 1, x: 0 }}
+      animate={shouldAnimateMobile
+        ? getMobileSharedAxisEnter()
+        : shouldAnimateDesktop
+          ? getDesktopSharedAxisEnter()
+          : { filter: "blur(0px)", opacity: 1, x: 0 }}
       className="auth-account-switch-panel"
       data-auth-account-motion-origin={panel === "account-picker" ? "left" : "right"}
       data-auth-account-panel={panel}
+      data-desktop-motion={desktopMotionMode}
       data-mobile-motion={mobileMotionMode}
-      exit={shouldAnimate ? getMobileSharedAxisExit(direction) : { opacity: 0 }}
-      initial={shouldAnimate ? getMobileSharedAxisInitial(direction) : false}
+      exit={shouldAnimateMobile
+        ? getMobileSharedAxisExit(direction)
+        : shouldAnimateDesktop
+          ? getDesktopSharedAxisExit(direction)
+          : { opacity: 0 }}
+      initial={shouldAnimateMobile
+        ? getMobileSharedAxisInitial(direction)
+        : shouldAnimateDesktop
+          ? getDesktopSharedAxisInitial(direction)
+          : false}
       style={{
         display: "flex",
         flexDirection: "column",
         pointerEvents: isPresent ? "auto" : "none",
         width: "100%",
       }}
-      transition={shouldAnimate ? undefined : { duration: 0 }}
+      transition={shouldAnimateMobile || shouldAnimateDesktop ? undefined : { duration: 0 }}
     >
       {children}
     </motion.div>
@@ -77,31 +96,33 @@ function AuthModeMotionPanel({
 }: AuthModeMotionPanelProps) {
   const isPresent = useIsPresent();
   const direction = panel === "login" ? -1 : 1;
-  const desktopMotionState = { filter: "blur(4px)", opacity: 0, x: direction * 24 };
   const shouldAnimateMobile = isMobileViewport && !shouldReduceMotion;
+  const shouldAnimateDesktop = !isMobileViewport && !shouldReduceMotion;
   const mobileMotionMode = isMobileViewport ? (shouldAnimateMobile ? "fade-through" : "direct") : undefined;
+  const desktopMotionMode = !isMobileViewport ? (shouldAnimateDesktop ? "shared-axis" : "direct") : undefined;
 
   return (
     <motion.div
       animate={shouldAnimateMobile
         ? getMobileSharedAxisEnter()
-        : isMobileViewport
-          ? { opacity: 1, x: 0 }
-        : { filter: "blur(0px)", opacity: 1, x: 0 }}
+        : shouldAnimateDesktop
+          ? getDesktopSharedAxisEnter()
+          : { filter: "blur(0px)", opacity: 1, x: 0 }}
       className="auth-card-content"
       data-auth-mode-motion-origin={panel === "login" ? "left" : "right"}
       data-auth-mode-panel={panel}
+      data-desktop-motion={desktopMotionMode}
       data-mobile-motion={mobileMotionMode}
       exit={shouldReduceMotion
         ? { opacity: 0 }
         : shouldAnimateMobile
           ? getMobileSharedAxisExit(direction)
-          : desktopMotionState}
+          : getDesktopSharedAxisExit(direction)}
       initial={shouldReduceMotion
         ? false
         : shouldAnimateMobile
           ? getMobileSharedAxisInitial(direction)
-          : desktopMotionState}
+          : getDesktopSharedAxisInitial(direction)}
       ref={panelRef}
       style={{
         display: "flex",
@@ -111,9 +132,9 @@ function AuthModeMotionPanel({
       }}
       transition={shouldReduceMotion
         ? { duration: 0 }
-        : shouldAnimateMobile
+        : shouldAnimateMobile || shouldAnimateDesktop
           ? undefined
-          : { duration: 0.4, ease: [0.2, 0.8, 0.2, 1] }}
+          : { duration: 0 }}
     >
       {children}
     </motion.div>
@@ -209,10 +230,10 @@ export function LoginExperience({
   t,
   totpChallenge,
 }: LoginExperienceProps) {
-  const loginDelay = 0.5;
-  const loginDuration = 0.72;
-  const drawerDelay = loginDelay + loginDuration + 0.06;
-  const qrContentDelay = drawerDelay + 0.34;
+  const loginDelay = 0.32;
+  const loginDuration = 0.64;
+  const drawerDelay = loginDelay + loginDuration + 0.04;
+  const qrContentDelay = drawerDelay + 0.26;
   const drawerEase = [0.2, 0.8, 0.2, 1] as const;
   const loginEnter = shouldReduceMotion
     ? false
@@ -262,12 +283,12 @@ export function LoginExperience({
     loginCardRef.current?.scrollTo({ behavior: "auto", top: 0 });
   }, [activeMobilePanel, loginCardRef, mobileLoginReveal.isMobileViewport]);
   const qrDrawerVariants = {
-    closed: { x: "-96%", opacity: 0, clipPath: "inset(0 100% 0 0)" },
+    closed: { x: "-18%", opacity: 0, clipPath: "inset(0 100% 0 0)" },
     open: { x: "0%", opacity: 1, clipPath: "inset(0 0% 0 0)" },
   };
   const qrDrawerTransition = shouldReduceMotion
     ? { duration: 0 }
-    : { duration: 0.76, ease: drawerEase };
+    : { duration: 0.44, ease: [0.16, 1, 0.3, 1] as const };
   const dwallBgClassName = [
     "dwall-bg",
     isLocalLoginCooldownActive ? "dwall-bg--lockout" : shouldUseCenteredWallpaper ? "dwall-bg--register" : "",
@@ -297,6 +318,9 @@ export function LoginExperience({
           >
             <motion.div
               className={authGridClassName}
+              data-desktop-layout-motion={!mobileLoginReveal.isMobileViewport
+                ? shouldReduceMotion ? "direct" : "coordinated"
+                : undefined}
               initial={shouldReduceMotion ? false : { opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={shouldReduceMotion ? { duration: 0 } : { duration: 0.16 }}
@@ -327,11 +351,12 @@ export function LoginExperience({
                       返回时整体向右回退，两块内容始终朝同一方向流动，避免同侧进出的折返感。 */}
                   <motion.div
                     className="auth-card-viewport"
+                    data-desktop-height-motion={!mobileLoginReveal.isMobileViewport && !shouldReduceMotion ? "spring" : undefined}
                     animate={shouldReduceMotion || mobileLoginReveal.isMobileViewport || panelHeight === null
                       ? undefined
                       : { height: panelHeight }}
                     style={mobileLoginReveal.isMobileViewport ? { height: "auto" } : undefined}
-                    transition={shouldReduceMotion ? { duration: 0 } : { duration: 0.44, ease: drawerEase }}
+                    transition={shouldReduceMotion ? { duration: 0 } : DESKTOP_HEIGHT_SPRING}
                   >
                   <AnimatePresence
                     initial={false}
@@ -380,10 +405,8 @@ export function LoginExperience({
                           initial={false}
                           mode={mobileLoginReveal.isMobileViewport ? "wait" : "popLayout"}
                         >
-                          <MobileAccountSwitchPanel
-                            key={mobileLoginReveal.isMobileViewport
-                              ? shouldShowAccountPicker ? "account-picker" : "login-form"
-                              : "desktop-login-panel"}
+                          <AccountSwitchMotionPanel
+                            key={shouldShowAccountPicker ? "account-picker" : "login-form"}
                             isMobileViewport={mobileLoginReveal.isMobileViewport}
                             panel={shouldShowAccountPicker ? "account-picker" : "login-form"}
                             shouldReduceMotion={shouldReduceMotion}
@@ -420,7 +443,7 @@ export function LoginExperience({
                                 totpChallenge={totpChallenge}
                               />
                             )}
-                          </MobileAccountSwitchPanel>
+                          </AccountSwitchMotionPanel>
                         </AnimatePresence>
                       </AuthModeMotionPanel>
                     )}
@@ -433,6 +456,9 @@ export function LoginExperience({
                 {/* slot 只负责布局宽度；可视抽屉层由 Motion 驱动，避免 CSS transform 抢同一段动画。 */}
                 <motion.div
                   className="qr-drawer-surface"
+                  data-desktop-qr-motion={!mobileLoginReveal.isMobileViewport
+                    ? shouldReduceMotion ? "direct" : "smooth"
+                    : undefined}
                   initial={shouldReduceMotion ? false : "closed"}
                   animate={isQrDrawerOpen ? "open" : "closed"}
                   variants={qrDrawerVariants}

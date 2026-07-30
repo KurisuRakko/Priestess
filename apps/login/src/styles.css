@@ -22,6 +22,9 @@
   --radius-card: 8px;
   --radius-control: 8px;
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --auth-drawer-duration: 440ms;
+  --auth-layout-duration: 540ms;
+  --auth-layout-ease: cubic-bezier(0.16, 1, 0.3, 1);
   --font-sans: "HarmonyOS Sans SC", "HarmonyOS Sans", "PingFang SC", "Noto Sans SC", "Microsoft YaHei", Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   /* 登录页背景使用压缩后的多档图片，避免把 4.5M 原图直接打进首屏资源。 */
   --dwall-background-image: none;
@@ -96,7 +99,7 @@ input:focus-visible {
   background-size: cover;
   transform: scale(1) translate(0, 0);
   transform-origin: center center;
-  transition: transform 680ms var(--ease-out);
+  transition: transform var(--auth-layout-duration) var(--auth-layout-ease);
   will-change: transform;
 }
 
@@ -220,7 +223,10 @@ input:focus-visible {
   border-radius: var(--radius-card);
   isolation: isolate;
   transform: translateX(var(--auth-login-offset));
-  transition: width 680ms var(--ease-out), min-height 680ms var(--ease-out), transform 680ms var(--ease-out);
+  transition:
+    width var(--auth-layout-duration) var(--auth-layout-ease),
+    min-height var(--auth-layout-duration) var(--auth-layout-ease),
+    transform var(--auth-layout-duration) var(--auth-layout-ease);
 }
 
 .auth-grid.auth-grid--register {
@@ -244,7 +250,9 @@ input:focus-visible {
   display: flex;
   width: min(500px, 100%);
   min-width: 390px;
-  transition: width 680ms var(--ease-out), min-width 680ms var(--ease-out);
+  transition:
+    width var(--auth-layout-duration) var(--auth-layout-ease),
+    min-width var(--auth-layout-duration) var(--auth-layout-ease);
 }
 
 .login-card-shell--account-picker {
@@ -296,7 +304,10 @@ input:focus-visible {
   min-width: 0;
   margin-left: -1px;
   overflow: hidden;
-  transition: flex-basis 680ms var(--ease-out), max-width 680ms var(--ease-out), margin-left 680ms var(--ease-out);
+  transition:
+    flex-basis var(--auth-layout-duration) var(--auth-layout-ease),
+    max-width var(--auth-layout-duration) var(--auth-layout-ease),
+    margin-left var(--auth-layout-duration) var(--auth-layout-ease);
 }
 
 .auth-grid--register .qr-drawer-slot { flex-basis: 0; max-width: 0; min-height: 0; margin-left: 0; pointer-events: none; }
@@ -319,7 +330,9 @@ input:focus-visible {
   -webkit-backdrop-filter: blur(22px);
   backdrop-filter: blur(22px);
   transform-origin: left center;
-  transition: border-width 520ms var(--ease-out), box-shadow 520ms var(--ease-out);
+  transition:
+    border-width var(--auth-drawer-duration) var(--auth-layout-ease),
+    box-shadow var(--auth-drawer-duration) var(--auth-layout-ease);
   will-change: transform, opacity, clip-path;
 }
 
@@ -547,8 +560,11 @@ input:focus-visible {
   box-shadow: 0 28px 72px rgba(36, 35, 31, 0.14);
   -webkit-backdrop-filter: blur(22px);
   backdrop-filter: blur(22px);
-  /* 圆角与底色跟随 680ms 的布局收缩动画，避免登录/注册切换时左直角和透明度突变。 */
-  transition: padding 250ms var(--ease-out), border-radius 680ms var(--ease-out), background-color 680ms var(--ease-out);
+  /* 圆角与底色跟随统一布局镜头，避免登录/注册切换时左直角和透明度突变。 */
+  transition:
+    padding 250ms var(--ease-out),
+    border-radius var(--auth-layout-duration) var(--auth-layout-ease),
+    background-color var(--auth-layout-duration) var(--auth-layout-ease);
 }
 
 .login-card--account-picker {
