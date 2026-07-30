@@ -45,6 +45,8 @@ try {
   await testEmptyAccountRefreshReturnsToLogin(browser, appUrl);
   await testAccountChoiceErrorCanRetry(browser, appUrl);
   await testMultipleAccountsRemainSelectable(browser, appUrl);
+  await testSavedAccountDefersQrAndReusesSession(browser, appUrl);
+  await testExpiredQrCreatesOneReplacement(browser, appUrl);
   await testBareLoginSelectsSavedAccount(browser, appUrl);
   await testReducedMotionAccountSwitch(browser, appUrl);
   await testBareLoginRemainsUsable(browser, appUrl);
@@ -173,10 +175,92 @@ async function testBareLoginRemainsUsable(browserInstance, appUrl) {
       performance.getEntriesByType("resource").map((entry) => entry.name)
     ));
     assert.equal(
-      initialResourceNames.some((name) => /RegisterFirstStepForm|pinyin-pro|QrPanel/.test(name)),
+      initialResourceNames.some((name) => /QrPanel/.test(name)),
       false,
-      "bare login should not preload registration or QR rendering modules",
+      "bare login should never load QR rendering modules",
     );
+    await page.waitForFunction(() => (
+      performance.getEntriesByType("resource")
+        .some((entry) => /RegisterFirstStepForm/.test(entry.name))
+    ), null, { timeout: 5000 });
+  });
+}
+
+async function testSavedAccountDefersQrAndReusesSession(browserInstance, appUrl) {
+  const scenario = createScenario("qr-demand", { accountModeBeforeAuth: "single" });
+
+  await withScenario(browserInstance, scenario, async(page) => {
+    await page.goto(buildAuthUrl(appUrl, scenario.appId), { waitUntil: "domcontentloaded" });
+    await page.locator(".account-picker__row-main").first().waitFor({ state: "visible", timeout: 5000 });
+    await page.waitForTimeout(300);
+
+    const initialAccountChoiceRequests = scenario.records.accountChoices.length;
+    assert.ok(initialAccountChoiceRequests >= 1);
+    assert.equal(scenario.records.qrSessions.length, 0, "saved-account picker must not create a hidden QR session");
+    assert.equal(
+      await hasLoadedResource(page, /QrPanel|RegisterFirstStepForm/),
+      false,
+      "saved-account picker must not preload login-only modules",
+    );
+
+    await page.locator(".account-picker__other").click();
+    await page.locator("input[autocomplete='username']").waitFor({ state: "visible", timeout: 5000 });
+    await waitFor(
+      () => scenario.records.qrSessions.length === 1,
+      5000,
+      "password login should create exactly one QR session",
+    );
+    await page.waitForFunction(() => {
+      const resources = performance.getEntriesByType("resource");
+      return resources.some((entry) => /QrPanel/.test(entry.name))
+        && resources.some((entry) => /RegisterFirstStepForm/.test(entry.name));
+    }, null, { timeout: 5000 });
+
+    await waitFor(
+      () => scenario.records.qrStatuses.length > 0,
+      5000,
+      "visible QR session should begin polling",
+    );
+    await page.getByRole("button", { name: "创建账号" }).click();
+    await page.locator('[data-auth-mode-panel="register"]').waitFor({ state: "visible", timeout: 5000 });
+    await page.waitForTimeout(300);
+    const pausedPollCount = scenario.records.qrStatuses.length;
+    await page.waitForTimeout(1800);
+    assert.equal(
+      scenario.records.qrStatuses.length,
+      pausedPollCount,
+      "hidden QR session must stop polling while registration is open",
+    );
+
+    await page.getByRole("button", { name: "返回登录" }).click();
+    await page.locator("input[autocomplete='username']").waitFor({ state: "visible", timeout: 5000 });
+    await waitFor(
+      () => scenario.records.qrStatuses.length > pausedPollCount,
+      5000,
+      "returning to login should reconcile the retained QR session",
+    );
+    assert.equal(scenario.records.qrSessions.length, 1, "returning to login must reuse the unexpired QR session");
+    assert.equal(
+      scenario.records.accountChoices.length,
+      initialAccountChoiceRequests,
+      "short auth-mode round trips must reuse fresh account choices",
+    );
+  });
+}
+
+async function testExpiredQrCreatesOneReplacement(browserInstance, appUrl) {
+  const scenario = createScenario("qr-expiry", { qrSessionExpiresIn: 1 });
+
+  await withScenario(browserInstance, scenario, async(page) => {
+    await page.goto(buildAuthUrl(appUrl, scenario.appId), { waitUntil: "domcontentloaded" });
+    await page.locator("input[autocomplete='username']").waitFor({ state: "visible", timeout: 5000 });
+    await waitFor(
+      () => scenario.records.qrSessions.length === 2,
+      5000,
+      "expired QR should create one replacement session",
+    );
+    await page.waitForTimeout(300);
+    assert.equal(scenario.records.qrSessions.length, 2, "expiry and auto-refresh timers must not race into duplicate sessions");
   });
 }
 
@@ -540,6 +624,13 @@ async function assertControlCanReceivePointer(page, locator, label) {
   assert.equal(canReceivePointer, true, `${label} must not be covered by an exiting panel`);
 }
 
+async function hasLoadedResource(page, pattern) {
+  return page.evaluate((source) => {
+    const resourcePattern = new RegExp(source);
+    return performance.getEntriesByType("resource").some((entry) => resourcePattern.test(entry.name));
+  }, pattern.source);
+}
+
 async function waitForExitingPanelStopsPointer(page, selector, label) {
   await page.waitForFunction((panelSelector) => {
     const panel = document.querySelector(panelSelector);
@@ -618,12 +709,15 @@ function createScenario(appId, options = {}) {
       loginBodies: [],
       passkeyOptions: 0,
       passkeyVerifications: [],
+      qrSessions: [],
+      qrStatuses: [],
       registrationConfirms: [],
       registrationInviteChecks: [],
       registrationVerificationChecks: [],
       registrationVerifications: [],
       totpBodies: [],
     },
+    qrSessionExpiresIn: options.qrSessionExpiresIn ?? 120,
     requireTurnstile: options.requireTurnstile ?? false,
   };
 }
@@ -834,18 +928,21 @@ async function startMockApiServer() {
     }
 
     if (req.method === "POST" && url.pathname === "/auth/priestess/qr/sessions") {
+      const sessionId = `qr-${scenario.appId}-${scenario.records.qrSessions.length + 1}`;
+      scenario.records.qrSessions.push(sessionId);
       writeJson(res, 201, {
-        expires_in: 120,
-        qr_url: `https://priestess.test/qr-login?sessionId=qr-${scenario.appId}`,
-        session_id: `qr-${scenario.appId}`,
+        expires_in: scenario.qrSessionExpiresIn,
+        qr_url: `https://priestess.test/qr-login?sessionId=${sessionId}`,
+        session_id: sessionId,
         status: "pending",
-        status_url: `/auth/priestess/qr/sessions/qr-${scenario.appId}/status`,
+        status_url: `/auth/priestess/qr/sessions/${sessionId}/status`,
       });
       return;
     }
 
     if (req.method === "GET" && url.pathname.startsWith("/auth/priestess/qr/sessions/")) {
-      writeJson(res, 200, { expires_in: 120, status: "pending" });
+      scenario.records.qrStatuses.push(url.pathname);
+      writeJson(res, 200, { expires_in: scenario.qrSessionExpiresIn, status: "pending" });
       return;
     }
 
@@ -875,6 +972,7 @@ function buildAccount(appId, suffix) {
     current: suffix === "Primary",
     display_name: `${suffix} ${appId}`,
     email: `${appId}-${normalizedSuffix}@example.com`,
+    expires_at: new Date(Date.now() + 300_000).toISOString(),
     user_id: `user-${appId}-${normalizedSuffix}`,
     username: `${appId}-${normalizedSuffix}`,
   };

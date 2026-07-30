@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   getLocalSession,
   getPriestessApiErrorCode,
@@ -32,12 +32,21 @@ export type AuthAccountChoicesState = {
 };
 
 type UseAuthAccountChoicesParams = {
+  active: boolean;
   authRequest: AuthRequest | null;
   enabled: boolean;
   standalone: boolean;
 };
 
-export function useAuthAccountChoices({ authRequest, enabled, standalone }: UseAuthAccountChoicesParams): AuthAccountChoicesState {
+const ACCOUNT_CHOICES_REVALIDATE_AFTER_MS = 60_000;
+const ACCOUNT_CHOICE_EXPIRY_SAFETY_MS = 15_000;
+
+export function useAuthAccountChoices({
+  active,
+  authRequest,
+  enabled,
+  standalone,
+}: UseAuthAccountChoicesParams): AuthAccountChoicesState {
   const [refreshVersion, setRefreshVersion] = useState(0);
   const [state, setState] = useState<Omit<AuthAccountChoicesState, "refresh">>({
     accounts: [],
@@ -46,14 +55,31 @@ export function useAuthAccountChoices({ authRequest, enabled, standalone }: UseA
     status: "idle",
   });
   const authRequestKey = authRequest ? getAuthRequestKey(authRequest) : standalone ? "standalone" : "";
+  const freshnessRef = useRef({ freshUntil: 0, requestKey: "" });
+  const previousActiveRef = useRef(active);
 
   const refresh = useCallback(() => {
+    freshnessRef.current.freshUntil = 0;
     setRefreshVersion((current) => current + 1);
   }, []);
 
   useEffect(() => {
+    const wasActive = previousActiveRef.current;
+    previousActiveRef.current = active;
+    if (!enabled || !active || wasActive || state.status === "loading") {
+      return;
+    }
+
+    const freshness = freshnessRef.current;
+    if (freshness.requestKey !== authRequestKey || freshness.freshUntil <= Date.now()) {
+      setRefreshVersion((current) => current + 1);
+    }
+  }, [active, authRequestKey, enabled, state.status]);
+
+  useEffect(() => {
     const request = authRequest;
     if (!enabled || (!request && !standalone)) {
+      freshnessRef.current = { freshUntil: 0, requestKey: "" };
       setState({
         accounts: [],
         app: null,
@@ -80,6 +106,10 @@ export function useAuthAccountChoices({ authRequest, enabled, standalone }: UseA
           return;
         }
 
+        freshnessRef.current = {
+          freshUntil: resolveAccountChoicesFreshUntil(choices.accounts),
+          requestKey: authRequestKey,
+        };
         setState({
           accounts: choices.accounts,
           app: choices.app,
@@ -91,6 +121,7 @@ export function useAuthAccountChoices({ authRequest, enabled, standalone }: UseA
           return;
         }
 
+        freshnessRef.current = { freshUntil: 0, requestKey: authRequestKey };
         setState({
           accounts: [],
           app: request ? buildFallbackApp(request) : null,
@@ -107,6 +138,23 @@ export function useAuthAccountChoices({ authRequest, enabled, standalone }: UseA
     ...state,
     refresh,
   }), [refresh, state]);
+}
+
+export function resolveAccountChoicesFreshUntil(accounts: AuthAccountChoice[], now = Date.now()) {
+  let earliestExpiry = Number.POSITIVE_INFINITY;
+  for (const account of accounts) {
+    const expiresAt = Date.parse(account.expiresAt);
+    if (Number.isFinite(expiresAt)) {
+      earliestExpiry = Math.min(earliestExpiry, expiresAt);
+    }
+  }
+
+  const regularRevalidation = now + ACCOUNT_CHOICES_REVALIDATE_AFTER_MS;
+  if (!Number.isFinite(earliestExpiry)) {
+    return regularRevalidation;
+  }
+  // 授权 choice_id 只有短时效；切回账号选择页时要给用户留下完成点击和回跳的余量。
+  return Math.max(now, Math.min(regularRevalidation, earliestExpiry - ACCOUNT_CHOICE_EXPIRY_SAFETY_MS));
 }
 
 export function getAuthAccountChoiceErrorMessage(error: unknown, fallback = translatePriestess("login:账号选择暂时不可用")) {

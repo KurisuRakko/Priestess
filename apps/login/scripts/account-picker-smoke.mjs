@@ -38,7 +38,7 @@ try {
   const { buildAccountManagementActionPath, getAccountManagementActionSection, readAccountManagementAction, removeAccountManagementActionFromSearch, resolveAccountManagementActionTarget } = accountManagementActionModule;
   const { buildAuthAccountAuthorizeParams, getAuthAccountAuthorizeBlocker, shouldShowAuthAccountPicker } = accountAuthorizationModule;
   const { getAuthRequestAppLabel, getAuthRequestReturnToOrigin, readAuthRequest } = authRequestModule;
-  const { getAuthAccountChoiceErrorMessage, readAuthAccountChoicesForRequest, readStandaloneBrowserAccounts, redactSensitiveAuthText } = authAccountChoicesModule;
+  const { getAuthAccountChoiceErrorMessage, readAuthAccountChoicesForRequest, readStandaloneBrowserAccounts, redactSensitiveAuthText, resolveAccountChoicesFreshUntil } = authAccountChoicesModule;
   const { LoginForm } = loginFormModule;
   const { buildLoginPathWithNext, getCurrentAccountNextPath, normalizePriestessNextPath, readLoginNext } = loginNextModule;
   const { loginLocalSessionWithTurnstileRetry } = localLoginTurnstileRetryModule;
@@ -50,6 +50,7 @@ try {
 
   testAuthRequestHelpers({ getAuthRequestAppLabel, getAuthRequestReturnToOrigin, readAuthRequest });
   testAccountAuthorizationHelpers({ buildAuthAccountAuthorizeParams, getAuthAccountAuthorizeBlocker, shouldShowAuthAccountPicker });
+  testAccountChoiceFreshness({ resolveAccountChoicesFreshUntil });
   testAccountManagementActionHelpers({ buildAccountManagementActionPath, getAccountManagementActionSection, normalizePriestessNextPath, readAccountManagementAction, removeAccountManagementActionFromSearch, resolveAccountManagementActionTarget });
   testLoginNextHelpers({ buildLoginPathWithNext, getCurrentAccountNextPath, normalizePriestessNextPath, readLoginNext });
   testLoginLayoutState({ resolveLoginLayoutState });
@@ -64,6 +65,26 @@ try {
   console.log("account-picker smoke passed");
 } finally {
   await server.close();
+}
+
+function testAccountChoiceFreshness({ resolveAccountChoicesFreshUntil }) {
+  const now = Date.parse("2026-07-30T12:00:00.000Z");
+  const regularAccount = {
+    ...buildAccount({ userId: "fresh-account" }),
+    expiresAt: "2026-07-30T12:05:00.000Z",
+  };
+  const expiringAccount = {
+    ...buildAccount({ userId: "expiring-account" }),
+    expiresAt: "2026-07-30T12:00:10.000Z",
+  };
+
+  assert.equal(resolveAccountChoicesFreshUntil([], now), now + 60_000);
+  assert.equal(resolveAccountChoicesFreshUntil([regularAccount], now), now + 60_000);
+  assert.equal(
+    resolveAccountChoicesFreshUntil([regularAccount, expiringAccount], now),
+    now,
+    "choice_id 临近过期时，切回账号页必须立即重新获取",
+  );
 }
 
 function testAccountAuthorizationHelpers({ buildAuthAccountAuthorizeParams, getAuthAccountAuthorizeBlocker, shouldShowAuthAccountPicker }) {

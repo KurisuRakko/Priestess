@@ -34,7 +34,7 @@ function loadRegisterFormModule() {
 }
 
 function preloadRegisterFormModule() {
-  // 悬停、聚焦或触摸时提前取回注册代码，点击后的共享轴动画无需等待网络。
+  // 登录卡片稳定后再交给空闲调度，避免鼠标路过按钮就触发大模块下载。
   void loadRegisterFormModule();
 }
 
@@ -208,6 +208,7 @@ type LoginExperienceProps = {
   qrVisualState: QrPanelProps["visualState"];
   removingAccountId: string;
   shouldReduceMotion: boolean | null;
+  shouldPrepareQr: boolean;
   shouldShowAccountPicker: boolean;
   shouldUseCenteredWallpaper: boolean;
   showLoginFormForAccountPicker: boolean;
@@ -253,6 +254,7 @@ export function LoginExperience({
   qrVisualState,
   removingAccountId,
   shouldReduceMotion,
+  shouldPrepareQr,
   shouldShowAccountPicker,
   shouldUseCenteredWallpaper,
   showLoginFormForAccountPicker,
@@ -267,14 +269,14 @@ export function LoginExperience({
   const isAccountPickerCardMode = shouldShowAccountPicker && !isRegisterMode && !isForgotPasswordMode;
   const [desktopRevealTimedOut, setDesktopRevealTimedOut] = useState(false);
   const [desktopRevealed, setDesktopRevealed] = useState(mobileLoginReveal.isMobileViewport);
+  const [hasPreparedQrPanel, setHasPreparedQrPanel] = useState(shouldPrepareQr);
   const [loginCardEntryComplete, setLoginCardEntryComplete] = useState(Boolean(shouldReduceMotion));
   const [renderedAuthGridClassName, setRenderedAuthGridClassName] = useState(authGridClassName);
   const [renderedAccountPickerCardMode, setRenderedAccountPickerCardMode] = useState(isAccountPickerCardMode);
   const previousAuthModeRef = useRef(authMode);
   const previousAccountPickerCardModeRef = useRef(isAccountPickerCardMode);
   const desktopAccountDataReady = ["empty", "error", "ready"].includes(accountChoices.status);
-  const desktopQrDataReady = !hasQrRequest
-    || shouldShowAccountPicker
+  const desktopQrDataReady = !shouldPrepareQr
     || Boolean(qrValue)
     || qrVisualState === "error";
   const desktopDataReady = desktopAccountDataReady && desktopQrDataReady;
@@ -304,11 +306,44 @@ export function LoginExperience({
   }, [shouldReduceMotion]);
 
   useEffect(() => {
-    if (!mobileLoginReveal.isMobileViewport && hasQrRequest) {
-      // 桌面二维码组件和会话请求并行准备；手机及裸域登录不会下载二维码渲染库。
+    if (shouldPrepareQr) {
+      setHasPreparedQrPanel(true);
+      // 确认需要账号密码登录后，二维码组件与会话请求并行准备。
       void loadQrPanelModule();
     }
-  }, [hasQrRequest, mobileLoginReveal.isMobileViewport]);
+  }, [shouldPrepareQr]);
+
+  useEffect(() => {
+    if (
+      !loginStageRevealed
+      || !loginCardEntryComplete
+      || authMode !== "login"
+      || shouldShowAccountPicker
+      || totpChallenge
+      || isLocalLoginCooldownActive
+    ) {
+      return undefined;
+    }
+
+    const idleWindow = window as Window & {
+      cancelIdleCallback?: (handle: number) => void;
+      requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
+    };
+    if (idleWindow.requestIdleCallback) {
+      const idleHandle = idleWindow.requestIdleCallback(preloadRegisterFormModule, { timeout: 1_500 });
+      return () => idleWindow.cancelIdleCallback?.(idleHandle);
+    }
+
+    const fallbackTimer = window.setTimeout(preloadRegisterFormModule, 600);
+    return () => window.clearTimeout(fallbackTimer);
+  }, [
+    authMode,
+    isLocalLoginCooldownActive,
+    loginCardEntryComplete,
+    loginStageRevealed,
+    shouldShowAccountPicker,
+    totpChallenge,
+  ]);
 
   useEffect(() => {
     const authModeChanged = previousAuthModeRef.current !== authMode;
@@ -551,7 +586,6 @@ export function LoginExperience({
                                 onCreateAccount={onCreateAccount}
                                 onForgotPassword={onForgotPassword}
                                 onPasskeyLogin={onPasskeyLogin}
-                                onPrepareCreateAccount={preloadRegisterFormModule}
                                 onBackToAccountPicker={onReturnToAuthAccountPicker}
                                 onCancelTotp={onTotpCancel}
                                 onTotpSubmit={onTotpSubmit}
@@ -584,7 +618,7 @@ export function LoginExperience({
                   transition={qrDrawerTransition}
                   style={{ pointerEvents: isQrDrawerOpen ? "auto" : "none" }}
                 >
-                  {!mobileLoginReveal.isMobileViewport && hasQrRequest ? (
+                  {!mobileLoginReveal.isMobileViewport && hasQrRequest && (shouldPrepareQr || hasPreparedQrPanel) ? (
                     <Suspense fallback={(
                       <div className="qr-panel-loading" aria-busy="true" role="status">
                         {t("正在准备二维码...")}

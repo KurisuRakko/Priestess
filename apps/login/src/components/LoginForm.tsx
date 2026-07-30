@@ -21,7 +21,6 @@ type LoginFormProps = {
   onCreateAccount: () => void;
   onForgotPassword: (identity: string) => void;
   onPasskeyLogin: () => void;
-  onPrepareCreateAccount?: () => void;
   onTotpSubmit: (code: string) => void;
   onValidSubmit: (credentials: LoginCredentials) => void;
   showBackToAccountPicker?: boolean;
@@ -43,7 +42,6 @@ export function LoginForm({
   onCreateAccount,
   onForgotPassword,
   onPasskeyLogin,
-  onPrepareCreateAccount,
   onTotpSubmit,
   onValidSubmit,
   showBackToAccountPicker = false,
@@ -305,9 +303,6 @@ export function LoginForm({
                 className="text-link signup-line__button"
                 disabled={isFormLocked}
                 onClick={onCreateAccount}
-                onFocus={onPrepareCreateAccount}
-                onPointerEnter={onPrepareCreateAccount}
-                onTouchStart={onPrepareCreateAccount}
                 type="button"
               >
                 <span>{t("创建账号")}</span>

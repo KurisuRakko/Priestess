@@ -100,8 +100,9 @@ export function App() {
   const hasQrRequest = authRequest !== null;
   const isLocalLoginCooldownActive = route === "login" && authMode === "login" && localLoginCooldownUntil > Date.now();
   const accountChoices = useAuthAccountChoices({
+    active: route === "login" && authMode === "login",
     authRequest,
-    enabled: route === "login" && authMode === "login" && !isLocalLoginCooldownActive,
+    enabled: route === "login" && !isLocalLoginCooldownActive,
     standalone: !hasQrRequest,
   });
   const mobileLoginReveal = useMobileLoginReveal({
@@ -110,8 +111,30 @@ export function App() {
     hasAuthRequest: hasQrRequest,
     prefersReducedMotion: Boolean(shouldReduceMotion),
   });
+  const isRegisterMode = authMode === "register";
+  const isForgotPasswordMode = authMode === "forgot-password";
+  const hasTotpChallenge = Boolean(totpChallenge);
+  const shouldShowAccountPicker = shouldShowAuthAccountPicker({
+    authMode,
+    hasAuthRequest: hasQrRequest,
+    hasTotpChallenge,
+    showLoginFormForAccountPicker,
+    standalone: !hasQrRequest,
+    status: accountChoices.status,
+  });
+  const isAccountChoiceInitialDataReady = ["empty", "error", "ready"].includes(accountChoices.status);
+  const shouldPrepareQr = route === "login"
+    && authMode === "login"
+    && hasQrRequest
+    && isAccountChoiceInitialDataReady
+    && !hasTotpChallenge
+    && !isLocalLoginCooldownActive
+    && !isLoginSubmitStage
+    && !mobileLoginReveal.isMobileViewport
+    && !shouldShowAccountPicker;
   const qrSession = useQrLoginSession({
-    enabled: route === "login" && authMode === "login" && !isLocalLoginCooldownActive && !mobileLoginReveal.isMobileViewport,
+    active: shouldPrepareQr,
+    enabled: route === "login" && hasQrRequest && !isLocalLoginCooldownActive && !mobileLoginReveal.isMobileViewport,
     request: authRequest,
     requestKey: authRequestKey,
     t,
@@ -770,17 +793,6 @@ export function App() {
 
   // 入场节奏以页面加载为基准：先让壁纸稳定显示，再弹出表单和右侧二维码抽屉。
   // isLoginIntroStage 是特意保留的首屏状态，会让卡片短暂停在中间，后续维护不要把它当成抖动修掉。
-  const isRegisterMode = authMode === "register";
-  const isForgotPasswordMode = authMode === "forgot-password";
-  const hasTotpChallenge = Boolean(totpChallenge);
-  const shouldShowAccountPicker = shouldShowAuthAccountPicker({
-    authMode,
-    hasAuthRequest: hasQrRequest,
-    hasTotpChallenge,
-    showLoginFormForAccountPicker,
-    standalone: !hasQrRequest,
-    status: accountChoices.status,
-  });
   // 首屏、提交态、二步验证和账号选择共用居中布局，避免确认阶段重新滑回二维码侧栏。
   const {
     authGridClassName,
@@ -840,6 +852,7 @@ export function App() {
       qrVisualState={qrSession.visualState}
       removingAccountId={removingAccountId}
       shouldReduceMotion={shouldReduceMotion}
+      shouldPrepareQr={shouldPrepareQr}
       shouldShowAccountPicker={shouldShowAccountPicker}
       shouldUseCenteredWallpaper={shouldUseCenteredWallpaper}
       showLoginFormForAccountPicker={showLoginFormForAccountPicker}
