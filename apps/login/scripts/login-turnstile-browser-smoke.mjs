@@ -60,6 +60,8 @@ try {
   await testReducedMotionAccountSwitch(browser, appUrl);
   await testBareLoginRemainsUsable(browser, appUrl);
   await testLazyStandaloneRoutesRender(browser, appUrl);
+  await testPasswordLoginRevealsIdentityAfterVerification(browser, appUrl);
+  await testReducedMotionIdentityReveal(browser, appUrl);
   await testLoginFailureRemainsReadable(browser, appUrl);
   await testTotpReturnsToAccountPicker(browser, appUrl);
   await testPasskeyReturnsToAccountPicker(browser, appUrl);
@@ -283,12 +285,127 @@ async function testLoginFailureRemainsReadable(browserInstance, appUrl) {
 
     const failureOverlay = page.locator(".login-success-overlay.is-failure");
     await failureOverlay.waitFor({ state: "visible", timeout: 5000 });
+    assert.equal(await failureOverlay.locator("[data-login-identity-avatar]").count(), 0, "failed credentials must not reveal an avatar");
+    assert.equal(await failureOverlay.locator("[data-login-identity-name]").count(), 0, "failed credentials must not reveal a name");
     await page.waitForTimeout(2000);
     assert.equal(await failureOverlay.count(), 1, "failure result should remain visible long enough to read");
     assert.match(await failureOverlay.innerText(), /登录失败/);
     assert.match(await failureOverlay.innerText(), /用户名或密码错误/);
     await failureOverlay.waitFor({ state: "detached", timeout: 3000 });
   });
+}
+
+async function testPasswordLoginRevealsIdentityAfterVerification(browserInstance, appUrl) {
+  const scenario = createScenario("identity-reveal");
+
+  await withScenario(browserInstance, scenario, async(page) => {
+    await page.goto(`${appUrl}/login`, { waitUntil: "domcontentloaded" });
+    const usernameInput = page.locator("input[autocomplete='username']");
+    await usernameInput.waitFor({ state: "visible" });
+    await usernameInput.fill("identity-user");
+    await page.locator("input[autocomplete='current-password']").fill(TEST_PASSWORD);
+    const submitButton = page.locator(".login-form .primary-button[type='submit']");
+    await submitButton.evaluate((element) => {
+      element.addEventListener("click", () => {
+        window.__priestessSmokeSubmitDispatchedAt = Date.now();
+      }, { capture: true, once: true });
+    });
+    await submitButton.click();
+    await waitFor(() => scenario.records.loginBodies.length === 1, 1000, "login request should start with the submit transition");
+    const submitDispatchedAt = await page.evaluate(() => window.__priestessSmokeSubmitDispatchedAt);
+    const requestStartDelayMs = scenario.records.loginRequestedAt - submitDispatchedAt;
+    assert.ok(
+      requestStartDelayMs < 650,
+      `network login must not wait for the 760ms card-centering transition (observed ${requestStartDelayMs}ms)`,
+    );
+
+    const loadingOverlay = page.locator(".login-success-overlay.is-loading");
+    const loadingIdentity = loadingOverlay.locator('[data-login-identity-phase="loading"]');
+    await loadingIdentity.waitFor({ state: "visible", timeout: 5000 });
+    const loadingObservedAt = Date.now();
+    assert.equal(await loadingIdentity.locator("[data-login-identity-avatar]").count(), 0);
+    assert.equal(await loadingIdentity.locator("[data-login-identity-name]").count(), 0);
+    assert.equal(await loadingIdentity.locator(".login-identity-transition__status").innerText(), "Trying to sign you in…");
+
+    const loadingMotion = await loadingIdentity.evaluate((element) => {
+      const ringMotion = element.querySelector(".login-identity-transition__ring-motion");
+      const ringArc = element.querySelector(".login-identity-transition__ring-arc");
+      return {
+        arcAnimationName: ringArc ? getComputedStyle(ringArc).animationName : "",
+        motionAnimationName: ringMotion ? getComputedStyle(ringMotion).animationName : "",
+        motionTiming: ringMotion ? getComputedStyle(ringMotion).animationTimingFunction : "",
+      };
+    });
+    assert.match(loadingMotion.arcAnimationName, /lso-identity-ring-sweep/);
+    assert.match(loadingMotion.motionAnimationName, /lso-identity-ring-rotate/);
+    assert.notEqual(loadingMotion.motionTiming, "linear", "identity ring must use a non-linear rotation rhythm");
+
+    const successOverlay = page.locator(".login-success-overlay.is-success");
+    await successOverlay.waitFor({ state: "visible", timeout: 5000 });
+    assert.ok(Date.now() - loadingObservedAt >= 340, "fast login must preserve the pending phase near the 420ms contract");
+    assert.equal(await successOverlay.locator("[data-login-identity-name]").innerText(), `User ${scenario.appId}`);
+    assert.equal(await successOverlay.locator(".login-identity-transition__status").innerText(), "Signed in successfully");
+    assert.match(
+      await successOverlay.locator("[data-login-identity-avatar]").getAttribute("src"),
+      /priestess-default-avatar\.png/,
+    );
+
+    const placement = await successOverlay.evaluate((overlay) => {
+      const card = document.querySelector(".login-card");
+      const content = overlay.querySelector(".login-success-overlay-content");
+      const avatar = overlay.querySelector("[data-login-identity-avatar]");
+      const cardRect = card?.getBoundingClientRect();
+      const contentRect = content?.getBoundingClientRect();
+      return {
+        avatarWidth: avatar?.getBoundingClientRect().width ?? 0,
+        cardCenterY: cardRect ? cardRect.top + cardRect.height / 2 : 0,
+        contentCenterY: contentRect ? contentRect.top + contentRect.height / 2 : 0,
+      };
+    });
+    assert.ok(placement.contentCenterY < placement.cardCenterY - 8, "identity result should sit in the card's upper visual region");
+
+    await page.waitForTimeout(950);
+    const settled = await successOverlay.evaluate((overlay) => {
+      const avatar = overlay.querySelector("[data-login-identity-avatar]");
+      const ring = overlay.querySelector(".login-identity-transition__ring-shell");
+      return {
+        avatarWidth: avatar?.getBoundingClientRect().width ?? 0,
+        ringOpacity: ring ? Number.parseFloat(getComputedStyle(ring).opacity) : 1,
+      };
+    });
+    assert.ok(settled.avatarWidth >= 103 && settled.avatarWidth <= 105, "revealed avatar should settle at 104px");
+    assert.ok(settled.ringOpacity <= 0.05, "resolved ring should shrink away after the avatar fills it");
+
+    await page.waitForTimeout(900);
+    assert.equal(await successOverlay.count(), 1, "successful identity must remain visible during the 1.6s confirmation hold");
+    await successOverlay.waitFor({ state: "detached", timeout: 2500 });
+  }, { locale: "en-US", reducedMotion: "no-preference", viewport: { height: 900, width: 1440 } });
+}
+
+async function testReducedMotionIdentityReveal(browserInstance, appUrl) {
+  const scenario = createScenario("identity-reveal-reduced");
+
+  await withScenario(browserInstance, scenario, async(page) => {
+    await page.goto(`${appUrl}/login`, { waitUntil: "domcontentloaded" });
+    await page.locator("input[autocomplete='username']").waitFor({ state: "visible" });
+    await submitPassword(page, "reduced-user");
+
+    const loadingIdentity = page.locator('[data-login-identity-phase="loading"]');
+    await loadingIdentity.waitFor({ state: "visible", timeout: 5000 });
+    assert.equal(
+      await loadingIdentity.locator(".login-identity-transition__ring-motion").evaluate((element) => getComputedStyle(element).animationName),
+      "none",
+    );
+
+    const successIdentity = page.locator('[data-login-identity-phase="success"]');
+    await successIdentity.waitFor({ state: "visible", timeout: 5000 });
+    assert.equal(await successIdentity.locator("[data-login-identity-avatar]").count(), 1);
+    assert.equal(await successIdentity.locator("[data-login-identity-name]").innerText(), `User ${scenario.appId}`);
+    assert.equal(
+      await successIdentity.locator(".login-identity-transition__avatar").evaluate((element) => getComputedStyle(element).transform),
+      "matrix(1, 0, 0, 1, -52, -52)",
+    );
+  }, { locale: "en-US", reducedMotion: "reduce", viewport: { height: 844, width: 390 } });
 }
 
 async function testLazyStandaloneRoutesRender(browserInstance, appUrl) {
@@ -480,6 +597,7 @@ async function testTotpReturnsToAccountPicker(browserInstance, appUrl) {
     assert.equal(await totpInput.isEnabled(), true);
     await totpInput.fill("123456");
     await page.locator(".login-form .primary-button[type='submit']").click();
+    await page.locator('.login-success-overlay.is-success [data-login-identity-avatar="revealed"]').waitFor({ state: "visible", timeout: 5000 });
     await waitForSuccessfulAccountPicker(page);
 
     assert.deepEqual(scenario.records.totpBodies, [{ challenge_id: "totp-challenge", code: "123456" }]);
@@ -495,6 +613,7 @@ async function testPasskeyReturnsToAccountPicker(browserInstance, appUrl) {
     const passkeyButton = page.getByRole("button", { name: /使用 Passkey 登录/ });
     await passkeyButton.waitFor({ state: "visible" });
     await passkeyButton.click();
+    await page.locator('.login-success-overlay.is-success [data-login-identity-avatar="revealed"]').waitFor({ state: "visible", timeout: 5000 });
     await waitForSuccessfulAccountPicker(page);
 
     assert.equal(scenario.records.passkeyOptions, 1);
@@ -605,7 +724,7 @@ async function testRegistrationReturnsToAccountPicker(browserInstance, appUrl) {
 async function withScenario(browserInstance, scenario, callback, options = {}) {
   activeScenario = scenario;
   const context = await browserInstance.newContext({
-    locale: "zh-CN",
+    locale: options.locale ?? "zh-CN",
     reducedMotion: options.reducedMotion ?? "reduce",
     viewport: options.viewport,
   });
@@ -716,6 +835,7 @@ function createScenario(appId, options = {}) {
       authorizations: [],
       browserAccounts: 0,
       loginBodies: [],
+      loginRequestedAt: 0,
       passkeyOptions: 0,
       passkeyVerifications: [],
       qrSessions: [],
@@ -813,6 +933,7 @@ async function startMockApiServer() {
 
     if (req.method === "POST" && url.pathname === "/auth/priestess/session") {
       const body = await readJsonBody(req);
+      scenario.records.loginRequestedAt = Date.now();
       scenario.records.loginBodies.push(body);
       if (scenario.loginError) {
         writeJson(res, 401, { error: { code: "invalid_local_credentials", message: "用户名或密码错误" } });
@@ -1011,6 +1132,7 @@ function authenticatedSession(scenario, overrides = {}) {
     authenticated: true,
     expires_at: "2026-07-16T00:00:00.000Z",
     user: {
+      avatar_url: "/priestess-default-avatar.png",
       display_name: overrides.displayName || `User ${scenario.appId}`,
       email: overrides.email || `${scenario.appId}@example.com`,
       user_id: overrides.userId || `user-${scenario.appId}`,

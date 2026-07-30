@@ -43,7 +43,10 @@
 /* 提交态不再生成第二层小卡片，避免 spinner 背后又叠一块窗口背景。 */
 .login-success-overlay.has-origin .login-success-overlay-content {
   box-sizing: border-box;
-  width: min(320px, calc(100vw - 56px));
+  position: fixed;
+  top: var(--lso-origin-status-y, 42vh);
+  left: var(--lso-origin-center-x, 50vw);
+  width: min(320px, calc(var(--lso-origin-content-width, 376px) - 48px), calc(100vw - 56px));
   min-height: 148px;
   padding: 0 24px;
   border: 0;
@@ -52,7 +55,7 @@
   box-shadow: none;
   backdrop-filter: none;
   opacity: 0;
-  transform: translateY(8px);
+  transform: translate(-50%, calc(-50% + 8px));
   animation:
     lso-origin-content-in var(--lso-origin-content-in-ms, 220ms) var(--lso-origin-content-in-delay-ms, 200ms)
     cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
@@ -70,6 +73,168 @@
 .login-success-overlay-icon {
   width: 72px;
   height: 72px;
+}
+
+.login-identity-transition {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+}
+
+.login-identity-transition.is-success {
+  animation: lso-identity-group-lift 520ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.login-identity-transition__visual {
+  position: relative;
+  width: 60px;
+  height: 60px;
+  flex: 0 0 auto;
+}
+
+.login-identity-transition.is-success .login-identity-transition__visual {
+  animation: lso-identity-visual-expand 520ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.login-identity-transition__ring-shell,
+.login-identity-transition__ring-motion {
+  position: absolute;
+  inset: 0;
+}
+
+.login-identity-transition.is-loading .login-identity-transition__ring-motion {
+  /* 两圈后回到相同角度，非线性节奏仍能无方向跳变地循环。 */
+  animation: lso-identity-ring-rotate 1320ms cubic-bezier(0.42, 0, 0.18, 1) infinite;
+}
+
+.login-identity-transition.is-success .login-identity-transition__ring-shell {
+  animation: lso-identity-ring-resolve 880ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.login-identity-transition.is-success .login-identity-transition__ring-motion {
+  animation: lso-identity-ring-success-turn 620ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.login-identity-transition__ring {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.login-identity-transition__ring-track,
+.login-identity-transition__ring-arc {
+  fill: none;
+  stroke-width: 5;
+  transform: rotate(-90deg);
+  transform-origin: 52px 52px;
+}
+
+.login-identity-transition__ring-track {
+  stroke: color-mix(in srgb, var(--lso-primary-color, #c65f72) 15%, transparent);
+}
+
+.login-identity-transition__ring-arc {
+  stroke: var(--lso-primary-color, #c65f72);
+  stroke-linecap: round;
+  stroke-dasharray: 48 241;
+  stroke-dashoffset: 0;
+}
+
+.login-identity-transition.is-loading .login-identity-transition__ring-arc {
+  animation: lso-identity-ring-sweep 1320ms cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.login-identity-transition.is-success .login-identity-transition__ring-arc {
+  animation: lso-identity-ring-complete 700ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.login-identity-transition__avatar {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: block;
+  width: 104px;
+  height: 104px;
+  border: 1px solid rgb(255 255 255 / 90%);
+  border-radius: 50%;
+  object-fit: cover;
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.35);
+  box-shadow: 0 5px 18px rgb(31 23 29 / 13%);
+  animation: lso-identity-avatar-reveal 480ms 100ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.login-identity-transition__name {
+  max-width: min(300px, calc(100vw - 64px));
+  margin-top: 18px;
+  overflow: hidden;
+  color: rgb(0 0 0 / 88%);
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0;
+  transform: translateY(8px);
+  animation: lso-identity-text-in 300ms 220ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.login-identity-transition__status {
+  margin-top: 14px;
+  color: rgb(0 0 0 / 56%);
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.login-identity-transition.is-success .login-identity-transition__status {
+  margin-top: 6px;
+  opacity: 0;
+  transform: translateY(6px);
+  animation: lso-identity-text-in 300ms 260ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.login-identity-transition.is-failure .login-identity-transition__status {
+  color: #cf3e43;
+  font-weight: 600;
+}
+
+.login-identity-transition__description {
+  max-width: min(300px, calc(100vw - 64px));
+  margin-top: 8px;
+  color: rgb(0 0 0 / 55%);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.45;
+  opacity: 0;
+  transform: translateY(6px);
+  animation: lso-identity-text-in 260ms 220ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.login-identity-transition__failure-mark {
+  fill: none;
+  stroke: #cf3e43;
+  stroke-width: 6;
+  stroke-linecap: round;
+  opacity: 0;
+  stroke-dasharray: 92;
+  stroke-dashoffset: 92;
+}
+
+.login-identity-transition.is-failure .login-identity-transition__ring-track {
+  stroke: color-mix(in srgb, #cf3e43 16%, transparent);
+}
+
+.login-identity-transition.is-failure .login-identity-transition__ring-arc {
+  stroke: #cf3e43;
+  animation: lso-identity-ring-failure 260ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.login-identity-transition.is-failure .login-identity-transition__failure-mark {
+  animation: lso-identity-failure-draw 300ms 180ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 .login-success-overlay-icon-svg {
@@ -242,7 +407,7 @@
 
 .login-success-overlay.has-origin.is-reduced-motion .login-success-overlay-content {
   opacity: 1;
-  transform: none;
+  transform: translate(-50%, -50%);
   animation: none;
   transition: opacity var(--lso-overlay-fade-out-ms, 220ms) linear;
 }
@@ -253,6 +418,56 @@
 
 .login-success-overlay.is-reduced-motion.is-loading .login-success-overlay-spinner-layer {
   animation: none;
+}
+
+.login-success-overlay.is-reduced-motion .login-identity-transition,
+.login-success-overlay.is-reduced-motion .login-identity-transition__visual,
+.login-success-overlay.is-reduced-motion .login-identity-transition__ring-shell,
+.login-success-overlay.is-reduced-motion .login-identity-transition__ring-motion,
+.login-success-overlay.is-reduced-motion .login-identity-transition__ring-arc,
+.login-success-overlay.is-reduced-motion .login-identity-transition__avatar,
+.login-success-overlay.is-reduced-motion .login-identity-transition__name,
+.login-success-overlay.is-reduced-motion .login-identity-transition__status,
+.login-success-overlay.is-reduced-motion .login-identity-transition__description {
+  animation: none;
+}
+
+.login-success-overlay.is-reduced-motion .login-identity-transition.is-success {
+  transform: translateY(-20px);
+}
+
+.login-success-overlay.is-reduced-motion .login-identity-transition.is-success .login-identity-transition__visual {
+  width: 116px;
+  height: 116px;
+}
+
+.login-success-overlay.is-reduced-motion .login-identity-transition__avatar,
+.login-success-overlay.is-reduced-motion .login-identity-transition__name,
+.login-success-overlay.is-reduced-motion .login-identity-transition__status,
+.login-success-overlay.is-reduced-motion .login-identity-transition__description {
+  opacity: 1;
+  transform: none;
+}
+
+.login-success-overlay.is-reduced-motion .login-identity-transition__avatar {
+  transform: translate(-50%, -50%);
+}
+
+.login-success-overlay.is-reduced-motion .login-identity-transition.is-success .login-identity-transition__ring-shell {
+  opacity: 0;
+}
+
+.login-success-overlay.is-reduced-motion .login-identity-transition.is-loading .login-identity-transition__ring-arc {
+  stroke-dasharray: 88 201;
+}
+
+.login-success-overlay.is-reduced-motion .login-identity-transition.is-failure .login-identity-transition__ring-arc {
+  opacity: 0;
+}
+
+.login-success-overlay.is-reduced-motion .login-identity-transition.is-failure .login-identity-transition__failure-mark {
+  opacity: 1;
+  stroke-dashoffset: 0;
 }
 
 .login-success-overlay.is-reduced-motion.is-loading .login-success-overlay-spinner-arc {
@@ -332,12 +547,62 @@
 
   .login-success-overlay.has-origin .login-success-overlay-content {
     opacity: 1 !important;
-    transform: none !important;
+    transform: translate(-50%, -50%) !important;
     animation: none !important;
   }
 
   .login-success-overlay.has-origin.is-exiting .login-success-overlay-content {
     opacity: 0 !important;
+  }
+
+  .login-identity-transition,
+  .login-identity-transition__visual,
+  .login-identity-transition__ring-shell,
+  .login-identity-transition__ring-motion,
+  .login-identity-transition__ring-arc,
+  .login-identity-transition__avatar,
+  .login-identity-transition__name,
+  .login-identity-transition__status,
+  .login-identity-transition__description {
+    animation: none !important;
+  }
+
+  .login-identity-transition.is-success {
+    transform: translateY(-20px) !important;
+  }
+
+  .login-identity-transition.is-success .login-identity-transition__visual {
+    width: 116px;
+    height: 116px;
+  }
+
+  .login-identity-transition__avatar,
+  .login-identity-transition__name,
+  .login-identity-transition__status,
+  .login-identity-transition__description {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+
+  .login-identity-transition__avatar {
+    transform: translate(-50%, -50%) !important;
+  }
+
+  .login-identity-transition.is-success .login-identity-transition__ring-shell {
+    opacity: 0;
+  }
+
+  .login-identity-transition.is-loading .login-identity-transition__ring-arc {
+    stroke-dasharray: 88 201;
+  }
+
+  .login-identity-transition.is-failure .login-identity-transition__ring-arc {
+    opacity: 0;
+  }
+
+  .login-identity-transition.is-failure .login-identity-transition__failure-mark {
+    opacity: 1;
+    stroke-dashoffset: 0;
   }
 }
 
@@ -380,6 +645,149 @@
 
   to {
     transform: rotate(360deg);
+  }
+}
+
+@keyframes lso-identity-ring-rotate {
+  0% {
+    transform: rotate(0deg);
+  }
+
+  42% {
+    transform: rotate(245deg);
+  }
+
+  72% {
+    transform: rotate(430deg);
+  }
+
+  100% {
+    transform: rotate(720deg);
+  }
+}
+
+@keyframes lso-identity-ring-sweep {
+  0% {
+    stroke-dasharray: 24 265;
+    stroke-dashoffset: 0;
+  }
+
+  48% {
+    stroke-dasharray: 154 135;
+    stroke-dashoffset: -54;
+  }
+
+  100% {
+    stroke-dasharray: 24 265;
+    stroke-dashoffset: -289;
+  }
+}
+
+@keyframes lso-identity-ring-success-turn {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(310deg);
+  }
+}
+
+@keyframes lso-identity-ring-complete {
+  from {
+    stroke-dasharray: 48 241;
+    stroke-dashoffset: 0;
+  }
+
+  to {
+    stroke-dasharray: 274 15;
+    stroke-dashoffset: -8;
+  }
+}
+
+@keyframes lso-identity-ring-resolve {
+  0%,
+  60% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(0.897);
+  }
+}
+
+@keyframes lso-identity-visual-expand {
+  from {
+    width: 60px;
+    height: 60px;
+  }
+
+  to {
+    width: 116px;
+    height: 116px;
+  }
+}
+
+@keyframes lso-identity-avatar-reveal {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.35);
+  }
+
+  74% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.03);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes lso-identity-group-lift {
+  from {
+    transform: translateY(0);
+  }
+
+  to {
+    transform: translateY(-20px);
+  }
+}
+
+@keyframes lso-identity-text-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes lso-identity-ring-failure {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes lso-identity-failure-draw {
+  0% {
+    opacity: 0;
+    stroke-dashoffset: 92;
+  }
+
+  100% {
+    opacity: 1;
+    stroke-dashoffset: 0;
   }
 }
 
@@ -462,23 +870,23 @@
 @keyframes lso-origin-content-in {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translate(-50%, calc(-50% + 8px));
   }
 
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translate(-50%, -50%);
   }
 }
 
 @keyframes lso-origin-content-out {
   from {
     opacity: 1;
-    transform: translateY(0);
+    transform: translate(-50%, -50%);
   }
 
   to {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translate(-50%, calc(-50% + 8px));
   }
 }

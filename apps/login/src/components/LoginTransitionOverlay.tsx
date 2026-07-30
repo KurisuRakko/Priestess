@@ -1,6 +1,7 @@
 import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { translatePriestess } from "@priestess/shared";
+import { LoginIdentityTransition } from "./LoginIdentityTransition";
 import { TurnstileWidget } from "./TurnstileWidget";
 import "./LoginTransitionOverlay.css";
 
@@ -19,6 +20,9 @@ const ORIGIN_CONTENT_IN_DELAY_MS = 100;
 const ORIGIN_CONTENT_IN_MS = 150;
 const ORIGIN_CONTENT_OUT_MS = 90;
 const SPINNER_ROTATE_MS = 900;
+const IDENTITY_LOADING_MIN_MS = 420;
+const IDENTITY_SUCCESS_SEQUENCE_MS = 880;
+const IDENTITY_FAILURE_SEQUENCE_MS = 620;
 
 type LoginTransitionPhase =
   | typeof PHASE_LOADING
@@ -56,6 +60,7 @@ type Timeline = {
 };
 
 export type LoginTransitionOverlayParams = {
+  avatarUrl?: string;
   challengeAction?: string;
   challengeDescription?: string;
   challengeSiteKey?: string;
@@ -63,6 +68,7 @@ export type LoginTransitionOverlayParams = {
   loadingTitle?: string;
   title?: string;
   description?: string;
+  identityReveal?: boolean;
   organizationName?: string;
   username?: string;
   primaryColor?: string;
@@ -76,7 +82,7 @@ export type LoginTransitionOverlayParams = {
   originRect?: OriginRect | null;
 };
 
-type RenderState = Required<Pick<LoginTransitionOverlayParams, "loadingTitle" | "title" | "description" | "organizationName" | "username" | "primaryColor">> & {
+type RenderState = Required<Pick<LoginTransitionOverlayParams, "avatarUrl" | "identityReveal" | "loadingTitle" | "title" | "description" | "organizationName" | "username" | "primaryColor">> & {
   challengeAction: string;
   challengeDescription: string;
   challengeSiteKey: string;
@@ -200,7 +206,15 @@ function getOutcomeAnimationCompletionMs(
   hasOrganizationName: boolean,
   hasUsername: boolean,
   hasDescription: boolean,
+  identityReveal: boolean,
 ) {
+  if (identityReveal && phase === PHASE_SUCCESS) {
+    return prefersReducedMotion ? 180 : IDENTITY_SUCCESS_SEQUENCE_MS;
+  }
+  if (identityReveal && phase === PHASE_FAILURE) {
+    return prefersReducedMotion ? 180 : IDENTITY_FAILURE_SEQUENCE_MS;
+  }
+
   const reducedMotionTitleDelay = 80;
   const reducedMotionOrganizationDelay = 180;
   const reducedMotionUsernameDelay = 260;
@@ -270,6 +284,7 @@ function buildRenderState(
   params: LoginTransitionOverlayParams = {},
 ): RenderState {
   const normalizedLoadingTitle = normalizeText(baseParams.loadingTitle) || getDefaultLoadingTitle();
+  const normalizedAvatarUrl = normalizeText(baseParams.avatarUrl);
   const normalizedOrganizationName = normalizeText(baseParams.organizationName);
   const normalizedUsername = normalizeText(baseParams.username);
   const basePrimaryColor = normalizeText(baseParams.primaryColor);
@@ -281,6 +296,8 @@ function buildRenderState(
       challengeAction: "",
       challengeSiteKey: "",
       challengeTitle: "",
+      avatarUrl: normalizedAvatarUrl,
+      identityReveal: Boolean(baseParams.identityReveal),
       phase: PHASE_LOADING,
       loadingTitle: normalizedLoadingTitle,
       title: getDefaultSuccessTitle(),
@@ -304,6 +321,8 @@ function buildRenderState(
       challengeAction: normalizeText(params.challengeAction),
       challengeSiteKey: normalizeText(params.challengeSiteKey),
       challengeTitle: normalizeText(params.challengeTitle) || translatePriestess("login:请完成人机验证"),
+      avatarUrl: normalizedAvatarUrl,
+      identityReveal: Boolean(baseParams.identityReveal),
       phase,
       loadingTitle: normalizedLoadingTitle,
       title: getDefaultSuccessTitle(),
@@ -326,6 +345,8 @@ function buildRenderState(
     challengeAction: "",
     challengeSiteKey: "",
     challengeTitle: "",
+    avatarUrl: normalizeText(params.avatarUrl) || normalizedAvatarUrl,
+    identityReveal: Boolean(baseParams.identityReveal),
     phase,
     loadingTitle: normalizedLoadingTitle,
     title: normalizeText(params.title) || (phase === PHASE_FAILURE ? getDefaultFailureTitle() : getDefaultSuccessTitle()),
@@ -346,6 +367,7 @@ function buildRenderState(
 function LoginTransitionOverlayInner(props: RenderState & { onFinish: () => void }) {
   const {
     phase,
+    avatarUrl,
     challengeDescription,
     challengeAction,
     challengeSiteKey,
@@ -355,6 +377,7 @@ function LoginTransitionOverlayInner(props: RenderState & { onFinish: () => void
     organizationName,
     username,
     description,
+    identityReveal,
     primaryColor,
     timeline,
     phaseKey,
@@ -369,7 +392,7 @@ function LoginTransitionOverlayInner(props: RenderState & { onFinish: () => void
   const [isExiting, setIsExiting] = useState(false);
   const hasTriggeredVisualCompleteRef = useRef(false);
 
-  // originRect 只用来识别登录卡片提交态，让结果层走轻量状态内容，避免整张白色遮罩盖住表单。
+  // 提交态按真实登录卡片定位，让身份揭示稳定落在卡片上半区，而不是相对整个屏幕硬偏移。
   const originStyleVars = useMemo<CssVars | null>(() => {
     const rect = normalizeOriginRect(originRect);
     if (!rect) {
@@ -380,6 +403,9 @@ function LoginTransitionOverlayInner(props: RenderState & { onFinish: () => void
       "--lso-origin-content-in-delay-ms": `${ORIGIN_CONTENT_IN_DELAY_MS}ms`,
       "--lso-origin-content-in-ms": `${ORIGIN_CONTENT_IN_MS}ms`,
       "--lso-origin-content-out-ms": `${ORIGIN_CONTENT_OUT_MS}ms`,
+      "--lso-origin-content-width": `${Math.max(0, rect.width)}px`,
+      "--lso-origin-center-x": `${rect.left + rect.width / 2}px`,
+      "--lso-origin-status-y": `${rect.top + rect.height * 0.42}px`,
     };
   }, [originRect]);
 
@@ -390,6 +416,10 @@ function LoginTransitionOverlayInner(props: RenderState & { onFinish: () => void
   const cleanUsername = normalizeText(username);
   const cleanDescription = normalizeText(description);
   const cleanChallengeDescription = normalizeText(challengeDescription);
+  const cleanAvatarUrl = normalizeText(avatarUrl);
+  const identityPhase = phase === PHASE_LOADING || phase === PHASE_SUCCESS || phase === PHASE_FAILURE
+    ? phase
+    : null;
   const failureDescriptionDelayMs = getFailureDescriptionDelayMs(timeline, prefersReducedMotion);
   const outcomeAnimationCompletionMs = getOutcomeAnimationCompletionMs(
     phase,
@@ -398,6 +428,7 @@ function LoginTransitionOverlayInner(props: RenderState & { onFinish: () => void
     cleanOrganizationName !== "",
     cleanUsername !== "",
     cleanDescription !== "",
+    identityReveal,
   );
 
   const styleVars: CssVars = {
@@ -493,18 +524,28 @@ function LoginTransitionOverlayInner(props: RenderState & { onFinish: () => void
       aria-labelledby={phase === PHASE_CHALLENGE ? "login-turnstile-title" : undefined}
     >
       <div className="login-success-overlay-content">
-        <div className="login-success-overlay-icon" aria-hidden="true">
-          <svg className="login-success-overlay-icon-svg" viewBox="0 0 80 80">
-            <g className="login-success-overlay-spinner-layer">
-              <circle className="login-success-overlay-spinner-track" cx="40" cy="40" r="26" />
-              <circle className="login-success-overlay-spinner-arc" cx="40" cy="40" r="26" />
-            </g>
-            <path className="login-success-overlay-check" d="M24 41.5L35 52L56 30.5" />
-            <path className="login-success-overlay-failure-mark" d="M28 28L52 52M52 28L28 52" />
-          </svg>
-        </div>
+        {identityReveal && identityPhase !== null ? (
+          <LoginIdentityTransition
+            avatarUrl={cleanAvatarUrl}
+            description={cleanDescription}
+            displayName={cleanUsername}
+            phase={identityPhase}
+            statusText={phase === PHASE_LOADING ? loadingTitleText : titleText}
+          />
+        ) : (
+          <div className="login-success-overlay-icon" aria-hidden="true">
+            <svg className="login-success-overlay-icon-svg" viewBox="0 0 80 80">
+              <g className="login-success-overlay-spinner-layer">
+                <circle className="login-success-overlay-spinner-track" cx="40" cy="40" r="26" />
+                <circle className="login-success-overlay-spinner-arc" cx="40" cy="40" r="26" />
+              </g>
+              <path className="login-success-overlay-check" d="M24 41.5L35 52L56 30.5" />
+              <path className="login-success-overlay-failure-mark" d="M28 28L52 52M52 28L28 52" />
+            </svg>
+          </div>
+        )}
 
-        {phase === PHASE_LOADING ? (
+        {phase === PHASE_LOADING && !identityReveal ? (
           <div key={`loading-${phaseKey}`} className="login-success-overlay-loading-title">
             {loadingTitleText}
           </div>
@@ -535,7 +576,7 @@ function LoginTransitionOverlayInner(props: RenderState & { onFinish: () => void
           </div>
         ) : null}
 
-        {phase === PHASE_SUCCESS ? (
+        {phase === PHASE_SUCCESS && !identityReveal ? (
           <>
             <div key={`success-title-${phaseKey}`} className="login-success-overlay-line login-success-overlay-title" style={{ "--lso-text-delay-ms": `${prefersReducedMotion ? 80 : timeline.titleDelayMs}ms` } as CssVars}>
               {titleText}
@@ -553,7 +594,7 @@ function LoginTransitionOverlayInner(props: RenderState & { onFinish: () => void
           </>
         ) : null}
 
-        {phase === PHASE_FAILURE ? (
+        {phase === PHASE_FAILURE && !identityReveal ? (
           <>
             <div key={`failure-title-${phaseKey}`} className="login-success-overlay-line login-success-overlay-title" style={{ "--lso-text-delay-ms": `${prefersReducedMotion ? 80 : timeline.titleDelayMs}ms` } as CssVars}>
               {titleText}
@@ -590,6 +631,8 @@ function createOverlayController(params: LoginTransitionOverlayParams = {}): Log
   let isFinished = false;
   let phaseKey = 0;
   let currentPhase: LoginTransitionPhase = PHASE_LOADING;
+  let loadingPhaseStartedAt = Date.now();
+  let outcomeTransitionTimerId: number | null = null;
   let currentOutcomePromise: Promise<void> | null = null;
   let currentChallengePromise: Promise<string> | null = null;
   let resolveCurrentOutcome: (() => void) | null = null;
@@ -597,6 +640,8 @@ function createOverlayController(params: LoginTransitionOverlayParams = {}): Log
   let resolveCurrentChallenge: ((token: string) => void) | null = null;
   const onCloseCallback = typeof params.onClose === "function" ? params.onClose : null;
   const baseParams: LoginTransitionOverlayParams = {
+    avatarUrl: params.avatarUrl,
+    identityReveal: params.identityReveal,
     loadingTitle: params.loadingTitle,
     organizationName: params.organizationName,
     username: params.username,
@@ -640,6 +685,10 @@ function createOverlayController(params: LoginTransitionOverlayParams = {}): Log
     }
     isFinished = true;
     currentPhase = PHASE_CLOSING;
+    if (outcomeTransitionTimerId !== null) {
+      window.clearTimeout(outcomeTransitionTimerId);
+      outcomeTransitionTimerId = null;
+    }
     document.body.style.overflow = previousOverflow;
     root.unmount();
     container.remove();
@@ -668,6 +717,8 @@ function createOverlayController(params: LoginTransitionOverlayParams = {}): Log
         challengeAction={renderState.challengeAction}
         challengeSiteKey={renderState.challengeSiteKey}
         challengeTitle={renderState.challengeTitle}
+        avatarUrl={renderState.avatarUrl}
+        identityReveal={renderState.identityReveal}
         phase={renderState.phase}
         loadingTitle={renderState.loadingTitle}
         title={renderState.title}
@@ -692,18 +743,32 @@ function createOverlayController(params: LoginTransitionOverlayParams = {}): Log
       return Promise.resolve();
     }
 
-    if (currentPhase !== PHASE_LOADING && currentPhase !== PHASE_CHALLENGE) {
+    if (currentOutcomePromise !== null || (currentPhase !== PHASE_LOADING && currentPhase !== PHASE_CHALLENGE)) {
       return currentOutcomePromise || Promise.resolve();
     }
 
-    rejectChallenge(new Error(translatePriestess("login:人机验证已取消")));
-    currentPhase = phase;
-    phaseKey += 1;
-    renderState = buildRenderState(baseParams, phase, phaseKey, nextParams);
     currentOutcomePromise = new Promise<void>((resolve) => {
       resolveCurrentOutcome = resolve;
     });
-    renderOverlay();
+
+    const showOutcome = () => {
+      outcomeTransitionTimerId = null;
+      if (isFinished) {
+        return;
+      }
+      rejectChallenge(new Error(translatePriestess("login:人机验证已取消")));
+      currentPhase = phase;
+      phaseKey += 1;
+      renderState = buildRenderState(baseParams, phase, phaseKey, nextParams);
+      renderOverlay();
+    };
+    const minimumLoadingMs = baseParams.identityReveal ? IDENTITY_LOADING_MIN_MS : 0;
+    const remainingLoadingMs = Math.max(0, minimumLoadingMs - (Date.now() - loadingPhaseStartedAt));
+    if (remainingLoadingMs > 0) {
+      outcomeTransitionTimerId = window.setTimeout(showOutcome, remainingLoadingMs);
+    } else {
+      showOutcome();
+    }
     return currentOutcomePromise;
   };
 
@@ -714,7 +779,7 @@ function createOverlayController(params: LoginTransitionOverlayParams = {}): Log
     if (currentPhase === PHASE_CHALLENGE) {
       return currentChallengePromise || Promise.reject(new Error(translatePriestess("login:人机验证暂时不可用")));
     }
-    if (currentPhase !== PHASE_LOADING) {
+    if (currentPhase !== PHASE_LOADING || currentOutcomePromise !== null) {
       return Promise.reject(new Error(translatePriestess("login:人机验证暂时不可用")));
     }
 
@@ -730,6 +795,7 @@ function createOverlayController(params: LoginTransitionOverlayParams = {}): Log
       onChallengeExpire: () => rejectChallenge(new Error(translatePriestess("login:人机验证已过期，请重新完成"))),
       onChallengeToken: (token) => {
         currentPhase = PHASE_LOADING;
+        loadingPhaseStartedAt = Date.now();
         phaseKey += 1;
         renderState = buildRenderState(baseParams, PHASE_LOADING, phaseKey);
         renderOverlay();

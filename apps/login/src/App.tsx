@@ -69,6 +69,17 @@ type TotpChallenge = {
   username: string;
 };
 
+type AsyncResult<T> =
+  | { ok: true; value: T }
+  | { error: unknown; ok: false };
+
+function settleAsync<T>(promise: Promise<T>): Promise<AsyncResult<T>> {
+  return promise.then(
+    (value) => ({ ok: true, value }),
+    (error: unknown) => ({ error, ok: false }),
+  );
+}
+
 export function App() {
   const { t } = usePriestessTranslation("login");
   const shouldReduceMotion = useReducedMotion();
@@ -273,10 +284,10 @@ export function App() {
     const request = readAuthRequest();
 
     await params.controller.succeed({
+      avatarUrl: params.session.user?.avatarUrl || "",
       durationMs: LOGIN_RESULT_ANIMATION_MS,
-      organizationName: "Priestess",
       postAnimationDelayMs: LOGIN_SUCCESS_HOLD_MS,
-      title: request ? t("登录成功，请选择账号继续") : t("登录成功"),
+      title: t("已成功登录"),
       username: displayName,
     });
 
@@ -504,15 +515,31 @@ export function App() {
       return;
     }
 
-    const controller = await startCenteredLoginOverlay({
-      loadingTitle: t("正在登录..."),
-      organizationName: "Priestess",
-      username: credentials.username,
-      primaryColor: "#c65f72",
-    });
-
     const abortController = new AbortController();
     loginAbortControllerRef.current = abortController;
+    const controllerPromise = startCenteredLoginOverlay({
+      identityReveal: true,
+      loadingTitle: t("正在尝试为你登录…"),
+      primaryColor: "#c65f72",
+    });
+    const runPasswordLogin = (nextCredentials: LocalLoginCredentials) => loginLocalSession(nextCredentials, { signal: abortController.signal });
+    // 网络请求与卡片归位同时开始；若后端要求 Turnstile，再等待状态层准备好后切换挑战。
+    const loginResultPromise = settleAsync(loginLocalSessionWithTurnstileRetry({
+      credentials,
+      login: runPasswordLogin,
+      readSiteKey: readTurnstileSiteKey,
+      requestChallenge: async({ action, description, siteKey, title }) => (
+        (await controllerPromise).challenge({
+          challengeAction: action,
+          challengeDescription: description,
+          challengeSiteKey: siteKey,
+          challengeTitle: title,
+        })
+      ),
+      signal: abortController.signal,
+      t,
+    }));
+    const controller = await controllerPromise;
 
     const finishPasswordLoginSession = async(session: LocalSession) => {
       resetLocalLoginFailureState();
@@ -532,23 +559,12 @@ export function App() {
         signal: abortController.signal,
       });
     };
-    const runPasswordLogin = (nextCredentials: LocalLoginCredentials) => loginLocalSession(nextCredentials, { signal: abortController.signal });
-
     try {
-      const session = await loginLocalSessionWithTurnstileRetry({
-        credentials,
-        login: runPasswordLogin,
-        readSiteKey: readTurnstileSiteKey,
-        requestChallenge: ({ action, description, siteKey, title }) => controller.challenge({
-          challengeAction: action,
-          challengeDescription: description,
-          challengeSiteKey: siteKey,
-          challengeTitle: title,
-        }),
-        signal: abortController.signal,
-        t,
-      });
-      await finishPasswordLoginSession(session);
+      const loginResult = await loginResultPromise;
+      if (!loginResult.ok) {
+        throw loginResult.error;
+      }
+      await finishPasswordLoginSession(loginResult.value);
     } catch (error) {
       if (abortController.signal.aborted) {
         return;
@@ -591,9 +607,8 @@ export function App() {
     }
 
     const controller = await startCenteredLoginOverlay({
-      loadingTitle: t("正在验证 Passkey..."),
-      organizationName: "Priestess",
-      username: "Passkey",
+      identityReveal: true,
+      loadingTitle: t("正在尝试为你登录…"),
       primaryColor: "#c65f72",
     });
 
@@ -643,18 +658,25 @@ export function App() {
       return;
     }
 
-    const controller = await startCenteredLoginOverlay({
-      loadingTitle: t("正在验证..."),
-      organizationName: "Priestess",
-      username: challenge.displayName || challenge.username,
-      primaryColor: "#c65f72",
-    });
-
     const abortController = new AbortController();
     loginAbortControllerRef.current = abortController;
+    const controllerPromise = startCenteredLoginOverlay({
+      identityReveal: true,
+      loadingTitle: t("正在尝试为你登录…"),
+      primaryColor: "#c65f72",
+    });
+    // TOTP 校验同样与卡片归位并行，状态层仍负责保证用户能看清验证与成功两个阶段。
+    const verificationResultPromise = settleAsync(
+      verifyLocalTotpLogin({ challengeId: challenge.challengeId, code }, { signal: abortController.signal }),
+    );
+    const controller = await controllerPromise;
 
     try {
-      const session = await verifyLocalTotpLogin({ challengeId: challenge.challengeId, code }, { signal: abortController.signal });
+      const verificationResult = await verificationResultPromise;
+      if (!verificationResult.ok) {
+        throw verificationResult.error;
+      }
+      const session = verificationResult.value;
       setTotpChallenge(null);
       await finishAuthenticatedLogin({
         controller,
