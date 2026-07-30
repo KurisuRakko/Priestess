@@ -5,7 +5,7 @@ import { usePriestessTranslation } from "@priestess/shared";
 
 export type QrPanelVisualState = "pending" | "scanned" | "confirmed" | "terminal" | "error";
 
-type QrPanelProps = {
+export type QrPanelProps = {
   contentDelay?: number;
   isRefreshing?: boolean;
   qrValue: string;

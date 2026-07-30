@@ -86,6 +86,38 @@ input:focus-visible {
   background-color: var(--color-page);
 }
 
+.route-loading {
+  display: grid;
+  min-height: 100vh;
+  min-height: 100svh;
+  place-items: center;
+  background: var(--color-page);
+  color: var(--color-muted);
+}
+
+.route-loading__indicator {
+  font-size: 14px;
+  letter-spacing: 0.04em;
+}
+
+.register-form-loading {
+  display: grid;
+  min-height: 300px;
+  place-items: center;
+  color: var(--color-muted);
+  font-size: 14px;
+  letter-spacing: 0.03em;
+}
+
+.qr-panel-loading {
+  display: grid;
+  width: 100%;
+  min-height: 360px;
+  place-items: center;
+  color: var(--color-muted);
+  font-size: 13px;
+}
+
 /* 壁纸层：用真实 DOM 元素承载背景图，通过 transform 实现 GPU 加速的缩放平移过渡。
  * 登录态和注册态分别对应不同的 scale/translate，切换时自然过渡。 */
 .dwall-bg {

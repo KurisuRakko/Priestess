@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ComponentProps, type ReactNode, type RefObject } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { AnimatePresence, motion, useIsPresent } from "motion/react";
 import { BrandMark, FloatingBackdrop } from "@priestess/shared";
 import { AccountPickerCard, type AccountPickerAction, type AccountPickerMode } from "./AccountPickerCard";
@@ -14,8 +14,8 @@ import {
   getMobileSharedAxisExit,
   getMobileSharedAxisInitial,
 } from "./authSharedAxisMotion";
-import { QrPanel } from "./QrPanel";
-import { RegisterFirstStepForm } from "./RegisterFirstStepForm";
+import type { QrPanelProps } from "./QrPanel";
+import type { RegisterFirstStepFormProps } from "./RegisterFirstStepForm";
 import { type AuthAccountChoice, type useAuthAccountChoices } from "../lib/useAuthAccountChoices";
 import { type LoginLayoutAuthMode } from "../lib/loginLayoutState";
 import type { MobileLoginRevealState } from "../lib/useMobileLoginReveal";
@@ -25,6 +25,33 @@ type TranslationFn = (key: string, options?: Record<string, unknown>) => string;
 type AccountSwitchPanel = "account-picker" | "login-form";
 type AuthModePanel = "forgot-password" | "login" | "register";
 const DESKTOP_LOGIN_REVEAL_TIMEOUT_MS = 5_000;
+let registerFormModulePromise: Promise<typeof import("./RegisterFirstStepForm")> | null = null;
+let qrPanelModulePromise: Promise<typeof import("./QrPanel")> | null = null;
+
+function loadRegisterFormModule() {
+  registerFormModulePromise ??= import("./RegisterFirstStepForm");
+  return registerFormModulePromise;
+}
+
+function preloadRegisterFormModule() {
+  // 悬停、聚焦或触摸时提前取回注册代码，点击后的共享轴动画无需等待网络。
+  void loadRegisterFormModule();
+}
+
+const RegisterFirstStepForm = lazy(async() => {
+  const module = await loadRegisterFormModule();
+  return { default: module.RegisterFirstStepForm };
+});
+
+function loadQrPanelModule() {
+  qrPanelModulePromise ??= import("./QrPanel");
+  return qrPanelModulePromise;
+}
+
+const QrPanel = lazy(async() => {
+  const module = await loadQrPanelModule();
+  return { default: module.QrPanel };
+});
 
 type AccountSwitchMotionPanelProps = {
   children: ReactNode;
@@ -170,7 +197,7 @@ type LoginExperienceProps = {
   onPasskeyLogin: () => void;
   onRegisterNotice: (message: string) => void;
   onRemoveAuthAccount: (account: AuthAccountChoice) => Promise<void> | void;
-  onRegistered: ComponentProps<typeof RegisterFirstStepForm>["onRegistered"];
+  onRegistered: RegisterFirstStepFormProps["onRegistered"];
   onReturnToAuthAccountPicker: () => void;
   onTotpCancel: () => void;
   onTotpSubmit: (code: string) => void;
@@ -178,7 +205,7 @@ type LoginExperienceProps = {
   onValidLoginSubmit: (credentials: LoginCredentials) => void;
   qrRefreshing: boolean;
   qrValue: string;
-  qrVisualState: ComponentProps<typeof QrPanel>["visualState"];
+  qrVisualState: QrPanelProps["visualState"];
   removingAccountId: string;
   shouldReduceMotion: boolean | null;
   shouldShowAccountPicker: boolean;
@@ -275,6 +302,13 @@ export function LoginExperience({
   useEffect(() => {
     if (shouldReduceMotion) setLoginCardEntryComplete(true);
   }, [shouldReduceMotion]);
+
+  useEffect(() => {
+    if (!mobileLoginReveal.isMobileViewport && hasQrRequest) {
+      // 桌面二维码组件和会话请求并行准备；手机及裸域登录不会下载二维码渲染库。
+      void loadQrPanelModule();
+    }
+  }, [hasQrRequest, mobileLoginReveal.isMobileViewport]);
 
   useEffect(() => {
     const authModeChanged = previousAuthModeRef.current !== authMode;
@@ -447,13 +481,19 @@ export function LoginExperience({
                         panelRef={assignActivePanel}
                         shouldReduceMotion={shouldReduceMotion}
                       >
-                        <RegisterFirstStepForm
-                          disabled={authUiLocked}
-                          isMobileViewport={mobileLoginReveal.isMobileViewport}
-                          onBackToLogin={onBackToLogin}
-                          onNotice={onRegisterNotice}
-                          onRegistered={onRegistered}
-                        />
+                        <Suspense fallback={(
+                          <div className="register-form-loading" aria-busy="true" role="status">
+                            {t("正在加载注册表单...")}
+                          </div>
+                        )}>
+                          <RegisterFirstStepForm
+                            disabled={authUiLocked}
+                            isMobileViewport={mobileLoginReveal.isMobileViewport}
+                            onBackToLogin={onBackToLogin}
+                            onNotice={onRegisterNotice}
+                            onRegistered={onRegistered}
+                          />
+                        </Suspense>
                       </AuthModeMotionPanel>
                     ) : isForgotPasswordMode ? (
                       <AuthModeMotionPanel
@@ -511,6 +551,7 @@ export function LoginExperience({
                                 onCreateAccount={onCreateAccount}
                                 onForgotPassword={onForgotPassword}
                                 onPasskeyLogin={onPasskeyLogin}
+                                onPrepareCreateAccount={preloadRegisterFormModule}
                                 onBackToAccountPicker={onReturnToAuthAccountPicker}
                                 onCancelTotp={onTotpCancel}
                                 onTotpSubmit={onTotpSubmit}
@@ -543,12 +584,20 @@ export function LoginExperience({
                   transition={qrDrawerTransition}
                   style={{ pointerEvents: isQrDrawerOpen ? "auto" : "none" }}
                 >
-                  <QrPanel
-                    contentDelay={qrContentDelay}
-                    isRefreshing={qrRefreshing}
-                    qrValue={qrValue}
-                    visualState={qrVisualState}
-                  />
+                  {!mobileLoginReveal.isMobileViewport && hasQrRequest ? (
+                    <Suspense fallback={(
+                      <div className="qr-panel-loading" aria-busy="true" role="status">
+                        {t("正在准备二维码...")}
+                      </div>
+                    )}>
+                      <QrPanel
+                        contentDelay={qrContentDelay}
+                        isRefreshing={qrRefreshing}
+                        qrValue={qrValue}
+                        visualState={qrVisualState}
+                      />
+                    </Suspense>
+                  ) : null}
                 </motion.div>
               </div>
             </motion.div>

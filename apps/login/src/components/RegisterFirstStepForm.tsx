@@ -41,7 +41,7 @@ const CJK_CHARACTER_PATTERN = /[\u3400-\u9FFF]/u;
 const USERNAME_PATTERN = /^[A-Za-z][A-Za-z0-9_]{2,31}$/;
 const USERNAME_MAX_LENGTH = 32;
 const RESERVED_USERNAMES = new Set(["admin", "api", "assets", "auth", "help", "login", "me", "priestess", "register", "root", "settings", "static", "support", "system"]);
-type RegisterFirstStepFormProps = {
+export type RegisterFirstStepFormProps = {
   disabled: boolean;
   isMobileViewport: boolean;
   onBackToLogin: () => void;

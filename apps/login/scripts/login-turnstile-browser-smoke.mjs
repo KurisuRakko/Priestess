@@ -48,6 +48,7 @@ try {
   await testBareLoginSelectsSavedAccount(browser, appUrl);
   await testReducedMotionAccountSwitch(browser, appUrl);
   await testBareLoginRemainsUsable(browser, appUrl);
+  await testLazyStandaloneRoutesRender(browser, appUrl);
   await testLoginFailureRemainsReadable(browser, appUrl);
   await testTotpReturnsToAccountPicker(browser, appUrl);
   await testPasskeyReturnsToAccountPicker(browser, appUrl);
@@ -168,6 +169,14 @@ async function testBareLoginRemainsUsable(browserInstance, appUrl) {
     assert.equal(await page.getByRole("button", { name: /Passkey/ }).isEnabled(), true);
     assert.equal(scenario.records.accountChoices.length, 0, "plain /login must not request app account choices");
     assert.ok(scenario.records.browserAccounts >= 1, "plain /login should check the browser account container");
+    const initialResourceNames = await page.evaluate(() => (
+      performance.getEntriesByType("resource").map((entry) => entry.name)
+    ));
+    assert.equal(
+      initialResourceNames.some((name) => /RegisterFirstStepForm|pinyin-pro|QrPanel/.test(name)),
+      false,
+      "bare login should not preload registration or QR rendering modules",
+    );
   });
 }
 
@@ -186,6 +195,18 @@ async function testLoginFailureRemainsReadable(browserInstance, appUrl) {
     assert.match(await failureOverlay.innerText(), /登录失败/);
     assert.match(await failureOverlay.innerText(), /用户名或密码错误/);
     await failureOverlay.waitFor({ state: "detached", timeout: 3000 });
+  });
+}
+
+async function testLazyStandaloneRoutesRender(browserInstance, appUrl) {
+  const scenario = createScenario("lazy-routes");
+
+  await withScenario(browserInstance, scenario, async(page) => {
+    await page.goto(`${appUrl}/auth-ui/reset-password`, { waitUntil: "domcontentloaded" });
+    await page.locator(".recovery-page").waitFor({ state: "visible", timeout: 5000 });
+
+    await page.goto(`${appUrl}/qr-login`, { waitUntil: "domcontentloaded" });
+    await page.locator(".qr-mobile-shell").waitFor({ state: "visible", timeout: 5000 });
   });
 }
 
@@ -265,6 +286,7 @@ async function testBareLoginSelectsSavedAccount(browserInstance, appUrl) {
 
     await accountButton.click();
     await page.waitForURL((url) => url.pathname === "/manage", { timeout: 5000 });
+    await page.locator(".account-shell").waitFor({ state: "visible", timeout: 5000 });
     assert.deepEqual(scenario.records.activations, [{
       body: {},
       userId: "user-bare-account-primary",

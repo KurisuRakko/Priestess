@@ -1,5 +1,4 @@
-import { useEffect, useRef, useState } from "react";
-import { startAuthentication } from "@simplewebauthn/browser";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useReducedMotion } from "motion/react";
 import {
   activateLocalAccountChoice,
@@ -16,13 +15,10 @@ import {
   verifyLocalTotpLogin,
 } from "@priestess/shared";
 import { getAccountKey, type AccountPickerAction } from "./components/AccountPickerCard";
-import { AccountPage } from "./components/AccountPage";
 import { LoginExperience } from "./components/LoginExperience";
 import { type LoginCredentials } from "./components/LoginForm";
 import { startLoginTransitionOverlay, type LoginTransitionOverlayController, type LoginTransitionOverlayParams } from "./components/LoginTransitionOverlay";
 import { NotFoundPage } from "./components/NotFoundPage";
-import { QrLoginConfirmPage } from "./components/QrLoginConfirmPage";
-import { ResetPasswordPage } from "./components/ResetPasswordPage";
 import { getAuthAccountAuthorizeBlocker, shouldShowAuthAccountPicker } from "./lib/accountAuthorization";
 import { completeAccountSelection, getAuthAccountActivationErrorMessage } from "./lib/accountSelection";
 import { isAccountEditableInBrowser, resolveAccountManagementActionTarget } from "./lib/accountManagementAction";
@@ -52,6 +48,20 @@ import { useQrLoginSession } from "./lib/useQrLoginSession";
 import { readTurnstileSiteKey } from "./components/TurnstileWidget";
 
 type AuthMode = LoginLayoutAuthMode;
+
+// 非登录路由按需加载，避免用户只访问登录页时提前解析个人中心与扫码确认代码。
+const AccountPage = lazy(async() => {
+  const module = await import("./components/AccountPage");
+  return { default: module.AccountPage };
+});
+const QrLoginConfirmPage = lazy(async() => {
+  const module = await import("./components/QrLoginConfirmPage");
+  return { default: module.QrLoginConfirmPage };
+});
+const ResetPasswordPage = lazy(async() => {
+  const module = await import("./components/ResetPasswordPage");
+  return { default: module.ResetPasswordPage };
+});
 
 type TotpChallenge = {
   challengeId: string;
@@ -568,6 +578,8 @@ export function App() {
     loginAbortControllerRef.current = abortController;
 
     try {
+      // Passkey 只在用户主动使用时加载，普通密码登录无需解析 WebAuthn 客户端。
+      const { startAuthentication } = await import("@simplewebauthn/browser");
       const options = await createLocalPasskeyAuthenticationOptions({ signal: abortController.signal });
       const response = await startAuthentication({
         optionsJSON: options.options as Parameters<typeof startAuthentication>[0]["optionsJSON"],
@@ -838,25 +850,31 @@ export function App() {
 
   return (
     <>
-      {route === "account" ? (
-        <AccountPage
-          onNavigateToLogin={() => navigateTo(LOGIN_ROUTE_PATH)}
-          onRequireLogin={() => navigateTo(buildLoginPathWithNext(getCurrentAccountNextPath()), { replace: true })}
-          onNotice={showNotice}
-        />
-      ) : route === "qr-login" ? (
-        <QrLoginConfirmPage
-          onNavigateToLogin={() => navigateTo(LOGIN_ROUTE_PATH)}
-          onNotice={showNotice}
-        />
-      ) : route === "reset-password" ? (
-        <ResetPasswordPage
-          onNavigateToLogin={() => navigateTo(LOGIN_ROUTE_PATH, { replace: true })}
-          onNotice={showNotice}
-        />
-      ) : route === "not-found" ? (
-        <NotFoundPage />
-      ) : loginExperience}
+      <Suspense fallback={(
+        <main className="route-loading" aria-busy="true">
+          <span className="route-loading__indicator" role="status">{t("正在加载...")}</span>
+        </main>
+      )}>
+        {route === "account" ? (
+          <AccountPage
+            onNavigateToLogin={() => navigateTo(LOGIN_ROUTE_PATH)}
+            onRequireLogin={() => navigateTo(buildLoginPathWithNext(getCurrentAccountNextPath()), { replace: true })}
+            onNotice={showNotice}
+          />
+        ) : route === "qr-login" ? (
+          <QrLoginConfirmPage
+            onNavigateToLogin={() => navigateTo(LOGIN_ROUTE_PATH)}
+            onNotice={showNotice}
+          />
+        ) : route === "reset-password" ? (
+          <ResetPasswordPage
+            onNavigateToLogin={() => navigateTo(LOGIN_ROUTE_PATH, { replace: true })}
+            onNotice={showNotice}
+          />
+        ) : route === "not-found" ? (
+          <NotFoundPage />
+        ) : loginExperience}
+      </Suspense>
       <Toast message={notice} />
     </>
   );
