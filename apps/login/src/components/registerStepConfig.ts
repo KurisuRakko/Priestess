@@ -1,12 +1,13 @@
 import type { RegisterIdentityType } from "@priestess/shared";
 
 export const REGISTER_STEPS = ["identity", "invitation", "verification", "password", "profile"] as const;
+export const REGISTER_PROGRESS_STEPS = ["identity", "verification", "password", "profile"] as const;
 
 export type RegisterStep = (typeof REGISTER_STEPS)[number] | "success";
+export type RegisterProgressStep = (typeof REGISTER_PROGRESS_STEPS)[number];
 
-export const REGISTER_STEP_LABELS: Record<(typeof REGISTER_STEPS)[number], string> = {
+export const REGISTER_PROGRESS_LABELS: Record<RegisterProgressStep, string> = {
   identity: "账号",
-  invitation: "邀请",
   password: "密码",
   profile: "资料",
   verification: "验证",
@@ -38,7 +39,13 @@ export function getStepCopy(step: RegisterStep, identityType: RegisterIdentityTy
   };
 }
 
-export function getStepLabel(step: (typeof REGISTER_STEPS)[number], identityType: RegisterIdentityType) {
+export function getRegisterProgressStep(step: RegisterStep): RegisterProgressStep {
+  if (step === "invitation" || step === "verification") return "verification";
+  if (step === "success") return "profile";
+  return step;
+}
+
+export function getProgressStepLabel(step: RegisterProgressStep, identityType: RegisterIdentityType) {
   if (step === "identity") return identityType === "phone" ? "手机号" : "邮箱";
-  return REGISTER_STEP_LABELS[step];
+  return REGISTER_PROGRESS_LABELS[step];
 }

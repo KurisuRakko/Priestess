@@ -157,7 +157,7 @@ export const loginTextResources: PriestessI18nResources = {
       "重置中": "Resetting",
       "重置密码": "Reset password",
       "账号": "Account",
-      "验证": "Verification",
+      "验证": "Verify",
       "邀请": "Invite",
       "资料": "Profile",
       "当前环境无法加载验证码": "The verification widget cannot load in this environment",

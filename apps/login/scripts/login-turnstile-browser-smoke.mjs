@@ -381,7 +381,7 @@ async function testPhoneRegistrationProgress(browserInstance, appUrl) {
 
     assert.deepEqual(
       await page.locator(".register-progress__label").allTextContents(),
-      ["手机号", "邀请", "验证", "密码", "资料"],
+      ["手机号", "验证", "密码", "资料"],
     );
   });
 }
@@ -395,18 +395,20 @@ async function testRegistrationReturnsToAccountPicker(browserInstance, appUrl) {
 
     const emailInput = page.locator("input[autocomplete='email']");
     await emailInput.waitFor({ state: "visible", timeout: 5000 });
-    assert.deepEqual(await page.locator(".register-progress__label").allTextContents(), ["邮箱", "邀请", "验证", "密码", "资料"]);
+    assert.deepEqual(await page.locator(".register-progress__label").allTextContents(), ["邮箱", "验证", "密码", "资料"]);
     await emailInput.fill("first-login@example.com");
     await page.locator("#register-terms-consent").check();
     await page.locator(".login-form .primary-button[type='submit']").click();
 
     const inviteInput = page.locator("input[placeholder='输入邀请码']");
     await inviteInput.waitFor({ state: "visible" });
+    assert.equal(await page.locator(".register-progress__item--current .register-progress__dot").textContent(), "2");
     await inviteInput.fill("INVITE-SMOKE");
     await page.locator("[data-priestess-smoke-turnstile='ready']").click();
     await page.getByRole("button", { name: "校验邀请码" }).click();
     const verificationInput = page.locator("input[autocomplete='one-time-code']");
     await assertInputValue(verificationInput, "654321", 5000);
+    assert.equal(await page.locator(".register-progress__item--current .register-progress__dot").textContent(), "2");
     await page.getByRole("button", { name: /秒后可重发/ }).waitFor({ state: "visible" });
     await page.getByRole("button", { name: "验证并继续" }).click();
 

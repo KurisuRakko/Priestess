@@ -22,7 +22,13 @@ import {
   normalizePhoneLocalInput,
   REGISTER_PHONE_REGIONS,
 } from "./registerIdentityOptions";
-import { getStepCopy, getStepLabel, REGISTER_STEPS, type RegisterStep } from "./registerStepConfig";
+import {
+  getProgressStepLabel,
+  getRegisterProgressStep,
+  getStepCopy,
+  REGISTER_PROGRESS_STEPS,
+  type RegisterStep,
+} from "./registerStepConfig";
 import { RegisterPasswordStep } from "./RegisterPasswordStep";
 import { RegisterStepMotionPanel } from "./RegisterStepMotionPanel";
 import { RegisterInvitationStep, RegisterVerificationStep } from "./RegisterVerificationSteps";
@@ -148,8 +154,9 @@ export function RegisterFirstStepForm({
   }, [emailIdentity, identityMode, phoneLocalNumber, phoneRegionId]);
   const turnstileSiteKey = useMemo(() => readTurnstileSiteKey(), []);
   const copy = getStepCopy(step, step === "identity" ? identityMode : identityType);
-  const stepIndex = REGISTER_STEPS.findIndex((item) => item === step);
-  const progressFill = stepIndex <= 0 ? 0 : stepIndex / (REGISTER_STEPS.length - 1);
+  const progressStep = getRegisterProgressStep(step);
+  const progressStepIndex = REGISTER_PROGRESS_STEPS.indexOf(progressStep);
+  const progressFill = progressStepIndex <= 0 ? 0 : progressStepIndex / (REGISTER_PROGRESS_STEPS.length - 1);
   const progressStyle = { "--register-progress-fill": `${progressFill * 100}%` } as CSSProperties;
   const isFormLocked = disabled || submitBusy || verificationBusy || step === "success";
   const isVerificationReady = Boolean(verificationRequestId && verificationIdentityKey === committedIdentityKey);
@@ -679,12 +686,12 @@ export function RegisterFirstStepForm({
 
           {step !== "success" ? (
             <ol className="register-progress" style={progressStyle} aria-label={t("注册进度")}>
-              {REGISTER_STEPS.map((item, index) => {
-                const state = index < stepIndex ? "done" : index === stepIndex ? "current" : "pending";
+              {REGISTER_PROGRESS_STEPS.map((item, index) => {
+                const state = index < progressStepIndex ? "done" : index === progressStepIndex ? "current" : "pending";
                 return (
                   <li className={`register-progress__item register-progress__item--${state}`} key={item} aria-current={state === "current" ? "step" : undefined}>
                     <span className="register-progress__dot">{index + 1}</span>
-                    <span className="register-progress__label">{t(getStepLabel(item, step === "identity" ? identityMode : identityType))}</span>
+                    <span className="register-progress__label">{t(getProgressStepLabel(item, step === "identity" ? identityMode : identityType))}</span>
                   </li>
                 );
               })}
