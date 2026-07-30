@@ -4,9 +4,9 @@ import { getPriestessApiBaseUrl } from "@priestess/shared";
 export const LOGIN_RESULT_ANIMATION_MS = 1200;
 export const LOGIN_SUCCESS_HOLD_MS = 240;
 export const LOGIN_INTRO_QR_DELAY_MS = 1280;
-// 桌面认证切换先用短镜头收合二维码，再留足卡片弹簧完成；手机端沿用同一锁定边界。
-export const AUTH_MODE_DRAWER_IN_MS = 440;
-export const AUTH_MODE_TRANSITION_MS = 620;
+// 大行程抽屉和完整布局等待是桌面镜头的一部分，同时给二维码与表单留足加载时间。
+export const AUTH_MODE_DRAWER_IN_MS = 760;
+export const AUTH_MODE_TRANSITION_MS = 820;
 // 二维码不提供手动刷新，按这个周期自动重建会话；最短加载时长保证转圈动画至少完整转一圈。
 export const QR_AUTO_REFRESH_INTERVAL_MS = 120 * 1000;
 export const QR_REFRESH_SPIN_MIN_MS = 700;

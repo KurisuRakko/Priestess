@@ -230,10 +230,10 @@ export function LoginExperience({
   t,
   totpChallenge,
 }: LoginExperienceProps) {
-  const loginDelay = 0.32;
-  const loginDuration = 0.64;
-  const drawerDelay = loginDelay + loginDuration + 0.04;
-  const qrContentDelay = drawerDelay + 0.26;
+  const loginDelay = 0.5;
+  const loginDuration = 0.72;
+  const drawerDelay = loginDelay + loginDuration + 0.06;
+  const qrContentDelay = drawerDelay + 0.34;
   const drawerEase = [0.2, 0.8, 0.2, 1] as const;
   const loginEnter = shouldReduceMotion
     ? false
@@ -283,12 +283,12 @@ export function LoginExperience({
     loginCardRef.current?.scrollTo({ behavior: "auto", top: 0 });
   }, [activeMobilePanel, loginCardRef, mobileLoginReveal.isMobileViewport]);
   const qrDrawerVariants = {
-    closed: { x: "-18%", opacity: 0, clipPath: "inset(0 100% 0 0)" },
+    closed: { x: "-96%", opacity: 0, clipPath: "inset(0 100% 0 0)" },
     open: { x: "0%", opacity: 1, clipPath: "inset(0 0% 0 0)" },
   };
   const qrDrawerTransition = shouldReduceMotion
     ? { duration: 0 }
-    : { duration: 0.44, ease: [0.16, 1, 0.3, 1] as const };
+    : { duration: 0.76, ease: [0.16, 1, 0.3, 1] as const };
   const dwallBgClassName = [
     "dwall-bg",
     isLocalLoginCooldownActive ? "dwall-bg--lockout" : shouldUseCenteredWallpaper ? "dwall-bg--register" : "",
@@ -330,6 +330,7 @@ export function LoginExperience({
                   "login-card-shell",
                   isAccountPickerCardMode ? "login-card-shell--account-picker" : "",
                 ].filter(Boolean).join(" ")}
+                data-desktop-entry-travel={!mobileLoginReveal.isMobileViewport && !shouldReduceMotion ? "large" : undefined}
                 initial={loginEnter}
                 animate={{ opacity: 1, x: 0, y: 0, scale: 1, filter: "blur(0px)" }}
                 transition={shouldReduceMotion
@@ -459,6 +460,7 @@ export function LoginExperience({
                   data-desktop-qr-motion={!mobileLoginReveal.isMobileViewport
                     ? shouldReduceMotion ? "direct" : "smooth"
                     : undefined}
+                  data-desktop-qr-travel={!mobileLoginReveal.isMobileViewport && !shouldReduceMotion ? "large" : undefined}
                   initial={shouldReduceMotion ? false : "closed"}
                   animate={isQrDrawerOpen ? "open" : "closed"}
                   variants={qrDrawerVariants}

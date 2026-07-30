@@ -22,8 +22,8 @@
   --radius-card: 8px;
   --radius-control: 8px;
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
-  --auth-drawer-duration: 440ms;
-  --auth-layout-duration: 540ms;
+  --auth-drawer-duration: 760ms;
+  --auth-layout-duration: 680ms;
   --auth-layout-ease: cubic-bezier(0.16, 1, 0.3, 1);
   --font-sans: "HarmonyOS Sans SC", "HarmonyOS Sans", "PingFang SC", "Noto Sans SC", "Microsoft YaHei", Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   /* 登录页背景使用压缩后的多档图片，避免把 4.5M 原图直接打进首屏资源。 */

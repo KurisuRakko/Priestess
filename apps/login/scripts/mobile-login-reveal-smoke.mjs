@@ -294,10 +294,12 @@ async function testDesktopLoginKeepsQrLayout(browserInstance, appUrl) {
     await page.locator(".qr-panel").waitFor({ state: "visible" });
     await waitForPanelSettled(page, ".qr-drawer-surface");
     assert.equal(await page.locator(".auth-grid").getAttribute("data-desktop-layout-motion"), "coordinated");
+    assert.equal(await page.locator(".login-card-shell").getAttribute("data-desktop-entry-travel"), "large");
     assert.equal(await page.locator(".qr-drawer-surface").getAttribute("data-desktop-qr-motion"), "smooth");
+    assert.equal(await page.locator(".qr-drawer-surface").getAttribute("data-desktop-qr-travel"), "large");
     assert.ok(
-      (await page.locator(".auth-grid").evaluate((element) => getComputedStyle(element).transitionDuration)).includes("0.54s"),
-      "desktop layout transitions must share the coordinated 540ms duration",
+      (await page.locator(".auth-grid").evaluate((element) => getComputedStyle(element).transitionDuration)).includes("0.68s"),
+      "desktop layout transitions must preserve the coordinated 680ms loading window",
     );
 
     const cardLayout = await page.locator(".login-card").evaluate((element) => {
