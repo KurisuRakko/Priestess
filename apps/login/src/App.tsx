@@ -22,6 +22,7 @@ import { NotFoundPage } from "./components/NotFoundPage";
 import { useQrLoginCompletion } from "./components/useQrLoginCompletion";
 import { getAuthAccountAuthorizeBlocker, shouldShowAuthAccountPicker } from "./lib/accountAuthorization";
 import { completeAccountSelection, getAuthAccountActivationErrorMessage } from "./lib/accountSelection";
+import type { LoginIdentityMotionSource } from "./components/loginIdentityMotion";
 import { isAccountEditableInBrowser, resolveAccountManagementActionTarget } from "./lib/accountManagementAction";
 import { getAuthRequestKey, readAuthRequest, type AuthRequest } from "./lib/authRequest";
 import { loginLocalSessionWithTurnstileRetry } from "./lib/localLoginTurnstileRetry";
@@ -328,7 +329,10 @@ export function App() {
     navigateTo(readLoginNext(), { replace: true });
   };
 
-  const chooseAuthAccount = async(account: AuthAccountChoice) => {
+  const chooseAuthAccount = async(
+    account: AuthAccountChoice,
+    identitySource: LoginIdentityMotionSource | null,
+  ) => {
     const request = readAuthRequest();
     if (directAuthorizeBusy || removingAccountId || loginTransitionOverlayRef.current !== null) {
       return;
@@ -347,6 +351,8 @@ export function App() {
     setDirectAuthorizeBusy(true);
 
     const controllerPromise = startCenteredLoginOverlay({
+      avatarUrl: account.avatarUrl,
+      identityMotionSource: identitySource,
       identityReveal: true,
       loadingTitle: request ? t("正在确认授权…") : t("正在准备你的账号…"),
       primaryColor: "#c65f72",

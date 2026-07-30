@@ -65,6 +65,18 @@
   animation: lso-origin-content-out var(--lso-origin-content-out-ms, 160ms) cubic-bezier(0.4, 0, 0.6, 1) forwards;
 }
 
+/* 保存账号的头像已经在旧卡片里可见；状态层接管时直接延续其坐标，
+ * 不再让整组内容额外淡入一次，否则共享元素中间会出现一帧断层。 */
+.login-success-overlay.has-origin.has-identity-motion-source .login-success-overlay-content {
+  opacity: 1;
+  transform: translate(-50%, -50%);
+  animation: none;
+}
+
+.login-success-overlay.has-origin.has-identity-motion-source.is-exiting .login-success-overlay-content {
+  animation: lso-origin-content-out var(--lso-origin-content-out-ms, 160ms) cubic-bezier(0.4, 0, 0.6, 1) forwards;
+}
+
 .login-success-overlay.has-origin .login-success-overlay-icon {
   width: 58px;
   height: 58px;

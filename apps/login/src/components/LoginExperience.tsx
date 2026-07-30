@@ -19,6 +19,7 @@ import type { RegisterFirstStepFormProps } from "./RegisterFirstStepForm";
 import { type AuthAccountChoice, type useAuthAccountChoices } from "../lib/useAuthAccountChoices";
 import { type LoginLayoutAuthMode } from "../lib/loginLayoutState";
 import type { MobileLoginRevealState } from "../lib/useMobileLoginReveal";
+import type { LoginIdentityMotionSource } from "./loginIdentityMotion";
 
 type AccountChoicesState = ReturnType<typeof useAuthAccountChoices>;
 type TranslationFn = (key: string, options?: Record<string, unknown>) => string;
@@ -190,7 +191,7 @@ type LoginExperienceProps = {
   loginCardRef: RefObject<HTMLDivElement | null>;
   mobileLoginReveal: MobileLoginRevealState;
   onBackToLogin: () => void;
-  onChooseAuthAccount: (account: AuthAccountChoice) => void;
+  onChooseAuthAccount: (account: AuthAccountChoice, identitySource: LoginIdentityMotionSource | null) => void;
   onCreateAccount: () => void;
   onForgotPassword: (identity: string) => void;
   onOpenAuthAccountAction: (account: AuthAccountChoice, action: AccountPickerAction) => Promise<void> | void;

@@ -59,6 +59,8 @@ try {
   await testExpiredQrCreatesOneReplacement(browser, appUrl);
   await testQrConfirmationCompletesThroughOverlay(browser, appUrl);
   await testBareLoginSelectsSavedAccount(browser, appUrl);
+  await testSavedAccountAvatarMovesIntoIdentityRing(browser, appUrl);
+  await testReducedMotionSavedAccountIdentity(browser, appUrl);
   await testReducedMotionAccountSwitch(browser, appUrl);
   await testBareLoginRemainsUsable(browser, appUrl);
   await testLazyStandaloneRoutesRender(browser, appUrl);
@@ -191,7 +193,9 @@ async function testSavedAccountAuthorizationFailureReturnsPicker(browserInstance
 
     const failureOverlay = page.locator(".login-success-overlay.is-failure");
     await failureOverlay.waitFor({ state: "visible", timeout: 5000 });
-    assert.equal(await failureOverlay.locator("[data-login-identity-avatar]").count(), 0);
+    const returningAvatar = failureOverlay.locator('[data-login-identity-avatar="shared"]');
+    assert.equal(await returningAvatar.count(), 1, "a previously visible saved-account avatar should hand back to its source");
+    assert.equal(await returningAvatar.getAttribute("data-login-identity-motion"), "returning");
     assert.match(await failureOverlay.innerText(), /授权失败/);
     await page.waitForTimeout(500);
     assert.equal(await page.locator(".login-card--submit-stage").count(), 0, "account picker should be prepared behind authorization failure");
@@ -200,7 +204,7 @@ async function testSavedAccountAuthorizationFailureReturnsPicker(browserInstance
     await accountButton.waitFor({ state: "visible", timeout: 2000 });
     assert.equal(await accountButton.isEnabled(), true);
     assert.equal(new URL(page.url()).pathname, "/login");
-  });
+  }, { reducedMotion: "no-preference", viewport: { height: 900, width: 1440 } });
 }
 
 async function testBareLoginRemainsUsable(browserInstance, appUrl) {
@@ -548,6 +552,9 @@ async function testBareLoginSelectsSavedAccount(browserInstance, appUrl) {
     await accountButton.waitFor({ state: "visible" });
 
     await accountButton.click();
+    const sharedAvatar = page.locator('.login-success-overlay.is-loading [data-login-identity-avatar="shared"]');
+    await sharedAvatar.waitFor({ state: "visible", timeout: 5000 });
+    assert.equal(await sharedAvatar.getAttribute("data-login-identity-source"), "account-picker");
     const accountIdentity = page.locator('.login-success-overlay.is-success [data-login-identity-phase="success"]');
     await accountIdentity.waitFor({ state: "visible", timeout: 5000 });
     assert.equal(await accountIdentity.locator("[data-login-identity-name]").innerText(), `User ${scenario.appId}`);
@@ -560,6 +567,113 @@ async function testBareLoginSelectsSavedAccount(browserInstance, appUrl) {
     }]);
     assert.equal(scenario.records.authorizations.length, 0);
   }, { reducedMotion: "no-preference", viewport: { height: 667, width: 375 } });
+}
+
+async function testSavedAccountAvatarMovesIntoIdentityRing(browserInstance, appUrl) {
+  const scenario = createScenario("saved-account-shared-avatar", {
+    activationDelayMs: 2200,
+    browserAccountMode: "single",
+  });
+
+  await withScenario(browserInstance, scenario, async(page) => {
+    await page.goto(`${appUrl}/login`, { waitUntil: "domcontentloaded" });
+    const accountButton = page.locator(".account-picker__row-main").first();
+    const accountAvatar = accountButton.locator('[data-account-shared-part="avatar"]');
+    await accountAvatar.waitFor({ state: "visible", timeout: 5000 });
+    const sourceRect = await accountAvatar.boundingBox();
+    assert.ok(sourceRect);
+
+    await accountButton.click();
+    const sharedAvatar = page.locator('.login-success-overlay.is-loading [data-login-identity-avatar="shared"]');
+    await sharedAvatar.waitFor({ state: "visible", timeout: 5000 });
+    assert.equal(await sharedAvatar.getAttribute("data-login-identity-motion"), "source-to-ring");
+    assert.equal(await sharedAvatar.getAttribute("data-login-identity-source"), "account-picker");
+
+    const origin = {
+      scale: Number(await sharedAvatar.getAttribute("data-login-identity-origin-scale")),
+      x: Number(await sharedAvatar.getAttribute("data-login-identity-origin-x")),
+      y: Number(await sharedAvatar.getAttribute("data-login-identity-origin-y")),
+    };
+    assert.ok(Number.isFinite(origin.x) && Number.isFinite(origin.y) && Number.isFinite(origin.scale));
+    assert.ok(Math.hypot(origin.x, origin.y) > 24, "saved avatar should have a meaningful source-to-ring travel distance");
+    assert.ok(
+      Math.abs(origin.scale - sourceRect.width / 104) < 0.03,
+      "shared avatar should begin at the account-row avatar size",
+    );
+
+    await sharedAvatar.evaluate((element) => {
+      window.__priestessSharedAvatarElement = element;
+    });
+    await page.waitForTimeout(760);
+    assert.equal(
+      await page.locator(".login-success-overlay.is-loading").count(),
+      1,
+      "the shared avatar should settle into the ring while account activation is still pending",
+    );
+    const settledLoadingGeometry = await sharedAvatar.evaluate((avatar) => {
+      const visual = avatar.closest(".login-identity-transition__visual");
+      const avatarRect = avatar.getBoundingClientRect();
+      const visualRect = visual?.getBoundingClientRect();
+      return {
+        avatarCenterX: avatarRect.left + avatarRect.width / 2,
+        avatarCenterY: avatarRect.top + avatarRect.height / 2,
+        avatarWidth: avatarRect.width,
+        visualCenterX: visualRect ? visualRect.left + visualRect.width / 2 : 0,
+        visualCenterY: visualRect ? visualRect.top + visualRect.height / 2 : 0,
+      };
+    });
+    assert.ok(
+      Math.abs(settledLoadingGeometry.avatarCenterX - settledLoadingGeometry.visualCenterX) < 2,
+      `shared avatar should settle on the ring x-axis: ${JSON.stringify(settledLoadingGeometry)}`,
+    );
+    assert.ok(
+      Math.abs(settledLoadingGeometry.avatarCenterY - settledLoadingGeometry.visualCenterY) < 2,
+      `shared avatar should settle on the ring y-axis: ${JSON.stringify(settledLoadingGeometry)}`,
+    );
+    assert.ok(settledLoadingGeometry.avatarWidth >= 45 && settledLoadingGeometry.avatarWidth <= 47);
+
+    const revealedAvatar = page.locator('.login-success-overlay.is-success [data-login-identity-avatar="revealed"]');
+    await revealedAvatar.waitFor({ state: "visible", timeout: 5000 });
+    assert.equal(await revealedAvatar.getAttribute("data-login-identity-motion"), "expanding");
+    assert.equal(
+      await revealedAvatar.evaluate((element) => element === window.__priestessSharedAvatarElement),
+      true,
+      "the account-row avatar clone should remain the same DOM element through success",
+    );
+    await page.waitForTimeout(620);
+    const successWidth = await revealedAvatar.evaluate((element) => element.getBoundingClientRect().width);
+    assert.ok(successWidth >= 103 && successWidth <= 105, "the same shared avatar should expand to the resolved identity size");
+    await page.waitForURL((url) => url.pathname === "/manage", { timeout: 6000 });
+  }, { locale: "en-US", reducedMotion: "no-preference", viewport: { height: 900, width: 1440 } });
+}
+
+async function testReducedMotionSavedAccountIdentity(browserInstance, appUrl) {
+  const scenario = createScenario("saved-account-shared-avatar-reduced", {
+    activationDelayMs: 700,
+    browserAccountMode: "single",
+  });
+
+  await withScenario(browserInstance, scenario, async(page) => {
+    await page.goto(`${appUrl}/login`, { waitUntil: "domcontentloaded" });
+    const accountButton = page.locator(".account-picker__row-main").first();
+    await accountButton.waitFor({ state: "visible", timeout: 5000 });
+    await accountButton.click();
+
+    const sharedAvatar = page.locator('[data-login-identity-avatar="shared"]');
+    await sharedAvatar.waitFor({ state: "attached", timeout: 5000 });
+    assert.equal(await sharedAvatar.getAttribute("data-login-identity-motion"), "direct");
+    assert.equal(Number(await sharedAvatar.evaluate((element) => getComputedStyle(element).opacity)), 0);
+
+    const revealedAvatar = page.locator('[data-login-identity-avatar="revealed"]');
+    await revealedAvatar.waitFor({ state: "visible", timeout: 5000 });
+    assert.equal(await revealedAvatar.getAttribute("data-login-identity-motion"), "direct");
+    assert.ok(
+      await revealedAvatar.evaluate((element) => (
+        Number.parseFloat(getComputedStyle(element).transitionDuration) <= 0.00001
+      )),
+      "reduced-motion identity should switch without a perceptible transition",
+    );
+  }, { locale: "en-US", reducedMotion: "reduce", viewport: { height: 844, width: 390 } });
 }
 
 async function testReducedMotionAccountSwitch(browserInstance, appUrl) {
@@ -882,6 +996,7 @@ async function installBrowserStubs(page) {
 
 function createScenario(appId, options = {}) {
   return {
+    activationDelayMs: options.activationDelayMs ?? 0,
     accountDelayAfterAuthMs: options.accountDelayAfterAuthMs ?? 0,
     accountError: options.accountError ?? false,
     accountModeAfterAuth: options.accountModeAfterAuth ?? "empty",
@@ -1123,6 +1238,9 @@ async function startMockApiServer() {
         body,
         userId,
       });
+      if (scenario.activationDelayMs > 0) {
+        await delay(scenario.activationDelayMs);
+      }
       scenario.authenticated = true;
       writeJson(res, 200, authenticatedSession(scenario, { userId }));
       return;

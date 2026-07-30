@@ -1,0 +1,42 @@
+.login-identity-transition__shared-avatar-target {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 1;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.login-identity-transition__shared-avatar-frame {
+  position: absolute;
+  top: -52px;
+  left: -52px;
+  display: block;
+  width: 104px;
+  height: 104px;
+  flex: 0 0 auto;
+  border: 1px solid rgb(255 255 255 / 90%);
+  border-radius: 50%;
+  overflow: hidden;
+  box-shadow: 0 5px 18px rgb(31 23 29 / 13%);
+  transform-origin: center;
+  will-change: transform, opacity;
+}
+
+.login-identity-transition__shared-avatar-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.login-success-overlay.is-reduced-motion .login-identity-transition__shared-avatar-frame {
+  will-change: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-identity-transition__shared-avatar-frame {
+    will-change: auto;
+  }
+}

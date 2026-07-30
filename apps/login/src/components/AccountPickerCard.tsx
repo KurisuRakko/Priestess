@@ -16,6 +16,10 @@ import {
   type LocalAccountChoiceApp,
 } from "@priestess/shared";
 import { AccountDialogShell } from "./AccountDialogShell";
+import {
+  captureAccountPickerIdentitySource,
+  type LoginIdentityMotionSource,
+} from "./loginIdentityMotion";
 import type { AuthAccountChoice, AuthAccountChoicesStatus } from "../lib/useAuthAccountChoices";
 import "./AccountPickerCard.css";
 
@@ -47,7 +51,7 @@ type AccountPickerCardProps = {
   onOpenAccountAction: (account: AuthAccountChoice, action: AccountPickerAction) => Promise<void> | void;
   onRemoveAccount: (account: AuthAccountChoice) => Promise<void> | void;
   onRetry: () => void;
-  onSelectAccount: (account: AuthAccountChoice) => void;
+  onSelectAccount: (account: AuthAccountChoice, identitySource: LoginIdentityMotionSource | null) => void;
   onUseAnotherAccount: () => void;
   status: AuthAccountChoicesStatus;
 };
@@ -238,7 +242,12 @@ export function AccountPickerCard({
                             aria-label={getAccountSelectLabel(account, appLabel, isAccountBusy, t, mode)}
                             className="account-picker__row-main"
                             disabled={isSelectLocked}
-                            onClick={() => onSelectAccount(account)}
+                            onClick={(event) => {
+                              onSelectAccount(
+                                account,
+                                captureAccountPickerIdentitySource(event.currentTarget),
+                              );
+                            }}
                             type="button"
                           >
                             <AccountAvatar

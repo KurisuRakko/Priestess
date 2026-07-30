@@ -1,4 +1,6 @@
 import { getPriestessDisplayAvatarUrl } from "@priestess/shared";
+import { SharedLoginIdentityAvatar } from "./SharedLoginIdentityAvatar";
+import type { LoginIdentityMotionSource } from "./loginIdentityMotion";
 import "./LoginIdentityTransitionHandoff.css";
 
 export type LoginIdentityTransitionPhase = "failure" | "handoff" | "loading" | "success";
@@ -7,6 +9,7 @@ type LoginIdentityTransitionProps = {
   avatarUrl: string;
   description: string;
   displayName: string;
+  identityMotionSource: LoginIdentityMotionSource | null;
   phase: LoginIdentityTransitionPhase;
   statusText: string;
 };
@@ -15,6 +18,7 @@ export function LoginIdentityTransition({
   avatarUrl,
   description,
   displayName,
+  identityMotionSource,
   phase,
   statusText,
 }: LoginIdentityTransitionProps) {
@@ -41,7 +45,13 @@ export function LoginIdentityTransition({
           </div>
         </div>
 
-        {shouldRevealIdentity ? (
+        {identityMotionSource ? (
+          <SharedLoginIdentityAvatar
+            avatarUrl={avatarUrl}
+            phase={phase}
+            source={identityMotionSource}
+          />
+        ) : shouldRevealIdentity ? (
           <img
             alt=""
             className="login-identity-transition__avatar"

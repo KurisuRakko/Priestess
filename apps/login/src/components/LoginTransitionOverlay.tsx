@@ -2,6 +2,7 @@ import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { translatePriestess } from "@priestess/shared";
 import { LoginIdentityTransition } from "./LoginIdentityTransition";
+import type { LoginIdentityMotionSource } from "./loginIdentityMotion";
 import { TurnstileWidget } from "./TurnstileWidget";
 import "./LoginTransitionOverlay.css";
 
@@ -72,6 +73,7 @@ export type LoginTransitionOverlayParams = {
   title?: string;
   description?: string;
   identityReveal?: boolean;
+  identityMotionSource?: LoginIdentityMotionSource | null;
   organizationName?: string;
   username?: string;
   primaryColor?: string;
@@ -98,6 +100,7 @@ type RenderState = Required<Pick<LoginTransitionOverlayParams, "avatarUrl" | "id
   onChallengeExpire?: () => void;
   onChallengeToken?: (token: string) => void;
   originRect: NormalizedOriginRect | null;
+  identityMotionSource: LoginIdentityMotionSource | null;
 };
 
 export type LoginTransitionOverlayController = {
@@ -309,6 +312,7 @@ function buildRenderState(
       challengeTitle: "",
       avatarUrl: normalizedAvatarUrl,
       identityReveal: Boolean(baseParams.identityReveal),
+      identityMotionSource: baseParams.identityMotionSource || null,
       phase: PHASE_LOADING,
       loadingTitle: normalizedLoadingTitle,
       title: getDefaultSuccessTitle(),
@@ -334,6 +338,7 @@ function buildRenderState(
       challengeTitle: normalizeText(params.challengeTitle) || translatePriestess("login:请完成人机验证"),
       avatarUrl: normalizedAvatarUrl,
       identityReveal: Boolean(baseParams.identityReveal),
+      identityMotionSource: baseParams.identityMotionSource || null,
       phase,
       loadingTitle: normalizedLoadingTitle,
       title: getDefaultSuccessTitle(),
@@ -358,6 +363,7 @@ function buildRenderState(
     challengeTitle: "",
     avatarUrl: normalizeText(params.avatarUrl) || normalizedAvatarUrl,
     identityReveal: Boolean(baseParams.identityReveal),
+    identityMotionSource: baseParams.identityMotionSource || null,
     phase,
     loadingTitle: normalizedLoadingTitle,
     title: normalizeText(params.title) || (
@@ -395,6 +401,7 @@ function LoginTransitionOverlayInner(props: RenderState & { onFinish: () => void
     username,
     description,
     identityReveal,
+    identityMotionSource,
     primaryColor,
     timeline,
     phaseKey,
@@ -427,6 +434,7 @@ function LoginTransitionOverlayInner(props: RenderState & { onFinish: () => void
   }, [originRect]);
 
   const hasOriginStatusCard = originStyleVars !== null;
+  const hasIdentityMotionSource = identityMotionSource !== null;
   const loadingTitleText = normalizeText(loadingTitle) || getDefaultLoadingTitle();
   const titleText = normalizeText(title) || (phase === PHASE_FAILURE ? getDefaultFailureTitle() : getDefaultSuccessTitle());
   const cleanOrganizationName = normalizeText(organizationName);
@@ -534,6 +542,7 @@ function LoginTransitionOverlayInner(props: RenderState & { onFinish: () => void
         isExiting ? "is-exiting" : null,
         prefersReducedMotion ? "is-reduced-motion" : null,
         hasOriginStatusCard ? "has-origin" : null,
+        hasIdentityMotionSource ? "has-identity-motion-source" : null,
       ].filter(Boolean).join(" ")}
       style={styleVars}
       role={phase === PHASE_CHALLENGE ? "dialog" : "status"}
@@ -547,6 +556,7 @@ function LoginTransitionOverlayInner(props: RenderState & { onFinish: () => void
             avatarUrl={cleanAvatarUrl}
             description={cleanDescription}
             displayName={cleanUsername}
+            identityMotionSource={identityMotionSource}
             phase={identityPhase}
             statusText={phase === PHASE_LOADING ? loadingTitleText : titleText}
           />
@@ -674,6 +684,7 @@ function createOverlayController(params: LoginTransitionOverlayParams = {}): Log
   const baseParams: LoginTransitionOverlayParams = {
     avatarUrl: params.avatarUrl,
     identityReveal: params.identityReveal,
+    identityMotionSource: params.identityMotionSource,
     loadingTitle: params.loadingTitle,
     organizationName: params.organizationName,
     username: params.username,
@@ -751,6 +762,7 @@ function createOverlayController(params: LoginTransitionOverlayParams = {}): Log
         challengeTitle={renderState.challengeTitle}
         avatarUrl={renderState.avatarUrl}
         identityReveal={renderState.identityReveal}
+        identityMotionSource={renderState.identityMotionSource}
         phase={renderState.phase}
         loadingTitle={renderState.loadingTitle}
         title={renderState.title}
