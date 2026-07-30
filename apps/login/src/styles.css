@@ -267,8 +267,8 @@ input:focus-visible {
   min-width: 0;
 }
 
-/* 登录/注册/找回密码的内容切换视口：高度动画由 Motion 按测量值驱动，
- * 同时裁掉 popLayout 退出面板超出新高度的部分。 */
+/* 登录/注册/找回密码共用唯一的高度动画视口；内部面板只负责共享轴位移，
+ * 避免注册步骤和外层卡片同时驱动两个高度弹簧。 */
 .auth-card-viewport {
   position: relative;
   display: flex;

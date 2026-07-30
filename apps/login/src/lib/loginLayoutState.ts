@@ -43,7 +43,11 @@ export function resolveLoginLayoutState(params: LoginLayoutStateParams): LoginLa
     ].filter(Boolean).join(" "),
     isLoginCenteredStage,
     isLoginSubmitCardStage: params.isLoginSubmitStage && !isSoloAuthMode,
-    isQrDrawerOpen: params.isLoginRoute && params.authMode === "login" && params.hasAuthRequest && !isLoginCenteredStage,
+    isQrDrawerOpen: params.isLoginRoute
+      && params.authMode === "login"
+      && params.hasAuthRequest
+      && !isLoginCenteredStage
+      && !params.isRegisterDrawerStage,
     isSoloAuthMode,
     shouldUseCenteredWallpaper: isSoloAuthMode || isLoginCenteredStage,
   };

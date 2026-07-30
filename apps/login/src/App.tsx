@@ -171,10 +171,9 @@ export function App() {
 
     clearAuthModeTransitionTimeout();
     setIsAuthModeTransitioning(true);
-    setAuthMode(nextMode);
 
-    // 抽屉可见（桌面宽度且已展开）时保留镜头编排：离开登录先收抽屉、再变卡片；
-    // 抽屉不可见（窄屏或本来就没展开）时一段过渡直达，不白等收抽屉的时长。
+    // 桌面二维码可见时严格按“抽屉退场 → 内容换页 → 卡片收拢”的顺序执行。
+    // 旧实现会立即替换内容、760ms 后再改变布局，视觉上像卡片被拉扯了两次。
     const isDrawerVisuallyOpen = isQrDrawerOpen && window.matchMedia("(min-width: 821px)").matches;
     const shouldDrawerSlideOutFirst = nextMode !== "login" && authMode === "login" && isDrawerVisuallyOpen && !shouldReduceMotion;
     setIsRegisterDrawerStage(shouldDrawerSlideOutFirst);
@@ -183,9 +182,12 @@ export function App() {
 
     if (shouldDrawerSlideOutFirst) {
       authModeLayoutTimeoutRef.current = window.setTimeout(() => {
+        setAuthMode(nextMode);
         setIsRegisterDrawerStage(false);
         authModeLayoutTimeoutRef.current = null;
       }, AUTH_MODE_DRAWER_IN_MS);
+    } else {
+      setAuthMode(nextMode);
     }
 
     // 布局动画结束后才解锁按钮，避免双击时 QR 抽屉和卡片状态互相打架。
@@ -392,17 +394,52 @@ export function App() {
   };
 
   const useAnotherAuthAccount = () => {
+    clearAuthModeTransitionTimeout();
     setAccountAuthorizeError("");
+    // 授权页先在居中的单卡片中完成账号卡→登录表单的大行程切换，
+    // 等内容稳定后再沿用首屏节奏展开二维码，避免两条横向动画同时争抢视线。
+    const shouldStageDesktopQr = hasQrRequest
+      && !shouldReduceMotion
+      && window.matchMedia("(min-width: 821px)").matches;
+    setIsLoginIntroStage(shouldStageDesktopQr);
     setShowLoginFormForAccountPicker(true);
     setTotpChallenge(null);
+    if (!shouldReduceMotion && window.matchMedia("(min-width: 821px)").matches) {
+      setIsAuthModeTransitioning(true);
+      authModeTransitionTimeoutRef.current = window.setTimeout(() => {
+        setIsAuthModeTransitioning(false);
+        authModeTransitionTimeoutRef.current = null;
+      }, AUTH_MODE_TRANSITION_MS);
+    }
     showNotice(t("请登录另一个 Priestess 账号"));
   };
 
   const returnToAuthAccountPicker = () => {
     // 返回只恢复账号选择态；应用授权参数和裸域的安全 next 路径都保持不变。
+    if (isAuthModeTransitioning) return;
+    clearAuthModeTransitionTimeout();
     setAccountAuthorizeError("");
-    setShowLoginFormForAccountPicker(false);
     setTotpChallenge(null);
+
+    const shouldDrawerSlideOutFirst = isQrDrawerOpen
+      && !shouldReduceMotion
+      && window.matchMedia("(min-width: 821px)").matches;
+    if (shouldDrawerSlideOutFirst) {
+      setIsAuthModeTransitioning(true);
+      setIsRegisterDrawerStage(true);
+      authModeLayoutTimeoutRef.current = window.setTimeout(() => {
+        setShowLoginFormForAccountPicker(false);
+        setIsRegisterDrawerStage(false);
+        authModeLayoutTimeoutRef.current = null;
+      }, AUTH_MODE_DRAWER_IN_MS);
+      authModeTransitionTimeoutRef.current = window.setTimeout(() => {
+        setIsAuthModeTransitioning(false);
+        authModeTransitionTimeoutRef.current = null;
+      }, AUTH_MODE_DRAWER_IN_MS + AUTH_MODE_TRANSITION_MS);
+      return;
+    }
+
+    setShowLoginFormForAccountPicker(false);
   };
 
   const buildTotpChallenge = (session: LocalSession, fallbackUsername: string): TotpChallenge => {

@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useState, type ComponentProps, type ReactNode, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type ComponentProps, type ReactNode, type RefObject } from "react";
 import { AnimatePresence, motion, useIsPresent } from "motion/react";
 import { BrandMark, FloatingBackdrop } from "@priestess/shared";
 import { AccountPickerCard, type AccountPickerAction, type AccountPickerMode } from "./AccountPickerCard";
 import { ForgotPasswordForm } from "./ForgotPasswordForm";
 import { LoginForm, type LoginCredentials, type LoginTotpChallenge } from "./LoginForm";
 import {
-  DESKTOP_HEIGHT_SPRING,
+  DESKTOP_HEIGHT_TRANSITION,
+  DESKTOP_SHARED_AXIS_EXIT_DURATION_MS,
   getDesktopSharedAxisEnter,
   getDesktopSharedAxisExit,
   getDesktopSharedAxisInitial,
@@ -23,6 +24,7 @@ type AccountChoicesState = ReturnType<typeof useAuthAccountChoices>;
 type TranslationFn = (key: string, options?: Record<string, unknown>) => string;
 type AccountSwitchPanel = "account-picker" | "login-form";
 type AuthModePanel = "forgot-password" | "login" | "register";
+const DESKTOP_LOGIN_REVEAL_TIMEOUT_MS = 5_000;
 
 type AccountSwitchMotionPanelProps = {
   children: ReactNode;
@@ -50,7 +52,7 @@ function AccountSwitchMotionPanel({
         ? getMobileSharedAxisEnter()
         : shouldAnimateDesktop
           ? getDesktopSharedAxisEnter()
-          : { filter: "blur(0px)", opacity: 1, x: 0 }}
+          : { opacity: 1, x: 0 }}
       className="auth-account-switch-panel"
       data-auth-account-motion-origin={panel === "account-picker" ? "left" : "right"}
       data-auth-account-panel={panel}
@@ -107,7 +109,7 @@ function AuthModeMotionPanel({
         ? getMobileSharedAxisEnter()
         : shouldAnimateDesktop
           ? getDesktopSharedAxisEnter()
-          : { filter: "blur(0px)", opacity: 1, x: 0 }}
+          : { opacity: 1, x: 0 }}
       className="auth-card-content"
       data-auth-mode-motion-origin={panel === "login" ? "left" : "right"}
       data-auth-mode-panel={panel}
@@ -235,6 +237,58 @@ export function LoginExperience({
   const drawerDelay = loginDelay + loginDuration + 0.06;
   const qrContentDelay = drawerDelay + 0.34;
   const drawerEase = [0.2, 0.8, 0.2, 1] as const;
+  const [desktopRevealTimedOut, setDesktopRevealTimedOut] = useState(false);
+  const [desktopRevealed, setDesktopRevealed] = useState(mobileLoginReveal.isMobileViewport);
+  const [loginCardEntryComplete, setLoginCardEntryComplete] = useState(Boolean(shouldReduceMotion));
+  const [renderedAuthGridClassName, setRenderedAuthGridClassName] = useState(authGridClassName);
+  const previousAuthModeRef = useRef(authMode);
+  const desktopAccountDataReady = ["empty", "error", "ready"].includes(accountChoices.status);
+  const desktopQrDataReady = !hasQrRequest
+    || shouldShowAccountPicker
+    || Boolean(qrValue)
+    || qrVisualState === "error";
+  const desktopDataReady = desktopAccountDataReady && desktopQrDataReady;
+  const loginStageRevealed = mobileLoginReveal.isMobileViewport
+    ? mobileLoginReveal.revealed
+    : desktopRevealed;
+
+  useEffect(() => {
+    if (mobileLoginReveal.isMobileViewport || desktopRevealed) return undefined;
+    if (desktopDataReady || desktopRevealTimedOut) {
+      let secondFrame = 0;
+      // 桌面端也等账号列表和可见二维码进入终态，再留一帧给壁纸完成绘制。
+      const firstFrame = window.requestAnimationFrame(() => {
+        secondFrame = window.requestAnimationFrame(() => setDesktopRevealed(true));
+      });
+      return () => {
+        window.cancelAnimationFrame(firstFrame);
+        if (secondFrame) window.cancelAnimationFrame(secondFrame);
+      };
+    }
+    const timeout = window.setTimeout(() => setDesktopRevealTimedOut(true), DESKTOP_LOGIN_REVEAL_TIMEOUT_MS);
+    return () => window.clearTimeout(timeout);
+  }, [desktopDataReady, desktopRevealTimedOut, desktopRevealed, mobileLoginReveal.isMobileViewport]);
+
+  useEffect(() => {
+    if (shouldReduceMotion) setLoginCardEntryComplete(true);
+  }, [shouldReduceMotion]);
+
+  useEffect(() => {
+    const authModeChanged = previousAuthModeRef.current !== authMode;
+    previousAuthModeRef.current = authMode;
+    if (!authModeChanged || mobileLoginReveal.isMobileViewport || shouldReduceMotion) {
+      setRenderedAuthGridClassName(authGridClassName);
+      return undefined;
+    }
+
+    // 旧面板仍在退场时维持原卡片宽度，避免文本先因收窄而换行、再被新面板替换。
+    const layoutTimer = window.setTimeout(
+      () => setRenderedAuthGridClassName(authGridClassName),
+      DESKTOP_SHARED_AXIS_EXIT_DURATION_MS,
+    );
+    return () => window.clearTimeout(layoutTimer);
+  }, [authGridClassName, authMode, mobileLoginReveal.isMobileViewport, shouldReduceMotion]);
+
   const loginEnter = shouldReduceMotion
     ? false
     : mobileLoginReveal.isMobileViewport
@@ -249,11 +303,11 @@ export function LoginExperience({
         : "login";
 
   // 登录/注册/找回密码共用一个高度视口：面板切换或内部内容变化时，
-  // 卡片高度用测量值平滑过渡，替代 popLayout 交换内容瞬间的高度跳变。
+  // 只由这里按测量值驱动卡片高度，内部注册步骤不再重复套高度动画。
   const [activePanelElement, setActivePanelElement] = useState<HTMLDivElement | null>(null);
   const [panelHeight, setPanelHeight] = useState<number | null>(null);
   const assignActivePanel = useCallback((element: HTMLDivElement | null) => {
-    // popLayout 的退出面板卸载时会以 null 回调；忽略它，保持观察最新面板。
+    // AnimatePresence 的退出面板卸载时会以 null 回调；忽略它，保持观察最新面板。
     if (element) setActivePanelElement(element);
   }, []);
 
@@ -302,11 +356,13 @@ export function LoginExperience({
       data-mobile-reveal={mobileLoginReveal.revealed ? "ready" : "waiting"}
       data-mobile-reveal-timeout={mobileLoginReveal.didTimeout ? "true" : "false"}
       data-mobile-data-ready={mobileLoginReveal.dataReady ? "true" : "false"}
+      data-desktop-reveal={!mobileLoginReveal.isMobileViewport ? desktopRevealed ? "ready" : "waiting" : undefined}
+      data-desktop-reveal-timeout={!mobileLoginReveal.isMobileViewport ? desktopRevealTimedOut ? "true" : "false" : undefined}
     >
       {/* 壁纸层：独立 DOM 元素，通过 CSS transform 在登录/注册间平滑缩放和平移。 */}
       <div className={dwallBgClassName} aria-hidden="true" />
       <FloatingBackdrop />
-      {!isLocalLoginCooldownActive && mobileLoginReveal.revealed ? (
+      {!isLocalLoginCooldownActive && loginStageRevealed ? (
         <>
           <header className="topbar" aria-label="Priestess">
             <BrandMark size="sm" />
@@ -317,7 +373,7 @@ export function LoginExperience({
             className={isSoloAuthMode ? "login-stage login-stage--register" : "login-stage"}
           >
             <motion.div
-              className={authGridClassName}
+              className={renderedAuthGridClassName}
               data-desktop-layout-motion={!mobileLoginReveal.isMobileViewport
                 ? shouldReduceMotion ? "direct" : "coordinated"
                 : undefined}
@@ -331,8 +387,11 @@ export function LoginExperience({
                   isAccountPickerCardMode ? "login-card-shell--account-picker" : "",
                 ].filter(Boolean).join(" ")}
                 data-desktop-entry-travel={!mobileLoginReveal.isMobileViewport && !shouldReduceMotion ? "large" : undefined}
+                data-login-card-entry={loginCardEntryComplete ? "ready" : "entering"}
                 initial={loginEnter}
                 animate={{ opacity: 1, x: 0, y: 0, scale: 1, filter: "blur(0px)" }}
+                onAnimationComplete={() => setLoginCardEntryComplete(true)}
+                style={{ pointerEvents: loginCardEntryComplete ? "auto" : "none" }}
                 transition={shouldReduceMotion
                   ? { duration: 0 }
                   : mobileLoginReveal.shouldAnimateReveal && mobileLoginReveal.isMobileViewport
@@ -348,20 +407,20 @@ export function LoginExperience({
                   ].filter(Boolean).join(" ")}
                   style={{ width: "100%", display: "flex", flexDirection: "column" }}
                 >
-                  {/* 方向语义：登录页在左、注册/找回在右。前进时旧内容向左让位、新内容从右进入，
-                      返回时整体向右回退，两块内容始终朝同一方向流动，避免同侧进出的折返感。 */}
+                  {/* 方向语义：登录页在左、注册/找回在右。桌面端先让旧内容完整离场，
+                      再从相反方向大幅引入新内容；手机端继续沿用短行程 fade-through。 */}
                   <motion.div
                     className="auth-card-viewport"
-                    data-desktop-height-motion={!mobileLoginReveal.isMobileViewport && !shouldReduceMotion ? "spring" : undefined}
+                    data-desktop-height-motion={!mobileLoginReveal.isMobileViewport && !shouldReduceMotion ? "tween" : undefined}
                     animate={shouldReduceMotion || mobileLoginReveal.isMobileViewport || panelHeight === null
                       ? undefined
                       : { height: panelHeight }}
                     style={mobileLoginReveal.isMobileViewport ? { height: "auto" } : undefined}
-                    transition={shouldReduceMotion ? { duration: 0 } : DESKTOP_HEIGHT_SPRING}
+                    transition={shouldReduceMotion ? { duration: 0 } : DESKTOP_HEIGHT_TRANSITION}
                   >
                   <AnimatePresence
                     initial={false}
-                    mode={mobileLoginReveal.isMobileViewport ? "wait" : "popLayout"}
+                    mode="wait"
                   >
                     {isRegisterMode ? (
                       <AuthModeMotionPanel
@@ -404,7 +463,7 @@ export function LoginExperience({
                       >
                         <AnimatePresence
                           initial={false}
-                          mode={mobileLoginReveal.isMobileViewport ? "wait" : "popLayout"}
+                          mode="wait"
                         >
                           <AccountSwitchMotionPanel
                             key={shouldShowAccountPicker ? "account-picker" : "login-form"}

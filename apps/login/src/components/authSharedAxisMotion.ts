@@ -1,7 +1,8 @@
 const MOBILE_SHARED_AXIS_ENTER_DISTANCE = 24;
 const MOBILE_SHARED_AXIS_EXIT_DISTANCE = 14;
-const DESKTOP_SHARED_AXIS_ENTER_DISTANCE = 30;
-const DESKTOP_SHARED_AXIS_EXIT_DISTANCE = 18;
+const DESKTOP_SHARED_AXIS_ENTER_DISTANCE = 156;
+const DESKTOP_SHARED_AXIS_EXIT_DISTANCE = 96;
+export const DESKTOP_SHARED_AXIS_EXIT_DURATION_MS = 260;
 
 // 手机端采用 Material fade-through 节奏：旧内容先快速让位，新内容再清晰进入，
 // 避免两层表单文字同时半透明叠在一起造成廉价的重影感。
@@ -44,28 +45,26 @@ export const MOBILE_STEP_SHARED_AXIS_VARIANTS = {
   exit: (direction: number) => getMobileSharedAxisExit(direction > 0 ? -1 : 1),
 };
 
-// 桌面端保留更长的空间行程，并把入场稍微错开，让内容、卡片高度和布局变化连续发生。
+// 桌面端使用清晰的大行程共享轴；退场完成后才挂载下一块内容，
+// 因此这里不再叠加 blur 或额外 delay，避免文字重影和两段动画互相拖拽。
 export const DESKTOP_SHARED_AXIS_ENTER_TRANSITION = {
-  delay: 0.06,
-  duration: 0.34,
+  duration: 0.46,
   ease: [0.16, 1, 0.3, 1],
 } as const;
 
 export const DESKTOP_SHARED_AXIS_EXIT_TRANSITION = {
-  duration: 0.18,
-  ease: [0.4, 0, 1, 1],
+  duration: DESKTOP_SHARED_AXIS_EXIT_DURATION_MS / 1000,
+  ease: [0.4, 0, 0.2, 1],
 } as const;
 
-export const DESKTOP_HEIGHT_SPRING = {
-  damping: 34,
-  mass: 0.78,
-  stiffness: 310,
-  type: "spring",
+// 高度由最外层认证视口统一驱动；固定时长比嵌套弹簧更容易和共享轴保持同一节奏。
+export const DESKTOP_HEIGHT_TRANSITION = {
+  duration: 0.46,
+  ease: [0.16, 1, 0.3, 1],
 } as const;
 
 export function getDesktopSharedAxisInitial(direction: number) {
   return {
-    filter: "blur(3px)",
     opacity: 0,
     x: direction * DESKTOP_SHARED_AXIS_ENTER_DISTANCE,
   };
@@ -73,7 +72,6 @@ export function getDesktopSharedAxisInitial(direction: number) {
 
 export function getDesktopSharedAxisEnter() {
   return {
-    filter: "blur(0px)",
     opacity: 1,
     transition: DESKTOP_SHARED_AXIS_ENTER_TRANSITION,
     x: 0,
@@ -82,7 +80,6 @@ export function getDesktopSharedAxisEnter() {
 
 export function getDesktopSharedAxisExit(direction: number) {
   return {
-    filter: "blur(2px)",
     opacity: 0,
     transition: DESKTOP_SHARED_AXIS_EXIT_TRANSITION,
     x: direction * DESKTOP_SHARED_AXIS_EXIT_DISTANCE,

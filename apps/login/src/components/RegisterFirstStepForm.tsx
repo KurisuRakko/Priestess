@@ -22,7 +22,6 @@ import {
   normalizePhoneLocalInput,
   REGISTER_PHONE_REGIONS,
 } from "./registerIdentityOptions";
-import { DESKTOP_HEIGHT_SPRING } from "./authSharedAxisMotion";
 import { getStepCopy, getStepLabel, REGISTER_STEPS, type RegisterStep } from "./registerStepConfig";
 import { RegisterPasswordStep } from "./RegisterPasswordStep";
 import { RegisterStepMotionPanel } from "./RegisterStepMotionPanel";
@@ -189,29 +188,22 @@ export function RegisterFirstStepForm({
   }, []);
 
   useEffect(() => {
-    if (shouldReduceStepMotion || isMobileViewport) {
-      // 手机端由全屏登录卡统一滚动，注册步骤不能继续保留桌面测量高度。
+    if (isMobileViewport) {
       setPanelHeight(null);
       return undefined;
     }
-
     if (!panelElement) return undefined;
 
     const updateHeight = () => {
       const nextHeight = Math.ceil(panelElement.scrollHeight || panelElement.getBoundingClientRect().height);
-      if (nextHeight > 0) {
-        setPanelHeight(nextHeight);
-      }
+      if (nextHeight > 0) setPanelHeight(nextHeight);
     };
     updateHeight();
-    if (typeof ResizeObserver === "undefined") {
-      // 少数受限浏览器环境没有 ResizeObserver 时，保留一次测量结果，避免注册面板高度动画阻塞流程。
-      return undefined;
-    }
+    if (typeof ResizeObserver === "undefined") return undefined;
     const observer = new ResizeObserver(updateHeight);
     observer.observe(panelElement);
     return () => observer.disconnect();
-  }, [errors.displayName, errors.identity, errors.inviteCode, errors.password, errors.passwordConfirm, errors.terms, errors.turnstile, errors.username, errors.verificationCode, identityMode, inviteChallenge, isMobileViewport, panelElement, resendCooldownSeconds, shouldReduceStepMotion, step, verificationBusy, verificationChallenge, verificationCode, verificationRequestId]);
+  }, [isMobileViewport, panelElement]);
 
   const clearError = (key: keyof FieldErrors) => {
     setErrors((current) => ({ ...current, [key]: undefined }));
@@ -663,13 +655,15 @@ export function RegisterFirstStepForm({
         </svg>
       </div>
 
-      <motion.div
-        animate={shouldReduceStepMotion || isMobileViewport || panelHeight === null ? undefined : { height: panelHeight }}
+      <div
         className="register-step-viewport"
-        style={isMobileViewport ? { height: "auto" } : undefined}
-        transition={shouldReduceStepMotion ? { duration: 0 } : DESKTOP_HEIGHT_SPRING}
+        style={isMobileViewport
+          ? { height: "auto" }
+          : panelHeight === null
+            ? undefined
+            : { height: panelHeight }}
       >
-        <AnimatePresence custom={stepDirection} initial={false} mode={isMobileViewport ? "wait" : "popLayout"}>
+        <AnimatePresence custom={stepDirection} initial={false} mode="wait">
           <RegisterStepMotionPanel
             direction={stepDirection}
             isMobileViewport={isMobileViewport}
@@ -991,7 +985,7 @@ export function RegisterFirstStepForm({
           ) : null}
           </RegisterStepMotionPanel>
         </AnimatePresence>
-      </motion.div>
+      </div>
     </>
   );
 }
