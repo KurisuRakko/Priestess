@@ -333,6 +333,12 @@ async function testDesktopAccountSwitchMotion(browserInstance, appUrl) {
     assert.equal(await page.locator('[data-auth-account-panel="login-form"]').getAttribute("data-auth-account-motion-origin"), "right");
     await page.locator('[data-auth-account-panel="account-picker"]').waitFor({ state: "detached", timeout: 1000 });
     await waitForPanelSettled(page, '[data-auth-account-panel="login-form"]');
+    await assertElementInsideViewport(
+      page,
+      ".login-card__back-button",
+      ".auth-card-viewport",
+      "desktop back-to-account-picker button",
+    );
     const forwardMotion = await finishDesktopMotionProbe(page, "account-forward");
     assertDesktopCinematicMotion(forwardMotion, "desktop account picker forward");
     assert.equal(await page.locator(".auth-card-viewport").getAttribute("data-desktop-height-motion"), "tween");
@@ -496,6 +502,36 @@ async function waitForExitingPanelStopsPointer(page, selector, label) {
     "none",
     `exiting ${label} panel must stop intercepting taps before the next panel enters`,
   );
+}
+
+async function assertElementInsideViewport(page, elementSelector, viewportSelector, label) {
+  const bounds = await page.evaluate(({ elementSelector: targetSelector, viewportSelector: clipSelector }) => {
+    const element = document.querySelector(targetSelector);
+    const viewport = document.querySelector(clipSelector);
+    if (!(element instanceof HTMLElement) || !(viewport instanceof HTMLElement)) return null;
+    const elementRect = element.getBoundingClientRect();
+    const viewportRect = viewport.getBoundingClientRect();
+    return {
+      element: {
+        bottom: elementRect.bottom,
+        left: elementRect.left,
+        right: elementRect.right,
+        top: elementRect.top,
+      },
+      viewport: {
+        bottom: viewportRect.bottom,
+        left: viewportRect.left,
+        right: viewportRect.right,
+        top: viewportRect.top,
+      },
+    };
+  }, { elementSelector, viewportSelector });
+
+  assert.ok(bounds, `${label} bounds missing`);
+  assert.ok(bounds.element.left >= bounds.viewport.left - 0.5, `${label} left edge must not be clipped: ${JSON.stringify(bounds)}`);
+  assert.ok(bounds.element.top >= bounds.viewport.top - 0.5, `${label} top edge must not be clipped: ${JSON.stringify(bounds)}`);
+  assert.ok(bounds.element.right <= bounds.viewport.right + 0.5, `${label} right edge must not be clipped: ${JSON.stringify(bounds)}`);
+  assert.ok(bounds.element.bottom <= bounds.viewport.bottom + 0.5, `${label} bottom edge must not be clipped: ${JSON.stringify(bounds)}`);
 }
 
 async function startDesktopMotionProbe(page, selector, key) {

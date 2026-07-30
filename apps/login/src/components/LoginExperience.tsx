@@ -237,11 +237,14 @@ export function LoginExperience({
   const drawerDelay = loginDelay + loginDuration + 0.06;
   const qrContentDelay = drawerDelay + 0.34;
   const drawerEase = [0.2, 0.8, 0.2, 1] as const;
+  const isAccountPickerCardMode = shouldShowAccountPicker && !isRegisterMode && !isForgotPasswordMode;
   const [desktopRevealTimedOut, setDesktopRevealTimedOut] = useState(false);
   const [desktopRevealed, setDesktopRevealed] = useState(mobileLoginReveal.isMobileViewport);
   const [loginCardEntryComplete, setLoginCardEntryComplete] = useState(Boolean(shouldReduceMotion));
   const [renderedAuthGridClassName, setRenderedAuthGridClassName] = useState(authGridClassName);
+  const [renderedAccountPickerCardMode, setRenderedAccountPickerCardMode] = useState(isAccountPickerCardMode);
   const previousAuthModeRef = useRef(authMode);
+  const previousAccountPickerCardModeRef = useRef(isAccountPickerCardMode);
   const desktopAccountDataReady = ["empty", "error", "ready"].includes(accountChoices.status);
   const desktopQrDataReady = !hasQrRequest
     || shouldShowAccountPicker
@@ -288,6 +291,22 @@ export function LoginExperience({
     );
     return () => window.clearTimeout(layoutTimer);
   }, [authGridClassName, authMode, mobileLoginReveal.isMobileViewport, shouldReduceMotion]);
+
+  useEffect(() => {
+    const accountPickerModeChanged = previousAccountPickerCardModeRef.current !== isAccountPickerCardMode;
+    previousAccountPickerCardModeRef.current = isAccountPickerCardMode;
+    if (!accountPickerModeChanged || mobileLoginReveal.isMobileViewport || shouldReduceMotion) {
+      setRenderedAccountPickerCardMode(isAccountPickerCardMode);
+      return undefined;
+    }
+
+    // 卡片宽度与内边距等旧内容退场后再切换，避免表单在离场途中重新换行并顶起高度。
+    const cardModeTimer = window.setTimeout(
+      () => setRenderedAccountPickerCardMode(isAccountPickerCardMode),
+      DESKTOP_SHARED_AXIS_EXIT_DURATION_MS,
+    );
+    return () => window.clearTimeout(cardModeTimer);
+  }, [isAccountPickerCardMode, mobileLoginReveal.isMobileViewport, shouldReduceMotion]);
 
   const loginEnter = shouldReduceMotion
     ? false
@@ -347,8 +366,6 @@ export function LoginExperience({
     "dwall-bg",
     isLocalLoginCooldownActive ? "dwall-bg--lockout" : shouldUseCenteredWallpaper ? "dwall-bg--register" : "",
   ].filter(Boolean).join(" ");
-  const isAccountPickerCardMode = shouldShowAccountPicker && !isRegisterMode && !isForgotPasswordMode;
-
   return (
     <main
       className="app-shell"
@@ -384,7 +401,7 @@ export function LoginExperience({
               <motion.div
                 className={[
                   "login-card-shell",
-                  isAccountPickerCardMode ? "login-card-shell--account-picker" : "",
+                  renderedAccountPickerCardMode ? "login-card-shell--account-picker" : "",
                 ].filter(Boolean).join(" ")}
                 data-desktop-entry-travel={!mobileLoginReveal.isMobileViewport && !shouldReduceMotion ? "large" : undefined}
                 data-login-card-entry={loginCardEntryComplete ? "ready" : "entering"}
@@ -402,7 +419,7 @@ export function LoginExperience({
                   ref={loginCardRef}
                   className={[
                     "login-card",
-                    isAccountPickerCardMode ? "login-card--account-picker" : "",
+                    renderedAccountPickerCardMode ? "login-card--account-picker" : "",
                     isLoginSubmitCardStage ? "login-card--submit-stage" : "",
                   ].filter(Boolean).join(" ")}
                   style={{ width: "100%", display: "flex", flexDirection: "column" }}

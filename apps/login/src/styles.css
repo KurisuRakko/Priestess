@@ -599,9 +599,10 @@ input:focus-visible {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex: 0 0 auto;
   width: 38px;
   height: 38px;
-  margin: -8px 0 14px -8px;
+  margin: 0 0 14px;
   border: 1px solid rgba(36, 35, 31, 0.12);
   border-radius: 50%;
   color: var(--color-text);
@@ -1170,7 +1171,7 @@ input:focus-visible {
   .login-card__back-button {
     width: 36px;
     height: 36px;
-    margin: -4px 0 12px -4px;
+    margin: 0 0 12px;
   }
 
   .form-row {
