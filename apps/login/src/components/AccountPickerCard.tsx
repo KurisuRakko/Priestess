@@ -7,7 +7,7 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
-import { ArrowLeft, ImageUp, LockKeyhole, LogOut, MoreVertical, Pencil, Plus, RefreshCw, X } from "lucide-react";
+import { ChevronLeft, ImageUp, LockKeyhole, LogOut, MoreVertical, Pencil, Plus, RefreshCw, X } from "lucide-react";
 import { AnimatePresence, LayoutGroup, motion, useIsPresent, useReducedMotion } from "motion/react";
 import {
   getPriestessDisplayAvatarUrl,
@@ -370,7 +370,8 @@ export function AccountPickerActionsView({
 
   return (
     <section className="account-picker-actions" aria-labelledby="account-picker-actions-title">
-      <div className="account-picker-actions__header">
+      {/* 返回导航独占顶部 leading 行，账号身份另起内容层，避免两种层级互相抢对齐基线。 */}
+      <div className="account-picker-actions__navigation">
         <motion.button
           animate={{ opacity: 1, x: 0 }}
           aria-label={t("返回账号选择")}
@@ -388,22 +389,24 @@ export function AccountPickerActionsView({
           whileHover={reduceMotion || busy ? undefined : { x: -3 }}
           whileTap={reduceMotion || busy ? undefined : { x: -1 }}
         >
-          <ArrowLeft aria-hidden="true" size={22} strokeWidth={1.8} />
+          <ChevronLeft aria-hidden="true" size={28} strokeWidth={2.1} />
         </motion.button>
+        <h2 id="account-picker-actions-title">{t("账号操作")}</h2>
+        <span aria-hidden="true" />
+      </div>
+
+      <div className="account-picker-actions__profile">
         <AccountAvatar
           account={account}
           layoutKey={resolvedLayoutKey}
           shouldReduceMotion={reduceMotion}
         />
-        <div className="account-picker-actions__heading">
-          <h2 id="account-picker-actions-title">{t("账号操作")}</h2>
-          <AccountIdentity
-            account={account}
-            busyLabel={busy ? t("处理中") : ""}
-            layoutKey={resolvedLayoutKey}
-            shouldReduceMotion={reduceMotion}
-          />
-        </div>
+        <AccountIdentity
+          account={account}
+          busyLabel={busy ? t("处理中") : ""}
+          layoutKey={resolvedLayoutKey}
+          shouldReduceMotion={reduceMotion}
+        />
       </div>
 
       {isSignedOutAccount(account) ? (

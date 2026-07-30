@@ -64,22 +64,32 @@ async function testInlineAccountActions({
     assert.equal(await page.locator('[role="dialog"]').count(), 0, "opening account actions must not create a dialog");
     assert.equal(await page.locator('[data-account-shared-part="avatar"]').count(), 1);
     assert.equal(await page.locator('[data-account-shared-part="identity"]').count(), 1);
-    const headerAlignment = await page.locator(".account-picker-actions__header").evaluate((header) => {
-      const backButton = header.querySelector(".account-picker-actions__back");
-      const avatar = header.querySelector('[data-account-shared-part="avatar"]');
-      if (!(backButton instanceof HTMLElement) || !(avatar instanceof HTMLElement)) return null;
+    const headerAlignment = await page.locator(".account-picker-actions").evaluate((actions) => {
+      const navigation = actions.querySelector(".account-picker-actions__navigation");
+      const backButton = actions.querySelector(".account-picker-actions__back");
+      const avatar = actions.querySelector('[data-account-shared-part="avatar"]');
+      const title = actions.querySelector("#account-picker-actions-title");
+      if (!(navigation instanceof HTMLElement)
+        || !(backButton instanceof HTMLElement)
+        || !(avatar instanceof HTMLElement)
+        || !(title instanceof HTMLElement)) return null;
+      const navigationRect = navigation.getBoundingClientRect();
+      const titleRect = title.getBoundingClientRect();
       return {
         avatarTop: avatar.getBoundingClientRect().top,
         backBackground: getComputedStyle(backButton).backgroundColor,
+        backBottom: backButton.getBoundingClientRect().bottom,
         backBorderWidth: getComputedStyle(backButton).borderTopWidth,
-        backTop: backButton.getBoundingClientRect().top,
+        navigationCenter: navigationRect.left + navigationRect.width / 2,
+        titleCenter: titleRect.left + titleRect.width / 2,
       };
     });
     assert.ok(headerAlignment);
     assert.ok(
-      headerAlignment.backTop <= headerAlignment.avatarTop - 6,
-      `back button should sit slightly above the shared avatar: ${JSON.stringify(headerAlignment)}`,
+      headerAlignment.backBottom <= headerAlignment.avatarTop,
+      `back navigation should occupy its own row above the account profile: ${JSON.stringify(headerAlignment)}`,
     );
+    assert.ok(Math.abs(headerAlignment.titleCenter - headerAlignment.navigationCenter) < 1);
     assert.equal(headerAlignment.backBorderWidth, "0px");
     assert.equal(headerAlignment.backBackground, "rgba(0, 0, 0, 0)");
     assertAccountSharedMotion(
