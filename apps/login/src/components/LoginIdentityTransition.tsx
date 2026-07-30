@@ -1,6 +1,7 @@
 import { getPriestessDisplayAvatarUrl } from "@priestess/shared";
+import "./LoginIdentityTransitionHandoff.css";
 
-export type LoginIdentityTransitionPhase = "failure" | "loading" | "success";
+export type LoginIdentityTransitionPhase = "failure" | "handoff" | "loading" | "success";
 
 type LoginIdentityTransitionProps = {
   avatarUrl: string;
@@ -31,6 +32,11 @@ export function LoginIdentityTransition({
               <circle className="login-identity-transition__ring-track" cx="52" cy="52" r="46" />
               <circle className="login-identity-transition__ring-arc" cx="52" cy="52" r="46" />
               <path className="login-identity-transition__failure-mark" d="M36 36L68 68M68 36L36 68" />
+              <g className="login-identity-transition__handoff-dots">
+                <circle cx="40" cy="52" r="3" />
+                <circle cx="52" cy="52" r="3" />
+                <circle cx="64" cy="52" r="3" />
+              </g>
             </svg>
           </div>
         </div>
@@ -53,7 +59,7 @@ export function LoginIdentityTransition({
 
       <div className="login-identity-transition__status">{statusText}</div>
 
-      {phase === "failure" && description ? (
+      {(phase === "failure" || phase === "handoff") && description ? (
         <div className="login-identity-transition__description">{description}</div>
       ) : null}
     </div>

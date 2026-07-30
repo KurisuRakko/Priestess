@@ -19,6 +19,7 @@ import { LoginExperience } from "./components/LoginExperience";
 import { type LoginCredentials } from "./components/LoginForm";
 import { startLoginTransitionOverlay, type LoginTransitionOverlayController, type LoginTransitionOverlayParams } from "./components/LoginTransitionOverlay";
 import { NotFoundPage } from "./components/NotFoundPage";
+import { useQrLoginCompletion } from "./components/useQrLoginCompletion";
 import { getAuthAccountAuthorizeBlocker, shouldShowAuthAccountPicker } from "./lib/accountAuthorization";
 import { completeAccountSelection, getAuthAccountActivationErrorMessage } from "./lib/accountSelection";
 import { isAccountEditableInBrowser, resolveAccountManagementActionTarget } from "./lib/accountManagementAction";
@@ -42,6 +43,7 @@ import {
 import { buildLoginPathWithNext, getCurrentAccountNextPath, readLoginNext } from "./lib/loginNext";
 import { resolveLoginLayoutState, type LoginLayoutAuthMode } from "./lib/loginLayoutState";
 import { getCurrentRoute, LOGIN_ROUTE_PATH, LEGACY_LOGIN_ROUTE_PATH, matchesRoutePath, type AppRoute } from "./lib/routes";
+import { settleAsync } from "./lib/settleAsync";
 import { getAuthAccountChoiceErrorMessage, type AuthAccountChoice, useAuthAccountChoices } from "./lib/useAuthAccountChoices";
 import { useMobileLoginReveal } from "./lib/useMobileLoginReveal";
 import { useQrLoginSession } from "./lib/useQrLoginSession";
@@ -68,17 +70,6 @@ type TotpChallenge = {
   displayName: string;
   username: string;
 };
-
-type AsyncResult<T> =
-  | { ok: true; value: T }
-  | { error: unknown; ok: false };
-
-function settleAsync<T>(promise: Promise<T>): Promise<AsyncResult<T>> {
-  return promise.then(
-    (value) => ({ ok: true, value }),
-    (error: unknown) => ({ error, ok: false }),
-  );
-}
 
 export function App() {
   const { t } = usePriestessTranslation("login");
@@ -282,10 +273,25 @@ export function App() {
 
     const displayName = params.session.user?.displayName || params.session.user?.username || params.fallbackUsername;
     const request = readAuthRequest();
+    let destinationPrepared = false;
+    const prepareDestination = () => {
+      if (destinationPrepared || params.signal.aborted) return;
+      destinationPrepared = true;
+      if (request) {
+        // 身份揭示完成后立刻在遮罩后刷新账号列表，把 1.6 秒确认停留用于准备下一屏。
+        setShowLoginFormForAccountPicker(false);
+        setAccountAuthorizeError("");
+        accountChoices.refresh();
+        return;
+      }
+      showNotice(t("登录成功"));
+      navigateTo(readLoginNext(), { replace: true });
+    };
 
     await params.controller.succeed({
       avatarUrl: params.session.user?.avatarUrl || "",
       durationMs: LOGIN_RESULT_ANIMATION_MS,
+      onVisualComplete: prepareDestination,
       postAnimationDelayMs: LOGIN_SUCCESS_HOLD_MS,
       title: t("已成功登录"),
       username: displayName,
@@ -294,19 +300,12 @@ export function App() {
     if (params.signal.aborted) {
       return;
     }
+    prepareDestination();
 
     if (request) {
-      // 所有应用授权都在成功动画结束后回到账号选择器，避免读取账号或授权请求锁住成功遮罩。
       releaseLoginSubmitStage();
-      setShowLoginFormForAccountPicker(false);
-      setAccountAuthorizeError("");
-      accountChoices.refresh();
       showNotice(t("已添加账号，请选择要继续使用的账号"));
-      return;
     }
-
-    showNotice(t("登录成功"));
-    navigateTo(readLoginNext(), { replace: true });
   };
 
   const finishRegisteredSession = async(session: LocalSession, _fallbackIdentity: string) => {
@@ -331,7 +330,7 @@ export function App() {
 
   const chooseAuthAccount = async(account: AuthAccountChoice) => {
     const request = readAuthRequest();
-    if (directAuthorizeBusy || removingAccountId) {
+    if (directAuthorizeBusy || removingAccountId || loginTransitionOverlayRef.current !== null) {
       return;
     }
     const blocker = getAuthAccountAuthorizeBlocker(account);
@@ -347,22 +346,63 @@ export function App() {
     setAuthorizingAccountId(accountKey);
     setDirectAuthorizeBusy(true);
 
+    const controllerPromise = startCenteredLoginOverlay({
+      identityReveal: true,
+      loadingTitle: request ? t("正在确认授权…") : t("正在准备你的账号…"),
+      primaryColor: "#c65f72",
+    });
+    const selectionResultPromise = settleAsync(completeAccountSelection(account, request, t));
+
     try {
-      const result = await completeAccountSelection(account, request, t);
+      const controller = await controllerPromise;
+      const selectionResult = await selectionResultPromise;
+      if (!selectionResult.ok) {
+        throw selectionResult.error;
+      }
+      const result = selectionResult.value;
+      const sessionUser = result.kind === "manage" ? result.session.user : null;
+      const displayName = sessionUser?.displayName
+        || sessionUser?.username
+        || account.displayName
+        || account.username
+        || account.email;
+      let destinationPrepared = false;
+      const prepareDestination = () => {
+        if (destinationPrepared || result.kind !== "manage") return;
+        destinationPrepared = true;
+        showNotice(t("正在进入 Priestess 个人中心"));
+        navigateTo(readLoginNext(), { replace: true });
+      };
+
+      await controller.succeed({
+        avatarUrl: sessionUser?.avatarUrl || account.avatarUrl,
+        durationMs: LOGIN_RESULT_ANIMATION_MS,
+        onVisualComplete: prepareDestination,
+        postAnimationDelayMs: LOGIN_SUCCESS_HOLD_MS,
+        title: t("已成功登录"),
+        username: displayName,
+      });
+
       if (result.kind === "redirect") {
         showNotice(t("正在返回应用"));
         window.location.assign(result.redirectUrl);
         return;
       }
-
-      showNotice(t("正在进入 Priestess 个人中心"));
-      navigateTo(readLoginNext(), { replace: true });
+      prepareDestination();
     } catch (error) {
       const message = getAuthAccountChoiceErrorMessage(
         error,
         request ? t("授权失败，请重新选择账号") : t("切换账号失败，请重新选择账号"),
       );
       setAccountAuthorizeError(message);
+      const controller = await controllerPromise;
+      await controller.fail({
+        description: message,
+        durationMs: LOGIN_RESULT_ANIMATION_MS,
+        onVisualComplete: releaseLoginSubmitStage,
+        postAnimationDelayMs: LOGIN_FAILURE_HOLD_MS,
+      });
+      releaseLoginSubmitStage();
       showNotice(message);
     } finally {
       setAuthorizingAccountId("");
@@ -510,6 +550,17 @@ export function App() {
     return controller;
   };
 
+  const runLoginFailureTransition = async(controller: LoginTransitionOverlayController, message: string) => {
+    await controller.fail({
+      description: message,
+      durationMs: LOGIN_RESULT_ANIMATION_MS,
+      // 失败说明停留期间先把可操作表单准备在遮罩后，淡出时不会再闪一次空卡片。
+      onVisualComplete: releaseLoginSubmitStage,
+      postAnimationDelayMs: LOGIN_FAILURE_HOLD_MS,
+    });
+    releaseLoginSubmitStage();
+  };
+
   const startBackendLoginTransition = async(credentials: LoginCredentials) => {
     if (authMode !== "login" || isAuthModeTransitioning || isLoginSubmitStage || isLocalLoginCooldownActive || loginTransitionOverlayRef.current !== null) {
       return;
@@ -544,11 +595,23 @@ export function App() {
     const finishPasswordLoginSession = async(session: LocalSession) => {
       resetLocalLoginFailureState();
       if (session.mfaRequired && session.challengeId) {
-        setTotpChallenge(buildTotpChallenge(session, credentials.username));
-        controller.dismiss();
-        loginTransitionOverlayRef.current = null;
-        releaseLoginSubmitStage();
-        showNotice(t("请输入认证器里的 6 位验证码"));
+        const nextChallenge = buildTotpChallenge(session, credentials.username);
+        let handoffPrepared = false;
+        const prepareTotpHandoff = () => {
+          if (handoffPrepared) return;
+          handoffPrepared = true;
+          setTotpChallenge(nextChallenge);
+          releaseLoginSubmitStage();
+          showNotice(t("请输入认证器里的 6 位验证码"));
+        };
+        await controller.handoff({
+          description: t("请输入认证器里的 6 位验证码"),
+          durationMs: 900,
+          onVisualComplete: prepareTotpHandoff,
+          postAnimationDelayMs: 220,
+          title: t("还需要一步"),
+        });
+        prepareTotpHandoff();
         return;
       }
 
@@ -579,12 +642,7 @@ export function App() {
           : localLoginFailureCount;
       const shouldActivateCooldown = shouldTrackFailure && nextFailureCount >= LOCAL_LOGIN_FAILURE_LIMIT;
       const message = getPriestessApiErrorMessage(error, t("登录失败"));
-      await controller.fail({
-        description: message,
-        durationMs: LOGIN_RESULT_ANIMATION_MS,
-        postAnimationDelayMs: LOGIN_FAILURE_HOLD_MS,
-      });
-      releaseLoginSubmitStage();
+      await runLoginFailureTransition(controller, message);
       if (shouldTrackFailure) {
         setLocalLoginFailureCount(nextFailureCount);
       }
@@ -638,12 +696,7 @@ export function App() {
       }
 
       const message = getPriestessApiErrorMessage(error, t("Passkey 登录失败"));
-      await controller.fail({
-        description: message,
-        durationMs: LOGIN_RESULT_ANIMATION_MS,
-        postAnimationDelayMs: LOGIN_FAILURE_HOLD_MS,
-      });
-      releaseLoginSubmitStage();
+      await runLoginFailureTransition(controller, message);
       showNotice(message);
     } finally {
       if (loginAbortControllerRef.current === abortController) {
@@ -690,12 +743,7 @@ export function App() {
       }
 
       const message = getPriestessApiErrorMessage(error, t("二步验证失败"));
-      await controller.fail({
-        description: message,
-        durationMs: LOGIN_RESULT_ANIMATION_MS,
-        postAnimationDelayMs: LOGIN_FAILURE_HOLD_MS,
-      });
-      releaseLoginSubmitStage();
+      await runLoginFailureTransition(controller, message);
       showNotice(message);
     } finally {
       if (loginAbortControllerRef.current === abortController) {
@@ -703,6 +751,13 @@ export function App() {
       }
     }
   };
+
+  useQrLoginCompletion({
+    active: route === "login",
+    confirmedRedirectUrl: qrSession.confirmedRedirectUrl,
+    startOverlay: startCenteredLoginOverlay,
+    t,
+  });
 
   useEffect(() => {
     const syncRoute = () => setRoute(getCurrentRoute());

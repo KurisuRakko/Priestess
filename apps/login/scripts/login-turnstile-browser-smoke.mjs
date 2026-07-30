@@ -46,6 +46,7 @@ try {
   await testEmptyAccountRefreshReturnsToLogin(browser, appUrl);
   await testAccountChoiceErrorCanRetry(browser, appUrl);
   await testMultipleAccountsRemainSelectable(browser, appUrl);
+  await testSavedAccountAuthorizationFailureReturnsPicker(browser, appUrl);
   await runInlineAccountActionsBrowserCases({
     appUrl,
     assertControlCanReceivePointer,
@@ -56,6 +57,7 @@ try {
   });
   await testSavedAccountDefersQrAndReusesSession(browser, appUrl);
   await testExpiredQrCreatesOneReplacement(browser, appUrl);
+  await testQrConfirmationCompletesThroughOverlay(browser, appUrl);
   await testBareLoginSelectsSavedAccount(browser, appUrl);
   await testReducedMotionAccountSwitch(browser, appUrl);
   await testBareLoginRemainsUsable(browser, appUrl);
@@ -107,6 +109,10 @@ async function testFirstLoginDoesNotAutoAuthorize(browserInstance, appUrl) {
     assert.equal(scenario.records.authorizations.length, 0);
 
     await accountButton.click();
+    const selectedIdentity = page.locator('.login-success-overlay.is-success [data-login-identity-phase="success"]');
+    await selectedIdentity.waitFor({ state: "visible", timeout: 5000 });
+    assert.equal(await selectedIdentity.locator("[data-login-identity-name]").innerText(), `Primary ${scenario.appId}`);
+    assert.equal(new URL(page.url()).pathname, "/login", "authorization redirect must wait for the identity confirmation");
     await page.waitForURL((url) => url.searchParams.get("authorized") === "1", { timeout: 5000 });
     assert.deepEqual(scenario.records.authorizations, [{
       app_id: scenario.appId,
@@ -168,6 +174,32 @@ async function testMultipleAccountsRemainSelectable(browserInstance, appUrl) {
     assert.equal(await accountButtons.count(), 2);
     assert.equal(await accountButtons.first().isEnabled(), true);
     assert.equal(scenario.records.authorizations.length, 0);
+  });
+}
+
+async function testSavedAccountAuthorizationFailureReturnsPicker(browserInstance, appUrl) {
+  const scenario = createScenario("authorization-failure", {
+    accountModeBeforeAuth: "single",
+    authorizeError: true,
+  });
+
+  await withScenario(browserInstance, scenario, async(page) => {
+    await page.goto(buildAuthUrl(appUrl, scenario.appId), { waitUntil: "domcontentloaded" });
+    const accountButton = page.locator(".account-picker__row-main").first();
+    await accountButton.waitFor({ state: "visible", timeout: 5000 });
+    await accountButton.click();
+
+    const failureOverlay = page.locator(".login-success-overlay.is-failure");
+    await failureOverlay.waitFor({ state: "visible", timeout: 5000 });
+    assert.equal(await failureOverlay.locator("[data-login-identity-avatar]").count(), 0);
+    assert.match(await failureOverlay.innerText(), /授权失败/);
+    await page.waitForTimeout(500);
+    assert.equal(await page.locator(".login-card--submit-stage").count(), 0, "account picker should be prepared behind authorization failure");
+    await failureOverlay.waitFor({ state: "detached", timeout: 4000 });
+
+    await accountButton.waitFor({ state: "visible", timeout: 2000 });
+    assert.equal(await accountButton.isEnabled(), true);
+    assert.equal(new URL(page.url()).pathname, "/login");
   });
 }
 
@@ -275,6 +307,24 @@ async function testExpiredQrCreatesOneReplacement(browserInstance, appUrl) {
   });
 }
 
+async function testQrConfirmationCompletesThroughOverlay(browserInstance, appUrl) {
+  const scenario = createScenario("qr-confirmed", { qrConfirmAfterPolls: 1 });
+
+  await withScenario(browserInstance, scenario, async(page) => {
+    await page.goto(buildAuthUrl(appUrl, scenario.appId), { waitUntil: "domcontentloaded" });
+    await page.locator(".qr-frame__code").waitFor({ state: "visible", timeout: 5000 });
+
+    const successOverlay = page.locator(".login-success-overlay.is-success");
+    await successOverlay.waitFor({ state: "visible", timeout: 7000 });
+    assert.match(await successOverlay.innerText(), /已在手机确认/);
+    assert.match(await successOverlay.innerText(), /正在返回应用/);
+    assert.equal(await successOverlay.locator("[data-login-identity-phase]").count(), 0, "QR confirmation has no backend identity to reveal");
+    assert.equal(new URL(page.url()).pathname, "/login", "QR redirect must wait for the completion transition");
+
+    await page.waitForURL((url) => url.searchParams.get("qr_authorized") === "1", { timeout: 5000 });
+  });
+}
+
 async function testLoginFailureRemainsReadable(browserInstance, appUrl) {
   const scenario = createScenario("login-failure-hold", { loginError: true });
 
@@ -289,6 +339,7 @@ async function testLoginFailureRemainsReadable(browserInstance, appUrl) {
     assert.equal(await failureOverlay.locator("[data-login-identity-name]").count(), 0, "failed credentials must not reveal a name");
     await page.waitForTimeout(2000);
     assert.equal(await failureOverlay.count(), 1, "failure result should remain visible long enough to read");
+    assert.equal(await page.locator(".login-card--submit-stage").count(), 0, "the retry form should be prepared behind the readable failure result");
     assert.match(await failureOverlay.innerText(), /登录失败/);
     assert.match(await failureOverlay.innerText(), /用户名或密码错误/);
     await failureOverlay.waitFor({ state: "detached", timeout: 3000 });
@@ -365,6 +416,8 @@ async function testPasswordLoginRevealsIdentityAfterVerification(browserInstance
     assert.ok(placement.contentCenterY < placement.cardCenterY - 8, "identity result should sit in the card's upper visual region");
 
     await page.waitForTimeout(950);
+    assert.equal(new URL(page.url()).pathname, "/manage", "the destination should load behind the success confirmation");
+    assert.equal(await page.locator(".account-shell").count(), 1);
     const settled = await successOverlay.evaluate((overlay) => {
       const avatar = overlay.querySelector("[data-login-identity-avatar]");
       const ring = overlay.querySelector(".login-identity-transition__ring-shell");
@@ -495,6 +548,10 @@ async function testBareLoginSelectsSavedAccount(browserInstance, appUrl) {
     await accountButton.waitFor({ state: "visible" });
 
     await accountButton.click();
+    const accountIdentity = page.locator('.login-success-overlay.is-success [data-login-identity-phase="success"]');
+    await accountIdentity.waitFor({ state: "visible", timeout: 5000 });
+    assert.equal(await accountIdentity.locator("[data-login-identity-name]").innerText(), `User ${scenario.appId}`);
+    assert.equal(new URL(page.url()).pathname, "/login", "saved-account navigation must wait until identity reveal is perceptible");
     await page.waitForURL((url) => url.pathname === "/manage", { timeout: 5000 });
     await page.locator(".account-shell").waitFor({ state: "visible", timeout: 5000 });
     assert.deepEqual(scenario.records.activations, [{
@@ -592,6 +649,11 @@ async function testTotpReturnsToAccountPicker(browserInstance, appUrl) {
     await page.locator("input[autocomplete='username']").waitFor({ state: "visible" });
     await submitPassword(page, "totp-user");
 
+    const handoffIdentity = page.locator('[data-login-identity-phase="handoff"]');
+    await handoffIdentity.waitFor({ state: "visible", timeout: 5000 });
+    assert.equal(await handoffIdentity.locator("[data-login-identity-avatar]").count(), 0);
+    assert.equal(await handoffIdentity.locator("[data-login-identity-name]").count(), 0);
+    assert.match(await handoffIdentity.innerText(), /还需要一步/);
     const totpInput = page.locator("input[autocomplete='one-time-code']");
     await totpInput.waitFor({ state: "visible", timeout: 5000 });
     assert.equal(await totpInput.isEnabled(), true);
@@ -824,6 +886,7 @@ function createScenario(appId, options = {}) {
     accountError: options.accountError ?? false,
     accountModeAfterAuth: options.accountModeAfterAuth ?? "empty",
     accountModeBeforeAuth: options.accountModeBeforeAuth ?? "empty",
+    authorizeError: options.authorizeError ?? false,
     browserAccountMode: options.browserAccountMode ?? "empty",
     appId,
     authenticated: false,
@@ -849,6 +912,7 @@ function createScenario(appId, options = {}) {
     },
     removedUserIds: new Set(),
     qrSessionExpiresIn: options.qrSessionExpiresIn ?? 120,
+    qrConfirmAfterPolls: options.qrConfirmAfterPolls ?? 0,
     requireTurnstile: options.requireTurnstile ?? false,
   };
 }
@@ -1041,6 +1105,10 @@ async function startMockApiServer() {
     if (req.method === "POST" && url.pathname === "/auth/priestess/authorize") {
       const body = await readJsonBody(req);
       scenario.records.authorizations.push(body);
+      if (scenario.authorizeError) {
+        writeJson(res, 409, { error: { code: "authorization_failed", message: "授权失败，请重新选择账号" } });
+        return;
+      }
       const redirectUrl = new URL(body.return_to);
       redirectUrl.searchParams.set("authorized", "1");
       writeJson(res, 200, { redirect_url: redirectUrl.toString() });
@@ -1090,6 +1158,14 @@ async function startMockApiServer() {
 
     if (req.method === "GET" && url.pathname.startsWith("/auth/priestess/qr/sessions/")) {
       scenario.records.qrStatuses.push(url.pathname);
+      if (scenario.qrConfirmAfterPolls > 0 && scenario.records.qrStatuses.length >= scenario.qrConfirmAfterPolls) {
+        writeJson(res, 200, {
+          expires_in: scenario.qrSessionExpiresIn,
+          redirect_url: `${origin}/client-callback?qr_authorized=1`,
+          status: "confirmed",
+        });
+        return;
+      }
       writeJson(res, 200, { expires_in: scenario.qrSessionExpiresIn, status: "pending" });
       return;
     }

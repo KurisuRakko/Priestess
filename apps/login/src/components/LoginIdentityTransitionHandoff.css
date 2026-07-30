@@ -1,0 +1,108 @@
+.login-identity-transition.is-handoff .login-identity-transition__visual {
+  animation: lso-identity-handoff-expand 520ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.login-identity-transition.is-handoff .login-identity-transition__ring-motion {
+  animation: lso-identity-ring-handoff-turn 620ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.login-identity-transition.is-handoff .login-identity-transition__ring-arc {
+  animation: lso-identity-ring-handoff 520ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.login-identity-transition.is-handoff .login-identity-transition__status {
+  color: var(--lso-primary-color, #c65f72);
+  font-weight: 600;
+  opacity: 0;
+  transform: translateY(6px);
+  animation: lso-identity-text-in 300ms 180ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.login-identity-transition__handoff-dots {
+  fill: var(--lso-primary-color, #c65f72);
+  opacity: 0;
+  transform: scale(0.72);
+  transform-origin: 52px 52px;
+}
+
+.login-identity-transition.is-handoff .login-identity-transition__handoff-dots {
+  animation: lso-identity-handoff-dots 360ms 160ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.login-success-overlay.is-reduced-motion .login-identity-transition.is-handoff .login-identity-transition__visual {
+  width: 72px;
+  height: 72px;
+}
+
+.login-success-overlay.is-reduced-motion .login-identity-transition.is-handoff .login-identity-transition__ring-arc {
+  stroke-dasharray: 218 71;
+  stroke-dashoffset: -20;
+}
+
+.login-success-overlay.is-reduced-motion .login-identity-transition.is-handoff .login-identity-transition__handoff-dots {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-identity-transition.is-handoff .login-identity-transition__visual {
+    width: 72px;
+    height: 72px;
+  }
+
+  .login-identity-transition.is-handoff .login-identity-transition__ring-arc {
+    stroke-dasharray: 218 71;
+    stroke-dashoffset: -20;
+  }
+
+  .login-identity-transition.is-handoff .login-identity-transition__handoff-dots {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes lso-identity-ring-handoff-turn {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(220deg);
+  }
+}
+
+@keyframes lso-identity-ring-handoff {
+  from {
+    stroke-dasharray: 48 241;
+    stroke-dashoffset: 0;
+  }
+
+  to {
+    stroke-dasharray: 218 71;
+    stroke-dashoffset: -20;
+  }
+}
+
+@keyframes lso-identity-handoff-expand {
+  from {
+    width: 60px;
+    height: 60px;
+  }
+
+  to {
+    width: 72px;
+    height: 72px;
+  }
+}
+
+@keyframes lso-identity-handoff-dots {
+  from {
+    opacity: 0;
+    transform: scale(0.72);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}

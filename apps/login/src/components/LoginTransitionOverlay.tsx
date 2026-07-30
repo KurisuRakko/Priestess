@@ -12,6 +12,7 @@ const MIN_DURATION_MS = 700;
 const MAX_DURATION_MS = 3500;
 const PHASE_LOADING = "loading";
 const PHASE_CHALLENGE = "challenge";
+const PHASE_HANDOFF = "handoff";
 const PHASE_SUCCESS = "success";
 const PHASE_FAILURE = "failure";
 const PHASE_CLOSING = "closing";
@@ -23,10 +24,12 @@ const SPINNER_ROTATE_MS = 900;
 const IDENTITY_LOADING_MIN_MS = 420;
 const IDENTITY_SUCCESS_SEQUENCE_MS = 880;
 const IDENTITY_FAILURE_SEQUENCE_MS = 620;
+const IDENTITY_HANDOFF_SEQUENCE_MS = 620;
 
 type LoginTransitionPhase =
   | typeof PHASE_LOADING
   | typeof PHASE_CHALLENGE
+  | typeof PHASE_HANDOFF
   | typeof PHASE_SUCCESS
   | typeof PHASE_FAILURE
   | typeof PHASE_CLOSING;
@@ -99,6 +102,7 @@ type RenderState = Required<Pick<LoginTransitionOverlayParams, "avatarUrl" | "id
 
 export type LoginTransitionOverlayController = {
   challenge: (challengeParams: LoginTransitionOverlayParams) => Promise<string>;
+  handoff: (handoffParams?: LoginTransitionOverlayParams) => Promise<void>;
   succeed: (successParams?: LoginTransitionOverlayParams) => Promise<void>;
   fail: (failureParams?: LoginTransitionOverlayParams) => Promise<void>;
   dismiss: () => void;
@@ -118,6 +122,10 @@ function getDefaultSuccessTitle() {
 
 function getDefaultFailureTitle() {
   return translatePriestess("login:登录失败");
+}
+
+function getDefaultHandoffTitle() {
+  return translatePriestess("login:还需要一步");
 }
 
 function normalizeText(value: unknown) {
@@ -213,6 +221,9 @@ function getOutcomeAnimationCompletionMs(
   }
   if (identityReveal && phase === PHASE_FAILURE) {
     return prefersReducedMotion ? 180 : IDENTITY_FAILURE_SEQUENCE_MS;
+  }
+  if (identityReveal && phase === PHASE_HANDOFF) {
+    return prefersReducedMotion ? 180 : IDENTITY_HANDOFF_SEQUENCE_MS;
   }
 
   const reducedMotionTitleDelay = 80;
@@ -349,7 +360,13 @@ function buildRenderState(
     identityReveal: Boolean(baseParams.identityReveal),
     phase,
     loadingTitle: normalizedLoadingTitle,
-    title: normalizeText(params.title) || (phase === PHASE_FAILURE ? getDefaultFailureTitle() : getDefaultSuccessTitle()),
+    title: normalizeText(params.title) || (
+      phase === PHASE_FAILURE
+        ? getDefaultFailureTitle()
+        : phase === PHASE_HANDOFF
+          ? getDefaultHandoffTitle()
+          : getDefaultSuccessTitle()
+    ),
     description: normalizeText(params.description),
     organizationName: normalizeText(params.organizationName) || normalizedOrganizationName,
     username: normalizeText(params.username) || normalizedUsername,
@@ -417,7 +434,7 @@ function LoginTransitionOverlayInner(props: RenderState & { onFinish: () => void
   const cleanDescription = normalizeText(description);
   const cleanChallengeDescription = normalizeText(challengeDescription);
   const cleanAvatarUrl = normalizeText(avatarUrl);
-  const identityPhase = phase === PHASE_LOADING || phase === PHASE_SUCCESS || phase === PHASE_FAILURE
+  const identityPhase = phase === PHASE_LOADING || phase === PHASE_SUCCESS || phase === PHASE_FAILURE || phase === PHASE_HANDOFF
     ? phase
     : null;
   const failureDescriptionDelayMs = getFailureDescriptionDelayMs(timeline, prefersReducedMotion);
@@ -452,7 +469,7 @@ function LoginTransitionOverlayInner(props: RenderState & { onFinish: () => void
   }, [phase, phaseKey]);
 
   useEffect(() => {
-    if (phase !== PHASE_SUCCESS && phase !== PHASE_FAILURE) {
+    if (phase !== PHASE_SUCCESS && phase !== PHASE_FAILURE && phase !== PHASE_HANDOFF) {
       return undefined;
     }
 
@@ -511,6 +528,7 @@ function LoginTransitionOverlayInner(props: RenderState & { onFinish: () => void
         "login-success-overlay",
         phase === PHASE_LOADING ? "is-loading" : null,
         phase === PHASE_CHALLENGE ? "is-challenge" : null,
+        phase === PHASE_HANDOFF ? "is-handoff" : null,
         phase === PHASE_SUCCESS ? "is-success" : null,
         phase === PHASE_FAILURE ? "is-failure" : null,
         isExiting ? "is-exiting" : null,
@@ -606,6 +624,19 @@ function LoginTransitionOverlayInner(props: RenderState & { onFinish: () => void
             )}
           </>
         ) : null}
+
+        {phase === PHASE_HANDOFF && !identityReveal ? (
+          <>
+            <div key={`handoff-title-${phaseKey}`} className="login-success-overlay-line login-success-overlay-title" style={{ "--lso-text-delay-ms": `${prefersReducedMotion ? 80 : timeline.titleDelayMs}ms` } as CssVars}>
+              {titleText}
+            </div>
+            {cleanDescription === "" ? null : (
+              <div key={`handoff-description-${phaseKey}`} className="login-success-overlay-line login-success-overlay-organization" style={{ "--lso-text-delay-ms": `${failureDescriptionDelayMs}ms` } as CssVars}>
+                {cleanDescription}
+              </div>
+            )}
+          </>
+        ) : null}
       </div>
     </div>
   );
@@ -614,6 +645,7 @@ function LoginTransitionOverlayInner(props: RenderState & { onFinish: () => void
 function createNoopController(): LoginTransitionOverlayController {
   return {
     challenge: () => Promise.resolve(""),
+    handoff: () => Promise.resolve(),
     succeed: () => Promise.resolve(),
     fail: () => Promise.resolve(),
     dismiss: () => {},
@@ -738,7 +770,10 @@ function createOverlayController(params: LoginTransitionOverlayParams = {}): Log
     );
   };
 
-  const transitionToOutcome = (phase: typeof PHASE_SUCCESS | typeof PHASE_FAILURE, nextParams: LoginTransitionOverlayParams = {}) => {
+  const transitionToOutcome = (
+    phase: typeof PHASE_SUCCESS | typeof PHASE_FAILURE | typeof PHASE_HANDOFF,
+    nextParams: LoginTransitionOverlayParams = {},
+  ) => {
     if (isFinished) {
       return Promise.resolve();
     }
@@ -809,6 +844,9 @@ function createOverlayController(params: LoginTransitionOverlayParams = {}): Log
   const controller: LoginTransitionOverlayController = {
     challenge(challengeParams = {}) {
       return transitionToChallenge(challengeParams);
+    },
+    handoff(handoffParams = {}) {
+      return transitionToOutcome(PHASE_HANDOFF, handoffParams);
     },
     succeed(successParams = {}) {
       return transitionToOutcome(PHASE_SUCCESS, successParams);

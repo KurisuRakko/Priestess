@@ -58,6 +58,7 @@ export function useQrLoginSession({
   const statusRef = useRef<QrSessionPollStatus["status"]>("pending");
   const tRef = useRef(t);
   const [error, setError] = useState("");
+  const [confirmedRedirectUrl, setConfirmedRedirectUrl] = useState("");
   const [qrValue, setQrValue] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [status, setStatus] = useState<QrSessionPollStatus["status"]>("pending");
@@ -85,6 +86,7 @@ export function useQrLoginSession({
     createTaskRef.current = null;
     sessionRef.current = null;
     setError("");
+    setConfirmedRedirectUrl("");
     setQrValue("");
     setRefreshing(false);
     updateStatus("pending");
@@ -186,19 +188,16 @@ export function useQrLoginSession({
     let pollInFlight = false;
     let pollTimer: number | null = null;
     let autoRefreshTimer: number | null = null;
-    let redirectTimer: number | null = null;
     let retryTimer: number | null = null;
 
     const clearTimers = () => {
       if (expiryTimer !== null) window.clearTimeout(expiryTimer);
       if (pollTimer !== null) window.clearInterval(pollTimer);
       if (autoRefreshTimer !== null) window.clearInterval(autoRefreshTimer);
-      if (redirectTimer !== null) window.clearTimeout(redirectTimer);
       if (retryTimer !== null) window.clearTimeout(retryTimer);
       expiryTimer = null;
       pollTimer = null;
       autoRefreshTimer = null;
-      redirectTimer = null;
       retryTimer = null;
     };
     monitorStopRef.current = clearTimers;
@@ -235,9 +234,8 @@ export function useQrLoginSession({
       }
       if (nextStatus.status === "confirmed") {
         clearTimers();
-        if (nextStatus.redirectUrl) {
-          redirectTimer = window.setTimeout(() => window.location.assign(nextStatus.redirectUrl), 650);
-        }
+        // 最终回跳交给 App 的统一完成动画；这里只保留后端确认结果，不提前离开页面。
+        setConfirmedRedirectUrl(nextStatus.redirectUrl);
         return;
       }
       clearTimers();
@@ -319,6 +317,7 @@ export function useQrLoginSession({
   }, [active, enabled, ensureSession, requestKey, stopMonitoring, updateStatus]);
 
   return {
+    confirmedRedirectUrl,
     error,
     qrValue,
     refreshing,

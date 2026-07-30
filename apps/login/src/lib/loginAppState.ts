@@ -6,6 +6,7 @@ export const LOGIN_SUCCESS_HOLD_MS = 1600;
 // 失败信息需要给用户留出完整阅读时间，但不拖慢成功登录后的跳转。
 export const LOGIN_FAILURE_HOLD_MS = 2400;
 export const LOGIN_INTRO_QR_DELAY_MS = 1280;
+export const QR_CONFIRMED_REDIRECT_HOLD_MS = 650;
 // 大行程抽屉和完整布局等待是桌面镜头的一部分，同时给二维码与表单留足加载时间。
 export const AUTH_MODE_DRAWER_IN_MS = 760;
 export const AUTH_MODE_TRANSITION_MS = 820;
