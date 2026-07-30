@@ -180,12 +180,13 @@ export function LoginForm({
         </svg>
       </div>
 
-      <AnimatePresence initial={false} mode="wait">
-        <LoginFormModePanel
-          isTotpMode={isTotpMode}
-          key={isTotpMode ? "totp" : "password"}
-          shouldReduceMotion={Boolean(shouldReduceMotion)}
-        >
+      <div className="login-form-mode-stack">
+        <AnimatePresence initial={false} mode="sync">
+          <LoginFormModePanel
+            isTotpMode={isTotpMode}
+            key={isTotpMode ? "totp" : "password"}
+            shouldReduceMotion={Boolean(shouldReduceMotion)}
+          >
           <div className="login-card__heading">
             <h1 id="login-title">{isTotpMode ? t("二步验证") : t("欢迎回来")}</h1>
             <p>
@@ -366,8 +367,9 @@ export function LoginForm({
               </p>
             </form>
           )}
-        </LoginFormModePanel>
-      </AnimatePresence>
+          </LoginFormModePanel>
+        </AnimatePresence>
+      </div>
     </>
   );
 }

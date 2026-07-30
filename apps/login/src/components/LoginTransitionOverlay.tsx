@@ -18,9 +18,11 @@ const PHASE_SUCCESS = "success";
 const PHASE_FAILURE = "failure";
 const PHASE_CLOSING = "closing";
 const DEFAULT_PRIMARY_COLOR = "#c65f72";
-const ORIGIN_CONTENT_IN_DELAY_MS = 100;
+// 卡片完成归位时直接交叉淡入状态层，避免旧表单消失后再等待一段空白。
+const ORIGIN_CONTENT_IN_DELAY_MS = 0;
 const ORIGIN_CONTENT_IN_MS = 150;
-const ORIGIN_CONTENT_OUT_MS = 90;
+// 父层退场覆盖头像和文案各自的 180ms exit，不能提前透明掉子元素。
+const ORIGIN_CONTENT_OUT_MS = 220;
 const SPINNER_ROTATE_MS = 900;
 const IDENTITY_LOADING_MIN_MS = 420;
 // 保存账号头像先完成跨卡片位移，再进入放大揭示，避免中途改目标导致速度归零。

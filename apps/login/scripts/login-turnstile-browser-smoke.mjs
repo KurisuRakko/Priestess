@@ -391,12 +391,6 @@ async function testPasswordLoginRevealsIdentityAfterVerification(browserInstance
     await loadingIdentity.waitFor({ state: "visible", timeout: 5000 });
     const loadingObservedAt = Date.now();
     await page.waitForTimeout(180);
-    const entryFrames = await finishLoginTransitionFrameProbe(page, "identity-entry");
-    assert.ok(entryFrames);
-    assert.ok(entryFrames.frameCount >= 20, `login handoff should provide a measurable frame sequence: ${JSON.stringify(entryFrames)}`);
-    assert.ok(entryFrames.p95FrameGapMs <= 35, `login handoff should stay near a smooth frame cadence: ${JSON.stringify(entryFrames)}`);
-    assert.ok(entryFrames.longFrameCount <= 1, `login handoff should not repeatedly stall the main thread: ${JSON.stringify(entryFrames)}`);
-    assert.equal(entryFrames.blurredFrameCount, 0, "login handoff must not animate a large blurred form surface");
     assert.equal(await loadingIdentity.locator("[data-login-identity-avatar]").count(), 0);
     assert.equal(await loadingIdentity.locator("[data-login-identity-name]").count(), 0);
     assert.equal(await loadingIdentity.locator(".login-identity-transition__status").innerText(), "Trying to sign you in…");
@@ -469,6 +463,18 @@ async function testPasswordLoginRevealsIdentityAfterVerification(browserInstance
       page.locator(".account-shell").waitFor({ state: "attached", timeout: 2500 }),
       page.waitForTimeout(950),
     ]);
+    const entryFrames = await finishLoginTransitionFrameProbe(page, "identity-entry");
+    assert.ok(entryFrames);
+    assert.ok(entryFrames.frameCount >= 20, `login handoff should provide a measurable frame sequence: ${JSON.stringify(entryFrames)}`);
+    assert.ok(entryFrames.p95FrameGapMs <= 35, `login handoff should stay near a smooth frame cadence: ${JSON.stringify(entryFrames)}`);
+    assert.ok(entryFrames.longFrameCount <= 1, `login handoff should not repeatedly stall the main thread: ${JSON.stringify(entryFrames)}`);
+    assert.equal(entryFrames.blurredFrameCount, 0, "login handoff must not animate a large blurred form surface");
+    assert.equal(entryFrames.lowHandoffOpacityFrameCount, 0, "the form-to-loader crossfade must not expose an empty card");
+    assert.ok(entryFrames.minimumHandoffOpacity >= 0.45, `the form and loader must keep continuous visible feedback: ${JSON.stringify(entryFrames)}`);
+    assert.ok(entryFrames.identityHeightRange <= 0.1, `identity stage height must remain stable across loading and success: ${JSON.stringify(entryFrames)}`);
+    assert.ok(entryFrames.visualWidthRange <= 0.1, `identity visual must reserve its final width instead of resizing every frame: ${JSON.stringify(entryFrames)}`);
+    assert.equal(entryFrames.visualWidthChangeCount, 0, "identity reveal must not drive layout with per-frame width changes");
+    assert.ok(entryFrames.ringWidthRange >= 40, "the fixed identity stage must still show a clearly expanding compositor ring");
     assert.equal(new URL(page.url()).pathname, "/manage", "the destination should load behind the success confirmation");
     const settled = await successOverlay.evaluate((overlay) => {
       const avatar = overlay.querySelector("[data-login-identity-avatar]");
@@ -483,10 +489,22 @@ async function testPasswordLoginRevealsIdentityAfterVerification(browserInstance
 
     await successOverlay.evaluate((overlay) => {
       window.__priestessIdentityExitObserved = false;
+      window.__priestessIdentityExitOpacitySamples = [];
       const observer = new MutationObserver(() => {
         if (overlay.classList.contains("is-exiting")) {
           window.__priestessIdentityExitObserved = true;
           observer.disconnect();
+          const sampleOpacity = () => {
+            const content = overlay.querySelector(".login-success-overlay-content");
+            if (!(content instanceof HTMLElement) || !content.isConnected) return;
+            window.__priestessIdentityExitOpacitySamples.push(
+              Number.parseFloat(getComputedStyle(content).opacity),
+            );
+            if (window.__priestessIdentityExitOpacitySamples.length < 20) {
+              requestAnimationFrame(sampleOpacity);
+            }
+          };
+          requestAnimationFrame(sampleOpacity);
         }
       });
       observer.observe(overlay, { attributeFilter: ["class"] });
@@ -498,6 +516,11 @@ async function testPasswordLoginRevealsIdentityAfterVerification(browserInstance
       await page.evaluate(() => window.__priestessIdentityExitObserved),
       true,
       "the completed identity layer must expose an exit phase before unmounting",
+    );
+    const exitOpacitySamples = await page.evaluate(() => window.__priestessIdentityExitOpacitySamples);
+    assert.ok(
+      exitOpacitySamples.some((opacity) => opacity > 0.08 && opacity < 0.92),
+      `the parent overlay must visibly crossfade while its avatar and text exit: ${JSON.stringify(exitOpacitySamples)}`,
     );
   }, { locale: "en-US", reducedMotion: "no-preference", viewport: { height: 900, width: 1440 } });
 }
@@ -859,8 +882,16 @@ async function testTotpReturnsToAccountPicker(browserInstance, appUrl) {
 
     const outgoingTotpPanel = page.locator('[data-login-form-panel="totp"]');
     await page.getByRole("button", { name: "返回密码登录" }).click();
-    await page.locator('[data-login-form-panel="totp"][data-login-form-presence="exiting"]').waitFor({ state: "attached", timeout: 1000 });
-    await page.locator('[data-login-form-panel="password"]').waitFor({ state: "visible", timeout: 2000 });
+    const exitingTotpPanel = page.locator('[data-login-form-panel="totp"][data-login-form-presence="exiting"]');
+    await exitingTotpPanel.waitFor({ state: "attached", timeout: 1000 });
+    const incomingPasswordPanel = page.locator('[data-login-form-panel="password"]');
+    await incomingPasswordPanel.waitFor({ state: "visible", timeout: 2000 });
+    assert.equal(await outgoingTotpPanel.count(), 1, "the outgoing TOTP panel must overlap the incoming password panel during crossfade");
+    assert.equal(
+      await exitingTotpPanel.evaluate((element) => getComputedStyle(element).pointerEvents),
+      "none",
+      "the overlapping outgoing TOTP panel must not block the incoming form",
+    );
     await outgoingTotpPanel.waitFor({ state: "detached", timeout: 1000 });
 
     await page.locator(".login-form .primary-button[type='submit']").click();
@@ -1156,6 +1187,8 @@ async function startLoginTransitionFrameProbe(page, key) {
     const probe = {
       blurredFrameCount: 0,
       frameGaps: [],
+      geometryFrames: [],
+      handoffOpacityTotals: [],
       lastFrameAt: null,
       running: true,
     };
@@ -1169,11 +1202,32 @@ async function startLoginTransitionFrameProbe(page, key) {
       probe.lastFrameAt = now;
 
       const submitSurface = document.querySelector(".login-card--submit-stage .auth-card-content");
+      const overlayContent = document.querySelector(".login-success-overlay-content");
       if (submitSurface instanceof HTMLElement) {
         const filter = getComputedStyle(submitSurface).filter;
         if (filter !== "none" && filter !== "blur(0px)") {
           probe.blurredFrameCount += 1;
         }
+      }
+      if (submitSurface instanceof HTMLElement || overlayContent instanceof HTMLElement) {
+        const formOpacity = submitSurface instanceof HTMLElement
+          ? Number.parseFloat(getComputedStyle(submitSurface).opacity)
+          : 0;
+        const overlayOpacity = overlayContent instanceof HTMLElement
+          ? Number.parseFloat(getComputedStyle(overlayContent).opacity)
+          : 0;
+        probe.handoffOpacityTotals.push(formOpacity + overlayOpacity);
+      }
+
+      const identity = document.querySelector(".login-identity-transition");
+      const visual = document.querySelector(".login-identity-transition__visual");
+      const ring = document.querySelector(".login-identity-transition__ring-shell");
+      if (identity instanceof HTMLElement && visual instanceof HTMLElement && ring instanceof HTMLElement) {
+        probe.geometryFrames.push({
+          identityHeight: identity.getBoundingClientRect().height,
+          ringWidth: ring.getBoundingClientRect().width,
+          visualWidth: visual.getBoundingClientRect().width,
+        });
       }
       requestAnimationFrame(sample);
     };
@@ -1188,12 +1242,23 @@ async function finishLoginTransitionFrameProbe(page, key) {
     probe.running = false;
     delete window[probeKey];
     const sortedGaps = [...probe.frameGaps].sort((left, right) => left - right);
+    const identityHeights = probe.geometryFrames.map((frame) => frame.identityHeight);
+    const ringWidths = probe.geometryFrames.map((frame) => frame.ringWidth);
+    const visualWidths = probe.geometryFrames.map((frame) => frame.visualWidth);
     const p95Index = Math.min(sortedGaps.length - 1, Math.floor(sortedGaps.length * 0.95));
     return {
       blurredFrameCount: probe.blurredFrameCount,
       frameCount: sortedGaps.length,
+      identityHeightRange: identityHeights.length > 0 ? Math.max(...identityHeights) - Math.min(...identityHeights) : 0,
       longFrameCount: sortedGaps.filter((gap) => gap > 50).length,
+      lowHandoffOpacityFrameCount: probe.handoffOpacityTotals.filter((opacity) => opacity < 0.2).length,
+      minimumHandoffOpacity: probe.handoffOpacityTotals.length > 0 ? Math.min(...probe.handoffOpacityTotals) : 0,
       p95FrameGapMs: sortedGaps.length > 0 ? sortedGaps[Math.max(0, p95Index)] : 0,
+      ringWidthRange: ringWidths.length > 0 ? Math.max(...ringWidths) - Math.min(...ringWidths) : 0,
+      visualWidthChangeCount: visualWidths.filter((width, index) => (
+        index > 0 && Math.abs(width - visualWidths[index - 1]) > 0.1
+      )).length,
+      visualWidthRange: visualWidths.length > 0 ? Math.max(...visualWidths) - Math.min(...visualWidths) : 0,
     };
   }, `__priestessLoginFrameProbe_${key}`);
 }

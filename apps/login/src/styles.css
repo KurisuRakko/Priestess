@@ -317,8 +317,15 @@ input:focus-visible {
   min-width: 0;
 }
 
+.login-form-mode-stack {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+}
+
 .login-form-mode-panel {
   display: flex;
+  grid-area: 1 / 1;
   flex-direction: column;
   width: 100%;
   min-width: 0;
@@ -329,7 +336,8 @@ input:focus-visible {
   opacity: 0 !important;
   pointer-events: none;
   transition: opacity 180ms var(--ease-out);
-  transition-delay: 560ms;
+  /* 卡片与二维码完成 760ms 归位后再和状态层交叉淡变，期间保留完整可见反馈。 */
+  transition-delay: var(--auth-drawer-duration);
   will-change: opacity;
 }
 

@@ -56,6 +56,7 @@
   backdrop-filter: none;
   opacity: 0;
   transform: translate(-50%, calc(-50% + 8px));
+  will-change: opacity, transform;
   animation:
     lso-origin-content-in var(--lso-origin-content-in-ms, 220ms) var(--lso-origin-content-in-delay-ms, 200ms)
     cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
@@ -92,6 +93,7 @@
   flex-direction: column;
   align-items: center;
   width: 100%;
+  min-height: 188px;
   min-width: 0;
 }
 
@@ -101,16 +103,23 @@
 
 .login-identity-transition__visual {
   position: relative;
-  width: 60px;
-  height: 60px;
+  width: 116px;
+  height: 116px;
   flex: 0 0 auto;
 }
 
-.login-identity-transition.is-success .login-identity-transition__visual {
-  animation: lso-identity-visual-expand 520ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+.login-identity-transition__ring-shell {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 60px;
+  height: 60px;
+  opacity: 1;
+  transform: translate(-50%, -50%);
+  transform-origin: center;
+  will-change: transform, opacity;
 }
 
-.login-identity-transition__ring-shell,
 .login-identity-transition__ring-motion {
   position: absolute;
   inset: 0;
@@ -196,11 +205,8 @@
 .login-identity-transition__status-slot {
   display: grid;
   width: 100%;
-  margin-top: 14px;
-}
-
-.login-identity-transition.is-success .login-identity-transition__status-slot {
   margin-top: 6px;
+  will-change: transform;
 }
 
 .login-identity-transition__status {
@@ -455,11 +461,6 @@
   transform: translateY(-20px);
 }
 
-.login-success-overlay.is-reduced-motion .login-identity-transition.is-success .login-identity-transition__visual {
-  width: 116px;
-  height: 116px;
-}
-
 .login-success-overlay.is-reduced-motion .login-identity-transition__avatar,
 .login-success-overlay.is-reduced-motion .login-identity-transition__name,
 .login-success-overlay.is-reduced-motion .login-identity-transition__status,
@@ -590,11 +591,6 @@
     transform: translateY(-20px) !important;
   }
 
-  .login-identity-transition.is-success .login-identity-transition__visual {
-    width: 116px;
-    height: 116px;
-  }
-
   .login-identity-transition__avatar,
   .login-identity-transition__name,
   .login-identity-transition__status,
@@ -715,27 +711,19 @@
 }
 
 @keyframes lso-identity-ring-resolve {
-  0%,
+  0% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+
   60% {
     opacity: 1;
-    transform: scale(1);
+    transform: translate(-50%, -50%) scale(1.9333);
   }
 
   100% {
     opacity: 0;
-    transform: scale(0.897);
-  }
-}
-
-@keyframes lso-identity-visual-expand {
-  from {
-    width: 60px;
-    height: 60px;
-  }
-
-  to {
-    width: 116px;
-    height: 116px;
+    transform: translate(-50%, -50%) scale(1.7333);
   }
 }
 

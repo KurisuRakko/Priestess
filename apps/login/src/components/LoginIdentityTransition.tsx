@@ -58,6 +58,7 @@ export function LoginIdentityTransition({
 }: LoginIdentityTransitionProps) {
   const shouldReduceMotion = Boolean(useReducedMotion());
   const shouldRevealIdentity = phase === "success";
+  const compactCopyOffsetY = phase === "success" ? 0 : phase === "handoff" ? -22 : -28;
 
   return (
     <div
@@ -117,9 +118,17 @@ export function LoginIdentityTransition({
       </AnimatePresence>
 
       <motion.div
+        animate={{ y: compactCopyOffsetY }}
         className="login-identity-transition__status-slot"
+        data-login-identity-status-offset={compactCopyOffsetY}
+        initial={false}
         layout="position"
-        transition={shouldReduceMotion ? { duration: 0 } : { layout: { duration: 0.36, ease: [0.16, 1, 0.3, 1] } }}
+        transition={shouldReduceMotion
+          ? { duration: 0 }
+          : {
+              layout: { duration: 0.42, ease: [0.16, 1, 0.3, 1] },
+              y: { duration: 0.52, ease: [0.16, 1, 0.3, 1] },
+            }}
       >
         <AnimatePresence initial={false} mode="sync">
           <IdentityStatusLine
@@ -134,10 +143,12 @@ export function LoginIdentityTransition({
       <AnimatePresence initial={false}>
         {(phase === "failure" || phase === "handoff") && description ? (
           <motion.div
-            animate={exiting ? { opacity: 0, y: -5 } : { opacity: 1, y: 0 }}
+            animate={exiting
+              ? { opacity: 0, y: compactCopyOffsetY - 5 }
+              : { opacity: 1, y: compactCopyOffsetY }}
             className="login-identity-transition__description"
-            exit={{ opacity: 0, y: -5 }}
-            initial={shouldReduceMotion ? false : { opacity: 0, y: 6 }}
+            exit={{ opacity: 0, y: compactCopyOffsetY - 5 }}
+            initial={shouldReduceMotion ? false : { opacity: 0, y: compactCopyOffsetY + 6 }}
             key={`${phase}:${description}`}
             transition={shouldReduceMotion ? { duration: 0 } : { duration: 0.26, delay: 0.12, ease: [0.16, 1, 0.3, 1] }}
           >
