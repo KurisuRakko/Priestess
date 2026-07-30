@@ -1,5 +1,6 @@
 import { type ReactNode } from "react";
 import { motion, useIsPresent } from "motion/react";
+import { MOBILE_STEP_SHARED_AXIS_VARIANTS } from "./mobileSharedAxisMotion";
 import { STEP_PANEL_EASE, STEP_PANEL_VARIANTS, type RegisterStep } from "./registerStepConfig";
 
 type RegisterStepMotionPanelProps = {
@@ -11,21 +12,6 @@ type RegisterStepMotionPanelProps = {
   step: RegisterStep;
 };
 
-const MOBILE_STEP_PANEL_VARIANTS = {
-  center: {
-    opacity: 1,
-    x: 0,
-  },
-  enter: (direction: number) => ({
-    opacity: 0,
-    x: direction > 0 ? 22 : -22,
-  }),
-  exit: (direction: number) => ({
-    opacity: 0,
-    x: direction > 0 ? -22 : 22,
-  }),
-};
-
 export function RegisterStepMotionPanel({
   children,
   direction,
@@ -35,24 +21,33 @@ export function RegisterStepMotionPanel({
   step,
 }: RegisterStepMotionPanelProps) {
   const isPresent = useIsPresent();
+  const shouldAnimateMobile = isMobileViewport && !shouldReduceMotion;
+  const mobileMotionMode = isMobileViewport ? (shouldAnimateMobile ? "fade-through" : "direct") : undefined;
 
   return (
     <motion.div
       ref={panelRef}
-      animate="center"
+      animate={shouldReduceMotion ? { opacity: 1, x: 0 } : "center"}
       className="register-step-panel"
       custom={direction}
       data-register-step-motion-origin={direction > 0 ? "right" : "left"}
       data-register-step-panel={step}
-      exit="exit"
+      data-mobile-motion={mobileMotionMode}
+      exit={shouldReduceMotion
+        ? { opacity: 0 }
+        : "exit"}
       initial={shouldReduceMotion ? false : "enter"}
       style={{ pointerEvents: isPresent ? "auto" : "none" }}
       transition={shouldReduceMotion
         ? { duration: 0 }
-        : isMobileViewport
-          ? { duration: 0.26, ease: STEP_PANEL_EASE }
+        : shouldAnimateMobile
+          ? undefined
           : { duration: 0.28, ease: STEP_PANEL_EASE }}
-      variants={isMobileViewport ? MOBILE_STEP_PANEL_VARIANTS : STEP_PANEL_VARIANTS}
+      variants={shouldReduceMotion
+        ? undefined
+        : isMobileViewport
+          ? MOBILE_STEP_SHARED_AXIS_VARIANTS
+          : STEP_PANEL_VARIANTS}
     >
       {children}
     </motion.div>

@@ -182,16 +182,11 @@ async function testBareLoginSelectsSavedAccount(browserInstance, appUrl) {
     assert.equal(scenario.records.accountChoices.length, 0);
     assert.ok(scenario.records.browserAccounts >= 1);
 
-    await page.locator(".account-picker__other").click();
-    await page.waitForSelector('[data-auth-account-panel="login-form"]');
     const outgoingPicker = page.locator('[data-auth-account-panel="account-picker"]');
-    if (await outgoingPicker.count()) {
-      assert.equal(
-        await outgoingPicker.evaluate((element) => getComputedStyle(element).pointerEvents),
-        "none",
-        "exiting account picker must stop intercepting taps immediately",
-      );
-    }
+    await page.locator(".account-picker__other").click();
+    await waitForExitingPanelStopsPointer(page, '[data-auth-account-panel="account-picker"]', "account picker");
+    await page.waitForSelector('[data-auth-account-panel="login-form"]');
+    assert.equal(await outgoingPicker.count(), 0, "fade-through must finish the old panel before mounting the new panel");
     await page.waitForTimeout(320);
 
     const accountSwitchLayout = await page.evaluate(() => {
@@ -226,6 +221,10 @@ async function testBareLoginSelectsSavedAccount(browserInstance, appUrl) {
       await page.locator('[data-auth-account-panel="login-form"]').getAttribute("data-auth-account-motion-origin"),
       "right",
     );
+    assert.equal(
+      await page.locator('[data-auth-account-panel="login-form"]').getAttribute("data-mobile-motion"),
+      "fade-through",
+    );
     await assertControlCanReceivePointer(page, page.locator("input[autocomplete='username']"), "username input");
     await assertControlCanReceivePointer(page, page.locator("input[autocomplete='current-password']"), "password input");
     await assertControlCanReceivePointer(page, page.getByRole("button", { name: "忘记密码？" }), "forgot password");
@@ -233,16 +232,11 @@ async function testBareLoginSelectsSavedAccount(browserInstance, appUrl) {
     await assertControlCanReceivePointer(page, page.getByRole("button", { name: "创建账号" }), "create account");
 
     const backButton = page.getByRole("button", { name: "返回账号选择" });
-    await backButton.click();
-    await page.waitForSelector('[data-auth-account-panel="account-picker"]');
     const outgoingLoginForm = page.locator('[data-auth-account-panel="login-form"]');
-    if (await outgoingLoginForm.count()) {
-      assert.equal(
-        await outgoingLoginForm.evaluate((element) => getComputedStyle(element).pointerEvents),
-        "none",
-        "exiting login form must stop intercepting taps immediately",
-      );
-    }
+    await backButton.click();
+    await waitForExitingPanelStopsPointer(page, '[data-auth-account-panel="login-form"]', "login form");
+    await page.waitForSelector('[data-auth-account-panel="account-picker"]');
+    assert.equal(await outgoingLoginForm.count(), 0, "fade-through return must not overlap both panels");
     assert.equal(
       await page.locator('[data-auth-account-panel="account-picker"]').getAttribute("data-auth-account-motion-origin"),
       "left",
@@ -501,6 +495,20 @@ async function assertControlCanReceivePointer(page, locator, label) {
     return Boolean(hit && (hit === element || element.contains(hit)));
   });
   assert.equal(canReceivePointer, true, `${label} must not be covered by an exiting panel`);
+}
+
+async function waitForExitingPanelStopsPointer(page, selector, label) {
+  await page.waitForFunction((panelSelector) => {
+    const panel = document.querySelector(panelSelector);
+    return !(panel instanceof HTMLElement) || getComputedStyle(panel).pointerEvents === "none";
+  }, selector, { timeout: 1000 });
+  const panel = page.locator(selector);
+  if (!await panel.count()) return;
+  assert.equal(
+    await panel.evaluate((element) => getComputedStyle(element).pointerEvents),
+    "none",
+    `exiting ${label} must stop intercepting taps before the next panel enters`,
+  );
 }
 
 async function installBrowserStubs(page) {

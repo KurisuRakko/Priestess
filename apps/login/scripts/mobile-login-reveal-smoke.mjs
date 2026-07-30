@@ -8,6 +8,7 @@ import { createServer as createViteServer } from "vite";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const appRoot = resolve(__dirname, "..");
 const MOBILE_VIEWPORT = { height: 844, width: 390 };
+const SHORT_MOBILE_VIEWPORT = { height: 667, width: 375 };
 const DESKTOP_VIEWPORT = { height: 800, width: 1280 };
 
 let activeScenario = null;
@@ -107,20 +108,26 @@ async function testMobileSecondaryAuthTransitions(browserInstance, appUrl) {
 
   await withScenario(browserInstance, scenario, {
     reducedMotion: "no-preference",
-    viewport: MOBILE_VIEWPORT,
+    viewport: SHORT_MOBILE_VIEWPORT,
   }, async(page) => {
     await page.goto(buildAuthUrl(appUrl, "mobile-secondary-transitions"), { waitUntil: "domcontentloaded" });
     await page.waitForSelector('.app-shell[data-mobile-reveal="ready"] [data-auth-mode-panel="login"]');
 
-    await page.getByRole("button", { name: "创建账号" }).click();
+    const createAccountButton = page.getByRole("button", { name: "创建账号" });
+    await createAccountButton.scrollIntoViewIfNeeded();
+    assert.ok(await page.locator(".login-card").evaluate((element) => element.scrollTop > 0), "short mobile login should scroll before opening registration");
+    await createAccountButton.click();
+    await waitForExitingPanelStopsPointer(page, '[data-auth-mode-panel="login"]', "login");
     await page.waitForSelector('[data-auth-mode-panel="register"]');
-    await assertExitingPanelStopsPointer(page, '[data-auth-mode-panel="login"]', "login");
+    await page.locator('[data-auth-mode-panel="login"]').waitFor({ state: "detached", timeout: 1000 });
     assert.equal(await page.locator('[data-auth-mode-panel="register"]').getAttribute("data-auth-mode-motion-origin"), "right");
+    assert.equal(await page.locator('[data-auth-mode-panel="register"]').getAttribute("data-mobile-motion"), "fade-through");
     assert.equal(
       await page.locator('[data-auth-mode-panel="register"]').evaluate((element) => getComputedStyle(element).filter),
       "none",
       "mobile registration transition must not blur",
     );
+    assert.equal(await page.locator(".login-card").evaluate((element) => element.scrollTop), 0, "registration must enter from the top");
     await page.waitForTimeout(320);
     assert.equal(await page.locator("[data-auth-mode-panel]").count(), 1);
 
@@ -144,22 +151,31 @@ async function testMobileSecondaryAuthTransitions(browserInstance, appUrl) {
 
     await page.locator("input[autocomplete='email']").fill("motion@example.com");
     await page.locator("#register-terms-consent").check();
-    await page.locator(".login-form .primary-button[type='submit']").click();
+    const identitySubmit = page.locator(".login-form .primary-button[type='submit']");
+    await identitySubmit.scrollIntoViewIfNeeded();
+    await identitySubmit.click();
+    await waitForExitingPanelStopsPointer(page, '[data-register-step-panel="identity"]', "registration identity");
     await page.waitForSelector('[data-register-step-panel="invitation"]');
-    await assertExitingPanelStopsPointer(page, '[data-register-step-panel="identity"]', "registration identity");
+    await page.locator('[data-register-step-panel="identity"]').waitFor({ state: "detached", timeout: 1000 });
     assert.equal(
       await page.locator('[data-register-step-panel="invitation"]').getAttribute("data-register-step-motion-origin"),
       "right",
+    );
+    assert.equal(
+      await page.locator('[data-register-step-panel="invitation"]').getAttribute("data-mobile-motion"),
+      "fade-through",
     );
     assert.equal(
       await page.locator('[data-register-step-panel="invitation"]').evaluate((element) => getComputedStyle(element).filter),
       "none",
       "mobile registration steps must not blur",
     );
+    assert.equal(await page.locator(".login-card").evaluate((element) => element.scrollTop), 0, "each registration step must enter from the top");
 
     await page.getByRole("button", { name: "上一步" }).click();
+    await waitForExitingPanelStopsPointer(page, '[data-register-step-panel="invitation"]', "registration invitation");
     await page.waitForSelector('[data-register-step-panel="identity"]');
-    await assertExitingPanelStopsPointer(page, '[data-register-step-panel="invitation"]', "registration invitation");
+    await page.locator('[data-register-step-panel="invitation"]').waitFor({ state: "detached", timeout: 1000 });
     assert.equal(
       await page.locator('[data-register-step-panel="identity"]').getAttribute("data-register-step-motion-origin"),
       "left",
@@ -167,15 +183,18 @@ async function testMobileSecondaryAuthTransitions(browserInstance, appUrl) {
     await page.waitForTimeout(320);
 
     await page.getByRole("button", { name: "返回登录" }).click();
+    await waitForExitingPanelStopsPointer(page, '[data-auth-mode-panel="register"]', "register");
     await page.waitForSelector('[data-auth-mode-panel="login"]');
-    await assertExitingPanelStopsPointer(page, '[data-auth-mode-panel="register"]', "register");
+    await page.locator('[data-auth-mode-panel="register"]').waitFor({ state: "detached", timeout: 1000 });
     assert.equal(await page.locator('[data-auth-mode-panel="login"]').getAttribute("data-auth-mode-motion-origin"), "left");
     await page.waitForTimeout(320);
 
     await page.getByRole("button", { name: "忘记密码？" }).click();
+    await waitForExitingPanelStopsPointer(page, '[data-auth-mode-panel="login"]', "login");
     await page.waitForSelector('[data-auth-mode-panel="forgot-password"]');
-    await assertExitingPanelStopsPointer(page, '[data-auth-mode-panel="login"]', "login");
+    await page.locator('[data-auth-mode-panel="login"]').waitFor({ state: "detached", timeout: 1000 });
     assert.equal(await page.locator('[data-auth-mode-panel="forgot-password"]').getAttribute("data-auth-mode-motion-origin"), "right");
+    assert.equal(await page.locator('[data-auth-mode-panel="forgot-password"]').getAttribute("data-mobile-motion"), "fade-through");
     assert.equal(
       await page.locator('[data-auth-mode-panel="forgot-password"]').evaluate((element) => getComputedStyle(element).filter),
       "none",
@@ -183,8 +202,9 @@ async function testMobileSecondaryAuthTransitions(browserInstance, appUrl) {
     );
 
     await page.getByRole("button", { name: "返回登录" }).click();
+    await waitForExitingPanelStopsPointer(page, '[data-auth-mode-panel="forgot-password"]', "forgot password");
     await page.waitForSelector('[data-auth-mode-panel="login"]');
-    await assertExitingPanelStopsPointer(page, '[data-auth-mode-panel="forgot-password"]', "forgot password");
+    await page.locator('[data-auth-mode-panel="forgot-password"]').waitFor({ state: "detached", timeout: 1000 });
     assert.equal(await page.locator('[data-auth-mode-panel="login"]').getAttribute("data-auth-mode-motion-origin"), "left");
   });
 }
@@ -321,13 +341,17 @@ async function withScenario(browserInstance, scenario, options, callback) {
   }
 }
 
-async function assertExitingPanelStopsPointer(page, selector, label) {
+async function waitForExitingPanelStopsPointer(page, selector, label) {
+  await page.waitForFunction((panelSelector) => {
+    const panel = document.querySelector(panelSelector);
+    return !(panel instanceof HTMLElement) || getComputedStyle(panel).pointerEvents === "none";
+  }, selector, { timeout: 1000 });
   const panel = page.locator(selector);
   if (!await panel.count()) return;
   assert.equal(
     await panel.evaluate((element) => getComputedStyle(element).pointerEvents),
     "none",
-    `exiting ${label} panel must stop intercepting taps immediately`,
+    `exiting ${label} panel must stop intercepting taps before the next panel enters`,
   );
 }
 

@@ -217,6 +217,10 @@ export function RegisterFirstStepForm({
   };
 
   const moveToStep = (nextStep: RegisterStep, direction: 1 | -1) => {
+    if (isMobileViewport) {
+      // 每个注册步骤都从同一内容原点开始，避免上一页滚动位置把新表单推到屏幕外。
+      panelElement?.closest(".login-card")?.scrollTo({ behavior: "auto", top: 0 });
+    }
     setStepDirection(direction);
     setStep(nextStep);
   };

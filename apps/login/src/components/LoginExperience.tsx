@@ -4,6 +4,11 @@ import { BrandMark, FloatingBackdrop } from "@priestess/shared";
 import { AccountPickerCard, type AccountPickerAction, type AccountPickerMode } from "./AccountPickerCard";
 import { ForgotPasswordForm } from "./ForgotPasswordForm";
 import { LoginForm, type LoginCredentials, type LoginTotpChallenge } from "./LoginForm";
+import {
+  getMobileSharedAxisEnter,
+  getMobileSharedAxisExit,
+  getMobileSharedAxisInitial,
+} from "./mobileSharedAxisMotion";
 import { QrPanel } from "./QrPanel";
 import { RegisterFirstStepForm } from "./RegisterFirstStepForm";
 import { type AuthAccountChoice, type useAuthAccountChoices } from "../lib/useAuthAccountChoices";
@@ -30,25 +35,25 @@ function MobileAccountSwitchPanel({
 }: MobileAccountSwitchPanelProps) {
   const isPresent = useIsPresent();
   const shouldAnimate = isMobileViewport && !shouldReduceMotion;
-  const offset = panel === "account-picker" ? -22 : 22;
+  const direction = panel === "account-picker" ? -1 : 1;
+  const mobileMotionMode = isMobileViewport ? (shouldAnimate ? "fade-through" : "direct") : undefined;
 
   return (
     <motion.div
-      animate={{ opacity: 1, x: 0 }}
+      animate={shouldAnimate ? getMobileSharedAxisEnter() : { opacity: 1, x: 0 }}
       className="auth-account-switch-panel"
       data-auth-account-motion-origin={panel === "account-picker" ? "left" : "right"}
       data-auth-account-panel={panel}
-      exit={shouldAnimate ? { opacity: 0, x: offset } : { opacity: 0 }}
-      initial={shouldAnimate ? { opacity: 0, x: offset } : false}
+      data-mobile-motion={mobileMotionMode}
+      exit={shouldAnimate ? getMobileSharedAxisExit(direction) : { opacity: 0 }}
+      initial={shouldAnimate ? getMobileSharedAxisInitial(direction) : false}
       style={{
         display: "flex",
         flexDirection: "column",
         pointerEvents: isPresent ? "auto" : "none",
         width: "100%",
       }}
-      transition={shouldAnimate
-        ? { duration: 0.26, ease: [0.2, 0.8, 0.2, 1] }
-        : { duration: 0 }}
+      transition={shouldAnimate ? undefined : { duration: 0 }}
     >
       {children}
     </motion.div>
@@ -71,21 +76,32 @@ function AuthModeMotionPanel({
   shouldReduceMotion,
 }: AuthModeMotionPanelProps) {
   const isPresent = useIsPresent();
-  const offset = panel === "login" ? (isMobileViewport ? -22 : -24) : (isMobileViewport ? 22 : 24);
-  const motionState = isMobileViewport
-    ? { opacity: 0, x: offset }
-    : { filter: "blur(4px)", opacity: 0, x: offset };
+  const direction = panel === "login" ? -1 : 1;
+  const desktopMotionState = { filter: "blur(4px)", opacity: 0, x: direction * 24 };
+  const shouldAnimateMobile = isMobileViewport && !shouldReduceMotion;
+  const mobileMotionMode = isMobileViewport ? (shouldAnimateMobile ? "fade-through" : "direct") : undefined;
 
   return (
     <motion.div
-      animate={isMobileViewport
-        ? { opacity: 1, x: 0 }
+      animate={shouldAnimateMobile
+        ? getMobileSharedAxisEnter()
+        : isMobileViewport
+          ? { opacity: 1, x: 0 }
         : { filter: "blur(0px)", opacity: 1, x: 0 }}
       className="auth-card-content"
       data-auth-mode-motion-origin={panel === "login" ? "left" : "right"}
       data-auth-mode-panel={panel}
-      exit={shouldReduceMotion ? { opacity: 0 } : motionState}
-      initial={shouldReduceMotion ? false : motionState}
+      data-mobile-motion={mobileMotionMode}
+      exit={shouldReduceMotion
+        ? { opacity: 0 }
+        : shouldAnimateMobile
+          ? getMobileSharedAxisExit(direction)
+          : desktopMotionState}
+      initial={shouldReduceMotion
+        ? false
+        : shouldAnimateMobile
+          ? getMobileSharedAxisInitial(direction)
+          : desktopMotionState}
       ref={panelRef}
       style={{
         display: "flex",
@@ -95,8 +111,8 @@ function AuthModeMotionPanel({
       }}
       transition={shouldReduceMotion
         ? { duration: 0 }
-        : isMobileViewport
-          ? { duration: 0.26, ease: [0.2, 0.8, 0.2, 1] }
+        : shouldAnimateMobile
+          ? undefined
           : { duration: 0.4, ease: [0.2, 0.8, 0.2, 1] }}
     >
       {children}
@@ -203,6 +219,13 @@ export function LoginExperience({
     : mobileLoginReveal.isMobileViewport
       ? { opacity: 1, y: "100%", scale: 1, filter: "blur(0px)" }
       : { opacity: 0, x: 360, y: 24, scale: 0.972, filter: "blur(10px)" };
+  const activeMobilePanel = isRegisterMode
+    ? "register"
+    : isForgotPasswordMode
+      ? "forgot-password"
+      : shouldShowAccountPicker
+        ? "account-picker"
+        : "login";
 
   // 登录/注册/找回密码共用一个高度视口：面板切换或内部内容变化时，
   // 卡片高度用测量值平滑过渡，替代 popLayout 交换内容瞬间的高度跳变。
@@ -232,6 +255,12 @@ export function LoginExperience({
     observer.observe(activePanelElement);
     return () => observer.disconnect();
   }, [activePanelElement, mobileLoginReveal.isMobileViewport, shouldReduceMotion]);
+
+  useEffect(() => {
+    if (!mobileLoginReveal.isMobileViewport) return;
+    // 手机端切页前统一回到卡片顶部，让新面板从稳定的内容原点进入。
+    loginCardRef.current?.scrollTo({ behavior: "auto", top: 0 });
+  }, [activeMobilePanel, loginCardRef, mobileLoginReveal.isMobileViewport]);
   const qrDrawerVariants = {
     closed: { x: "-96%", opacity: 0, clipPath: "inset(0 100% 0 0)" },
     open: { x: "0%", opacity: 1, clipPath: "inset(0 0% 0 0)" },
@@ -304,7 +333,10 @@ export function LoginExperience({
                     style={mobileLoginReveal.isMobileViewport ? { height: "auto" } : undefined}
                     transition={shouldReduceMotion ? { duration: 0 } : { duration: 0.44, ease: drawerEase }}
                   >
-                  <AnimatePresence initial={false} mode="popLayout">
+                  <AnimatePresence
+                    initial={false}
+                    mode={mobileLoginReveal.isMobileViewport ? "wait" : "popLayout"}
+                  >
                     {isRegisterMode ? (
                       <AuthModeMotionPanel
                         key="register"
@@ -344,7 +376,10 @@ export function LoginExperience({
                         panelRef={assignActivePanel}
                         shouldReduceMotion={shouldReduceMotion}
                       >
-                        <AnimatePresence initial={false} mode="popLayout">
+                        <AnimatePresence
+                          initial={false}
+                          mode={mobileLoginReveal.isMobileViewport ? "wait" : "popLayout"}
+                        >
                           <MobileAccountSwitchPanel
                             key={mobileLoginReveal.isMobileViewport
                               ? shouldShowAccountPicker ? "account-picker" : "login-form"
