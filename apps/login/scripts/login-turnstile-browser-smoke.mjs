@@ -48,6 +48,7 @@ try {
   await testBareLoginSelectsSavedAccount(browser, appUrl);
   await testReducedMotionAccountSwitch(browser, appUrl);
   await testBareLoginRemainsUsable(browser, appUrl);
+  await testLoginFailureRemainsReadable(browser, appUrl);
   await testTotpReturnsToAccountPicker(browser, appUrl);
   await testPasskeyReturnsToAccountPicker(browser, appUrl);
   await testPhoneRegistrationProgress(browser, appUrl);
@@ -167,6 +168,24 @@ async function testBareLoginRemainsUsable(browserInstance, appUrl) {
     assert.equal(await page.getByRole("button", { name: /Passkey/ }).isEnabled(), true);
     assert.equal(scenario.records.accountChoices.length, 0, "plain /login must not request app account choices");
     assert.ok(scenario.records.browserAccounts >= 1, "plain /login should check the browser account container");
+  });
+}
+
+async function testLoginFailureRemainsReadable(browserInstance, appUrl) {
+  const scenario = createScenario("login-failure-hold", { loginError: true });
+
+  await withScenario(browserInstance, scenario, async(page) => {
+    await page.goto(`${appUrl}/login`, { waitUntil: "domcontentloaded" });
+    await page.locator("input[autocomplete='username']").waitFor({ state: "visible" });
+    await submitPassword(page, "failure-user");
+
+    const failureOverlay = page.locator(".login-success-overlay.is-failure");
+    await failureOverlay.waitFor({ state: "visible", timeout: 5000 });
+    await page.waitForTimeout(2000);
+    assert.equal(await failureOverlay.count(), 1, "failure result should remain visible long enough to read");
+    assert.match(await failureOverlay.innerText(), /登录失败/);
+    assert.match(await failureOverlay.innerText(), /用户名或密码错误/);
+    await failureOverlay.waitFor({ state: "detached", timeout: 3000 });
   });
 }
 
@@ -567,6 +586,7 @@ function createScenario(appId, options = {}) {
     browserAccountMode: options.browserAccountMode ?? "empty",
     appId,
     authenticated: false,
+    loginError: options.loginError ?? false,
     loginKind: options.loginKind ?? "password",
     records: {
       accountChoices: [],
@@ -667,6 +687,10 @@ async function startMockApiServer() {
     if (req.method === "POST" && url.pathname === "/auth/priestess/session") {
       const body = await readJsonBody(req);
       scenario.records.loginBodies.push(body);
+      if (scenario.loginError) {
+        writeJson(res, 401, { error: { code: "invalid_local_credentials", message: "用户名或密码错误" } });
+        return;
+      }
       if (scenario.requireTurnstile && !body.turnstile_token) {
         writeJson(res, 403, { error: { code: "local_login_turnstile_required", message: "Turnstile verification is required" } });
         return;

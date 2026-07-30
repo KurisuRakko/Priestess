@@ -36,6 +36,7 @@ import {
   isLocalPasswordLoginRiskError,
   LOCAL_LOGIN_COOLDOWN_MS,
   LOCAL_LOGIN_FAILURE_LIMIT,
+  LOGIN_FAILURE_HOLD_MS,
   LOGIN_INTRO_QR_DELAY_MS,
   LOGIN_RESULT_ANIMATION_MS,
   LOGIN_SUCCESS_HOLD_MS,
@@ -532,7 +533,7 @@ export function App() {
       await controller.fail({
         description: message,
         durationMs: LOGIN_RESULT_ANIMATION_MS,
-        postAnimationDelayMs: 0,
+        postAnimationDelayMs: LOGIN_FAILURE_HOLD_MS,
       });
       releaseLoginSubmitStage();
       if (shouldTrackFailure) {
@@ -590,7 +591,7 @@ export function App() {
       await controller.fail({
         description: message,
         durationMs: LOGIN_RESULT_ANIMATION_MS,
-        postAnimationDelayMs: 0,
+        postAnimationDelayMs: LOGIN_FAILURE_HOLD_MS,
       });
       releaseLoginSubmitStage();
       showNotice(message);
@@ -635,7 +636,7 @@ export function App() {
       await controller.fail({
         description: message,
         durationMs: LOGIN_RESULT_ANIMATION_MS,
-        postAnimationDelayMs: 0,
+        postAnimationDelayMs: LOGIN_FAILURE_HOLD_MS,
       });
       releaseLoginSubmitStage();
       showNotice(message);

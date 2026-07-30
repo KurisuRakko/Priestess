@@ -3,6 +3,8 @@ import { getPriestessApiBaseUrl } from "@priestess/shared";
 // 登录结果动画需要留出确认感，避免后端返回后过快切页或回收表单。
 export const LOGIN_RESULT_ANIMATION_MS = 1200;
 export const LOGIN_SUCCESS_HOLD_MS = 240;
+// 失败信息需要给用户留出完整阅读时间，但不拖慢成功登录后的跳转。
+export const LOGIN_FAILURE_HOLD_MS = 2400;
 export const LOGIN_INTRO_QR_DELAY_MS = 1280;
 // 大行程抽屉和完整布局等待是桌面镜头的一部分，同时给二维码与表单留足加载时间。
 export const AUTH_MODE_DRAWER_IN_MS = 760;
