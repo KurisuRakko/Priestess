@@ -70,6 +70,8 @@ async function testInlineAccountActions({
       if (!(backButton instanceof HTMLElement) || !(avatar instanceof HTMLElement)) return null;
       return {
         avatarTop: avatar.getBoundingClientRect().top,
+        backBackground: getComputedStyle(backButton).backgroundColor,
+        backBorderWidth: getComputedStyle(backButton).borderTopWidth,
         backTop: backButton.getBoundingClientRect().top,
       };
     });
@@ -78,6 +80,8 @@ async function testInlineAccountActions({
       headerAlignment.backTop <= headerAlignment.avatarTop - 6,
       `back button should sit slightly above the shared avatar: ${JSON.stringify(headerAlignment)}`,
     );
+    assert.equal(headerAlignment.backBorderWidth, "0px");
+    assert.equal(headerAlignment.backBackground, "rgba(0, 0, 0, 0)");
     assertAccountSharedMotion(
       await finishAccountSharedMotionProbe(page, "account-actions-forward"),
       "desktop account actions forward",

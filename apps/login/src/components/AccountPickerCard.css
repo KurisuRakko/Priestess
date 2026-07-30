@@ -222,10 +222,32 @@
   height: 58px;
 }
 
-.account-picker-actions__back {
+.login-card__back-button.account-picker-actions__back {
   position: relative;
-  top: -10px;
+  top: -17px;
   margin: 0;
+  border: 0;
+  border-radius: 0;
+  color: var(--color-text);
+  background: transparent;
+  box-shadow: none;
+}
+
+.login-card__back-button.account-picker-actions__back:hover {
+  border: 0;
+  color: var(--color-accent-deep);
+  background: transparent;
+  box-shadow: none;
+}
+
+.login-card__back-button.account-picker-actions__back:disabled {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.login-card__back-button.account-picker-actions__back:disabled:hover {
+  color: var(--color-faint);
 }
 
 .account-picker-actions__heading {
@@ -456,8 +478,8 @@
     height: 50px;
   }
 
-  .account-picker-actions__back {
-    top: -7px;
+  .login-card__back-button.account-picker-actions__back {
+    top: -14px;
     width: 36px;
     height: 36px;
   }
@@ -522,8 +544,8 @@
     height: 46px;
   }
 
-  .account-picker-actions__back {
-    top: -8px;
+  .login-card__back-button.account-picker-actions__back {
+    top: -15px;
     width: 34px;
     height: 34px;
   }

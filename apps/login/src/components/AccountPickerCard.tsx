@@ -371,17 +371,25 @@ export function AccountPickerActionsView({
   return (
     <section className="account-picker-actions" aria-labelledby="account-picker-actions-title">
       <div className="account-picker-actions__header">
-        <button
+        <motion.button
+          animate={{ opacity: 1, x: 0 }}
           aria-label={t("返回账号选择")}
           className="login-card__back-button account-picker-actions__back"
           disabled={busy}
+          initial={reduceMotion ? false : { opacity: 0, x: -18 }}
           onClick={onBack}
           ref={backButtonRef}
           title={t("返回账号选择")}
+          transition={reduceMotion ? { duration: 0 } : {
+            duration: 0.32,
+            ease: [0.16, 1, 0.3, 1],
+          }}
           type="button"
+          whileHover={reduceMotion || busy ? undefined : { x: -3 }}
+          whileTap={reduceMotion || busy ? undefined : { x: -1 }}
         >
           <ArrowLeft aria-hidden="true" size={22} strokeWidth={1.8} />
-        </button>
+        </motion.button>
         <AccountAvatar
           account={account}
           layoutKey={resolvedLayoutKey}
