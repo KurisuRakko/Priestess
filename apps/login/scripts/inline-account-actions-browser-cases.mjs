@@ -64,6 +64,20 @@ async function testInlineAccountActions({
     assert.equal(await page.locator('[role="dialog"]').count(), 0, "opening account actions must not create a dialog");
     assert.equal(await page.locator('[data-account-shared-part="avatar"]').count(), 1);
     assert.equal(await page.locator('[data-account-shared-part="identity"]').count(), 1);
+    const headerAlignment = await page.locator(".account-picker-actions__header").evaluate((header) => {
+      const backButton = header.querySelector(".account-picker-actions__back");
+      const avatar = header.querySelector('[data-account-shared-part="avatar"]');
+      if (!(backButton instanceof HTMLElement) || !(avatar instanceof HTMLElement)) return null;
+      return {
+        avatarTop: avatar.getBoundingClientRect().top,
+        backTop: backButton.getBoundingClientRect().top,
+      };
+    });
+    assert.ok(headerAlignment);
+    assert.ok(
+      headerAlignment.backTop <= headerAlignment.avatarTop - 6,
+      `back button should sit slightly above the shared avatar: ${JSON.stringify(headerAlignment)}`,
+    );
     assertAccountSharedMotion(
       await finishAccountSharedMotionProbe(page, "account-actions-forward"),
       "desktop account actions forward",

@@ -223,6 +223,8 @@
 }
 
 .account-picker-actions__back {
+  position: relative;
+  top: -10px;
   margin: 0;
 }
 
@@ -455,6 +457,7 @@
   }
 
   .account-picker-actions__back {
+    top: -7px;
     width: 36px;
     height: 36px;
   }
@@ -520,6 +523,7 @@
   }
 
   .account-picker-actions__back {
+    top: -8px;
     width: 34px;
     height: 34px;
   }
