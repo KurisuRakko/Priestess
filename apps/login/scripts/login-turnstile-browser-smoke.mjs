@@ -5,6 +5,7 @@ import { dirname, resolve } from "node:path";
 import { delimiter } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createServer as createViteServer } from "vite";
+import { runInlineAccountActionsBrowserCases } from "./inline-account-actions-browser-cases.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const appRoot = resolve(__dirname, "..");
@@ -45,6 +46,14 @@ try {
   await testEmptyAccountRefreshReturnsToLogin(browser, appUrl);
   await testAccountChoiceErrorCanRetry(browser, appUrl);
   await testMultipleAccountsRemainSelectable(browser, appUrl);
+  await runInlineAccountActionsBrowserCases({
+    appUrl,
+    assertControlCanReceivePointer,
+    browserInstance: browser,
+    createScenario,
+    waitForExitingPanelStopsPointer,
+    withScenario,
+  });
   await testSavedAccountDefersQrAndReusesSession(browser, appUrl);
   await testExpiredQrCreatesOneReplacement(browser, appUrl);
   await testBareLoginSelectsSavedAccount(browser, appUrl);
@@ -715,8 +724,10 @@ function createScenario(appId, options = {}) {
       registrationInviteChecks: [],
       registrationVerificationChecks: [],
       registrationVerifications: [],
+      removals: [],
       totpBodies: [],
     },
+    removedUserIds: new Set(),
     qrSessionExpiresIn: options.qrSessionExpiresIn ?? 120,
     requireTurnstile: options.requireTurnstile ?? false,
   };
@@ -918,12 +929,28 @@ async function startMockApiServer() {
     const activationMatch = url.pathname.match(/^\/auth\/priestess\/account-choices\/([^/]+)\/activate$/);
     if (req.method === "POST" && activationMatch) {
       const body = await readJsonBody(req);
+      const userId = decodeURIComponent(activationMatch[1]);
       scenario.records.activations.push({
         body,
-        userId: decodeURIComponent(activationMatch[1]),
+        userId,
       });
       scenario.authenticated = true;
-      writeJson(res, 200, authenticatedSession(scenario));
+      writeJson(res, 200, authenticatedSession(scenario, { userId }));
+      return;
+    }
+
+    const removalMatch = url.pathname.match(/^\/auth\/priestess\/account-choices\/([^/]+)$/);
+    if (req.method === "DELETE" && removalMatch) {
+      const userId = decodeURIComponent(removalMatch[1]);
+      scenario.records.removals.push(userId);
+      scenario.removedUserIds.add(userId);
+      writeJson(res, 200, {
+        authenticated: true,
+        current: userId.endsWith("-primary"),
+        removed: true,
+        revoked: true,
+        user_id: userId,
+      });
       return;
     }
 
@@ -961,7 +988,8 @@ async function startMockApiServer() {
 function buildAccounts(scenario, mode) {
   if (mode === "empty") return [];
   const primary = buildAccount(scenario.appId, "Primary");
-  return mode === "multi" ? [primary, buildAccount(scenario.appId, "Secondary")] : [primary];
+  const accounts = mode === "multi" ? [primary, buildAccount(scenario.appId, "Secondary")] : [primary];
+  return accounts.filter((account) => !scenario.removedUserIds.has(account.user_id));
 }
 
 function buildAccount(appId, suffix) {
@@ -985,7 +1013,7 @@ function authenticatedSession(scenario, overrides = {}) {
     user: {
       display_name: overrides.displayName || `User ${scenario.appId}`,
       email: overrides.email || `${scenario.appId}@example.com`,
-      user_id: `user-${scenario.appId}`,
+      user_id: overrides.userId || `user-${scenario.appId}`,
       username: overrides.username || scenario.appId,
     },
   };

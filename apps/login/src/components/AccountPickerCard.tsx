@@ -1,6 +1,14 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { ImageUp, LockKeyhole, LogOut, MoreVertical, Pencil, Plus, RefreshCw, X } from "lucide-react";
-import { useReducedMotion } from "motion/react";
+import {
+  forwardRef,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
+import { ArrowLeft, ImageUp, LockKeyhole, LogOut, MoreVertical, Pencil, Plus, RefreshCw, X } from "lucide-react";
+import { AnimatePresence, LayoutGroup, motion, useIsPresent, useReducedMotion } from "motion/react";
 import {
   getPriestessDisplayAvatarUrl,
   getSafePriestessAvatarUrl,
@@ -14,7 +22,19 @@ import "./AccountPickerCard.css";
 export type AccountPickerAction = "avatar" | "password" | "profile";
 export type AccountPickerMode = "authorization" | "standalone";
 
-const ACTION_DIALOG_EXIT_DELAY_MS = 170;
+const ACCOUNT_SHARED_LAYOUT_DURATION_MS = 520;
+const ACCOUNT_SHARED_LAYOUT_TRANSITION = {
+  duration: ACCOUNT_SHARED_LAYOUT_DURATION_MS / 1000,
+  ease: [0.16, 1, 0.3, 1],
+} as const;
+const ACCOUNT_VIEW_TRANSITION = {
+  duration: 0.22,
+  ease: [0.4, 0, 0.2, 1],
+} as const;
+const ACCOUNT_ACTION_ENTER_TRANSITION = {
+  duration: 0.34,
+  ease: [0.16, 1, 0.3, 1],
+} as const;
 
 type AccountPickerCardProps = {
   accounts: AuthAccountChoice[];
@@ -48,8 +68,11 @@ export function AccountPickerCard({
   status,
 }: AccountPickerCardProps) {
   const { t } = usePriestessTranslation("login");
-  const shouldReduceMotion = useReducedMotion();
-  const actionTransitionTimeoutRef = useRef<number | null>(null);
+  const shouldReduceMotion = Boolean(useReducedMotion());
+  const layoutGroupId = useId();
+  const backButtonRef = useRef<HTMLButtonElement | null>(null);
+  const moreButtonRefs = useRef(new Map<string, HTMLButtonElement>());
+  const returnFocusTimerRef = useRef<number | null>(null);
   const [actionAccount, setActionAccount] = useState<AuthAccountChoice | null>(null);
   const [removeAccount, setRemoveAccount] = useState<AuthAccountChoice | null>(null);
   const appLabel = app?.appId || t("当前应用");
@@ -59,54 +82,66 @@ export function AccountPickerCard({
   const isError = status === "error";
   const isBusy = Boolean(busyAccountId || removingAccountId);
   const actionAccountKey = actionAccount ? getAccountKey(actionAccount) : "";
+  const currentActionAccount = actionAccount
+    ? accounts.find((account, index) => getAccountKey(account, index) === actionAccountKey) ?? actionAccount
+    : null;
   const removeAccountKey = removeAccount ? getAccountKey(removeAccount) : "";
-  const isActionDialogBusy = Boolean(actionAccountKey && (busyAccountId === actionAccountKey || removingAccountId === actionAccountKey));
+  const isActionViewBusy = disabled || Boolean(removeAccount) || Boolean(actionAccountKey && (
+    busyAccountId === actionAccountKey
+    || removingAccountId === actionAccountKey
+  ));
   const isRemoveDialogBusy = Boolean(removeAccountKey && removingAccountId === removeAccountKey);
 
+  useEffect(() => {
+    if (!actionAccount || status !== "ready") return;
+    const accountStillExists = accounts.some((account, index) => getAccountKey(account, index) === actionAccountKey);
+    if (!accountStillExists) {
+      setActionAccount(null);
+    }
+  }, [accounts, actionAccount, actionAccountKey, status]);
+
+  useEffect(() => {
+    if (!actionAccountKey) return undefined;
+    // 等共享元素抵达详情头部后再转移焦点，避免键盘焦点环在移动途中跳闪。
+    const focusDelay = shouldReduceMotion ? 0 : ACCOUNT_SHARED_LAYOUT_DURATION_MS;
+    const focusTimer = window.setTimeout(() => backButtonRef.current?.focus({ preventScroll: true }), focusDelay);
+    return () => window.clearTimeout(focusTimer);
+  }, [actionAccountKey, shouldReduceMotion]);
+
   useEffect(() => () => {
-    if (actionTransitionTimeoutRef.current !== null) {
-      window.clearTimeout(actionTransitionTimeoutRef.current);
+    if (returnFocusTimerRef.current !== null) {
+      window.clearTimeout(returnFocusTimerRef.current);
     }
   }, []);
 
-  const runAfterActionDialogCloses = (callback: () => void) => {
-    if (actionTransitionTimeoutRef.current !== null) {
-      window.clearTimeout(actionTransitionTimeoutRef.current);
-      actionTransitionTimeoutRef.current = null;
+  const openActionView = (account: AuthAccountChoice) => {
+    if (disabled || isBusy) return;
+    if (returnFocusTimerRef.current !== null) {
+      window.clearTimeout(returnFocusTimerRef.current);
+      returnFocusTimerRef.current = null;
     }
+    setActionAccount(account);
+  };
+
+  const closeActionView = () => {
+    if (!currentActionAccount || isActionViewBusy) return;
+    const returnFocusKey = getAccountKey(currentActionAccount);
     setActionAccount(null);
-
-    if (shouldReduceMotion) {
-      window.requestAnimationFrame(callback);
-      return;
-    }
-
-    actionTransitionTimeoutRef.current = window.setTimeout(() => {
-      actionTransitionTimeoutRef.current = null;
-      callback();
-    }, ACTION_DIALOG_EXIT_DELAY_MS);
+    const focusDelay = shouldReduceMotion ? 0 : ACCOUNT_SHARED_LAYOUT_DURATION_MS;
+    returnFocusTimerRef.current = window.setTimeout(() => {
+      moreButtonRefs.current.get(returnFocusKey)?.focus({ preventScroll: true });
+      returnFocusTimerRef.current = null;
+    }, focusDelay);
   };
 
-  const closeActionDialog = () => {
-    if (!isActionDialogBusy) {
-      setActionAccount(null);
-    }
+  const openAccountAction = (action: AccountPickerAction) => {
+    if (!currentActionAccount || isActionViewBusy) return;
+    void onOpenAccountAction(currentActionAccount, action);
   };
 
-  const openAccountAction = (account: AuthAccountChoice, action: AccountPickerAction) => {
-    if (isActionDialogBusy) {
-      return;
-    }
-    runAfterActionDialogCloses(() => {
-      void onOpenAccountAction(account, action);
-    });
-  };
-
-  const openRemoveDialog = (account: AuthAccountChoice) => {
-    if (isActionDialogBusy) {
-      return;
-    }
-    runAfterActionDialogCloses(() => setRemoveAccount(account));
+  const openRemoveDialog = () => {
+    if (!currentActionAccount || isActionViewBusy) return;
+    setRemoveAccount(currentActionAccount);
   };
 
   const closeRemoveDialog = () => {
@@ -116,129 +151,144 @@ export function AccountPickerCard({
   };
 
   const confirmRemoveAccount = () => {
-    if (!removeAccount || isRemoveDialogBusy) {
-      return;
-    }
+    if (!removeAccount || isRemoveDialogBusy) return;
     void Promise.resolve(onRemoveAccount(removeAccount)).finally(() => setRemoveAccount(null));
   };
 
   return (
     <>
-      <div className="login-card__mark" aria-hidden="true">
-        <svg viewBox="0 0 48 48">
-          <path d="M24 5c5.5 4.5 5.5 10.5 0 16-5.5-5.5-5.5-11.5 0-16Z" />
-          <path d="M43 24c-4.5 5.5-10.5 5.5-16 0 5.5-5.5 11.5-5.5 16 0Z" />
-          <path d="M24 43c-5.5-4.5-5.5-10.5 0-16 5.5 5.5 5.5 11.5 0 16Z" />
-          <path d="M5 24c4.5-5.5 10.5-5.5 16 0-5.5 5.5-11.5 5.5-16 0Z" />
-          <circle cx="24" cy="24" r="3.2" />
-        </svg>
-      </div>
+      {/* 列表和详情共用稳定 layoutId，让头像与身份信息接管新位置，而不是复制一份淡入。 */}
+      <LayoutGroup id={layoutGroupId}>
+        <AnimatePresence initial={false} mode="popLayout">
+          {currentActionAccount ? (
+            <AccountPickerMotionView
+              key="account-actions"
+              shouldReduceMotion={shouldReduceMotion}
+              view="actions"
+            >
+              <AccountPickerActionsView
+                account={currentActionAccount}
+                backButtonRef={backButtonRef}
+                busy={isActionViewBusy}
+                layoutKey={actionAccountKey}
+                onBack={closeActionView}
+                onOpenAccountAction={openAccountAction}
+                onSignOut={openRemoveDialog}
+                shouldReduceMotion={shouldReduceMotion}
+                signingOut={removingAccountId === actionAccountKey}
+              />
+            </AccountPickerMotionView>
+          ) : (
+            <AccountPickerMotionView
+              key="account-list"
+              shouldReduceMotion={shouldReduceMotion}
+              view="list"
+            >
+              <div className="login-card__mark" aria-hidden="true">
+                <svg viewBox="0 0 48 48">
+                  <path d="M24 5c5.5 4.5 5.5 10.5 0 16-5.5-5.5-5.5-11.5 0-16Z" />
+                  <path d="M43 24c-4.5 5.5-10.5 5.5-16 0 5.5-5.5 11.5-5.5 16 0Z" />
+                  <path d="M24 43c-5.5-4.5-5.5-10.5 0-16 5.5 5.5 5.5 11.5 0 16Z" />
+                  <path d="M5 24c4.5-5.5 10.5-5.5 16 0-5.5 5.5-11.5 5.5-16 0Z" />
+                  <circle cx="24" cy="24" r="3.2" />
+                </svg>
+              </div>
 
-      <div className="login-card__heading account-picker__heading">
-        <h1 id="login-title">{t("选择账号")}</h1>
-        {isStandalone ? (
-          <p>{t("选择账号进入 Priestess 个人中心")}</p>
-        ) : (
-          <p>
-            {t("继续访问")} <strong>{appLabel}</strong>
-            <span>{originLabel}</span>
-          </p>
-        )}
-      </div>
+              <div className="login-card__heading account-picker__heading">
+                <h1 id="login-title">{t("选择账号")}</h1>
+                {isStandalone ? (
+                  <p>{t("选择账号进入 Priestess 个人中心")}</p>
+                ) : (
+                  <p>
+                    {t("继续访问")} <strong>{appLabel}</strong>
+                    <span>{originLabel}</span>
+                  </p>
+                )}
+              </div>
 
-      <div className="account-picker" aria-busy={isLoading}>
-        {isLoading ? (
-          <AccountPickerLoadingRows ariaLabel={t("正在读取账号")} />
-        ) : isError ? (
-          <div className="account-picker__notice" role="status">
-            <strong>{t("账号选择暂时不可用")}</strong>
-            <span>{error || t("请稍后重试，或使用其他账号登录。")}</span>
-            <button className="secondary-button account-picker__retry" disabled={disabled} onClick={onRetry} type="button">
-              <RefreshCw aria-hidden="true" size={18} strokeWidth={1.8} />
-              <span>{t("重试")}</span>
-            </button>
-          </div>
-        ) : accounts.length > 0 ? (
-          <div className="account-picker__list">
-            {accounts.map((account, index) => {
-              const accountKey = getAccountKey(account, index);
-              const isAccountBusy = busyAccountId === accountKey;
-              const isAccountRemoving = removingAccountId === accountKey;
-              const isAccountSignedOut = isSignedOutAccount(account);
-              const isAccountLocked = disabled || isBusy;
-              const isSelectLocked = isAccountLocked || isAccountSignedOut;
-              const accountMeta = getAccountMetaLabel(account);
+              <div className="account-picker" aria-busy={isLoading}>
+                {isLoading ? (
+                  <AccountPickerLoadingRows ariaLabel={t("正在读取账号")} />
+                ) : isError ? (
+                  <div className="account-picker__notice" role="status">
+                    <strong>{t("账号选择暂时不可用")}</strong>
+                    <span>{error || t("请稍后重试，或使用其他账号登录。")}</span>
+                    <button className="secondary-button account-picker__retry" disabled={disabled} onClick={onRetry} type="button">
+                      <RefreshCw aria-hidden="true" size={18} strokeWidth={1.8} />
+                      <span>{t("重试")}</span>
+                    </button>
+                  </div>
+                ) : accounts.length > 0 ? (
+                  <div className="account-picker__list">
+                    {accounts.map((account, index) => {
+                      const accountKey = getAccountKey(account, index);
+                      const isAccountBusy = busyAccountId === accountKey;
+                      const isAccountRemoving = removingAccountId === accountKey;
+                      const isAccountSignedOut = isSignedOutAccount(account);
+                      const isAccountLocked = disabled || isBusy;
+                      const isSelectLocked = isAccountLocked || isAccountSignedOut;
 
-              return (
-                <div
-                  key={accountKey}
-                  aria-busy={isAccountBusy || isAccountRemoving || undefined}
-                  className={`account-picker__row${isAccountLocked ? " account-picker__row--disabled" : ""}${isAccountRemoving ? " account-picker__row--removing" : ""}${isAccountSignedOut ? " account-picker__row--signed-out" : ""}`}
-                >
-                  <button
-                    aria-label={getAccountSelectLabel(account, appLabel, isAccountBusy, t, mode)}
-                    className="account-picker__row-main"
-                    disabled={isSelectLocked}
-                    onClick={() => onSelectAccount(account)}
-                    type="button"
-                  >
-                    <AccountAvatar account={account} />
-                    <span className="account-picker__identity">
-                      <span className="account-picker__name">{getAccountDisplayLabel(account, t)}</span>
-                      <span className="account-picker__meta">{accountMeta}</span>
-                      {account.current ? <span className="account-picker__state">{t("已登录")}</span> : null}
-                      {isAccountSignedOut ? <span className="account-picker__state account-picker__state--signed-out">{t("已登出")}</span> : null}
-                      {isAccountBusy || isAccountRemoving ? (
-                        <span className="account-picker__state account-picker__state--busy">
-                          {isAccountBusy ? t("继续中") : t("登出中")}
-                        </span>
-                      ) : null}
-                    </span>
-                  </button>
-                  <button
-                    aria-label={getAccountMoreActionsLabel(account, t)}
-                    className="account-picker__more"
-                    disabled={isAccountLocked}
-                    onClick={() => setActionAccount(account)}
-                    title={getAccountMoreActionsLabel(account, t)}
-                    type="button"
-                  >
-                    {isAccountRemoving ? <RefreshCw aria-hidden="true" size={17} strokeWidth={1.8} /> : <MoreVertical aria-hidden="true" size={18} strokeWidth={1.8} />}
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="account-picker__notice" role="status">
-            <strong>{t("没有可用账号")}</strong>
-            <span>{t("请先登录或创建 Priestess 账号，再选择账号继续。")}</span>
-          </div>
-        )}
+                      return (
+                        <div
+                          key={accountKey}
+                          aria-busy={isAccountBusy || isAccountRemoving || undefined}
+                          className={`account-picker__row${isAccountLocked ? " account-picker__row--disabled" : ""}${isAccountRemoving ? " account-picker__row--removing" : ""}${isAccountSignedOut ? " account-picker__row--signed-out" : ""}`}
+                        >
+                          <button
+                            aria-label={getAccountSelectLabel(account, appLabel, isAccountBusy, t, mode)}
+                            className="account-picker__row-main"
+                            disabled={isSelectLocked}
+                            onClick={() => onSelectAccount(account)}
+                            type="button"
+                          >
+                            <AccountAvatar
+                              account={account}
+                              layoutKey={accountKey}
+                              shouldReduceMotion={shouldReduceMotion}
+                            />
+                            <AccountIdentity
+                              account={account}
+                              busyLabel={isAccountBusy ? t("继续中") : isAccountRemoving ? t("登出中") : ""}
+                              layoutKey={accountKey}
+                              shouldReduceMotion={shouldReduceMotion}
+                            />
+                          </button>
+                          <button
+                            aria-label={getAccountMoreActionsLabel(account, t)}
+                            className="account-picker__more"
+                            disabled={isAccountLocked}
+                            onClick={() => openActionView(account)}
+                            ref={(element) => {
+                              if (element) moreButtonRefs.current.set(accountKey, element);
+                              else moreButtonRefs.current.delete(accountKey);
+                            }}
+                            title={getAccountMoreActionsLabel(account, t)}
+                            type="button"
+                          >
+                            {isAccountRemoving ? <RefreshCw aria-hidden="true" size={17} strokeWidth={1.8} /> : <MoreVertical aria-hidden="true" size={18} strokeWidth={1.8} />}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="account-picker__notice" role="status">
+                    <strong>{t("没有可用账号")}</strong>
+                    <span>{t("请先登录或创建 Priestess 账号，再选择账号继续。")}</span>
+                  </div>
+                )}
 
-        <button className="account-picker__other" disabled={disabled || isBusy} onClick={onUseAnotherAccount} type="button">
-          <span className="account-picker__other-icon" aria-hidden="true">
-            <Plus size={21} strokeWidth={1.8} />
-          </span>
-          <span>{t("使用其他账号")}</span>
-        </button>
-      </div>
-
-      <AccountPickerActionsDialog
-        account={actionAccount}
-        busy={isActionDialogBusy}
-        onClose={closeActionDialog}
-        onOpenAccountAction={(action) => {
-          if (actionAccount) {
-            openAccountAction(actionAccount, action);
-          }
-        }}
-        onSignOut={() => {
-          if (actionAccount) {
-            openRemoveDialog(actionAccount);
-          }
-        }}
-      />
+                <button className="account-picker__other" disabled={disabled || isBusy} onClick={onUseAnotherAccount} type="button">
+                  <span className="account-picker__other-icon" aria-hidden="true">
+                    <Plus size={21} strokeWidth={1.8} />
+                  </span>
+                  <span>{t("使用其他账号")}</span>
+                </button>
+              </div>
+            </AccountPickerMotionView>
+          )}
+        </AnimatePresence>
+      </LayoutGroup>
 
       <AccountDialogShell labelledBy="account-picker-remove-title" open={Boolean(removeAccount)}>
         <button aria-label={t("关闭登出账号确认")} className="account-dialog__close" disabled={isRemoveDialogBusy} onClick={closeRemoveDialog} type="button">
@@ -259,6 +309,221 @@ export function AccountPickerCard({
         </div>
       </AccountDialogShell>
     </>
+  );
+}
+
+type AccountPickerMotionViewProps = {
+  children: ReactNode;
+  shouldReduceMotion: boolean;
+  view: "actions" | "list";
+};
+
+const AccountPickerMotionView = forwardRef<HTMLDivElement, AccountPickerMotionViewProps>(function AccountPickerMotionView({
+  children,
+  shouldReduceMotion,
+  view,
+}, ref) {
+  const isPresent = useIsPresent();
+  const travel = view === "actions" ? 32 : -24;
+
+  return (
+    <motion.div
+      animate={{ opacity: 1, y: 0 }}
+      className="account-picker-card-view"
+      data-account-picker-presence={isPresent ? "present" : "exiting"}
+      data-account-picker-view={view}
+      exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: travel }}
+      initial={shouldReduceMotion ? false : { opacity: 0, y: travel }}
+      ref={ref}
+      style={{ pointerEvents: isPresent ? "auto" : "none" }}
+      transition={shouldReduceMotion ? { duration: 0 } : ACCOUNT_VIEW_TRANSITION}
+    >
+      {children}
+    </motion.div>
+  );
+});
+
+export function AccountPickerActionsView({
+  account,
+  backButtonRef,
+  busy,
+  layoutKey,
+  onBack,
+  onOpenAccountAction,
+  onSignOut,
+  shouldReduceMotion,
+  signingOut = false,
+}: {
+  account: AuthAccountChoice;
+  backButtonRef?: RefObject<HTMLButtonElement | null>;
+  busy: boolean;
+  layoutKey?: string;
+  onBack: () => void;
+  onOpenAccountAction: (action: AccountPickerAction) => void;
+  onSignOut: () => void;
+  shouldReduceMotion?: boolean;
+  signingOut?: boolean;
+}) {
+  const { t } = usePriestessTranslation("login");
+  const resolvedLayoutKey = layoutKey || getAccountKey(account);
+  const reduceMotion = Boolean(shouldReduceMotion);
+
+  return (
+    <section className="account-picker-actions" aria-labelledby="account-picker-actions-title">
+      <div className="account-picker-actions__header">
+        <button
+          aria-label={t("返回账号选择")}
+          className="login-card__back-button account-picker-actions__back"
+          disabled={busy}
+          onClick={onBack}
+          ref={backButtonRef}
+          title={t("返回账号选择")}
+          type="button"
+        >
+          <ArrowLeft aria-hidden="true" size={22} strokeWidth={1.8} />
+        </button>
+        <AccountAvatar
+          account={account}
+          layoutKey={resolvedLayoutKey}
+          shouldReduceMotion={reduceMotion}
+        />
+        <div className="account-picker-actions__heading">
+          <h2 id="account-picker-actions-title">{t("账号操作")}</h2>
+          <AccountIdentity
+            account={account}
+            busyLabel={busy ? t("处理中") : ""}
+            layoutKey={resolvedLayoutKey}
+            shouldReduceMotion={reduceMotion}
+          />
+        </div>
+      </div>
+
+      {isSignedOutAccount(account) ? (
+        <div className="account-picker-actions__notice" role="status">
+          {t("这个账号已在此浏览器登出，不能修改资料、密码或头像。")}
+        </div>
+      ) : null}
+
+      <motion.div
+        animate="visible"
+        className="account-picker-actions__list"
+        initial={reduceMotion ? false : "hidden"}
+        variants={{
+          hidden: {},
+          visible: {
+            transition: {
+              delayChildren: 0.14,
+              staggerChildren: 0.045,
+            },
+          },
+        }}
+      >
+        {isEditableAccount(account) ? (
+          <>
+            <AccountActionButton disabled={busy} icon={<LockKeyhole size={19} strokeWidth={1.8} />} label={t("修改密码")} onClick={() => onOpenAccountAction("password")} reduceMotion={reduceMotion} />
+            <AccountActionButton disabled={busy} icon={<Pencil size={19} strokeWidth={1.8} />} label={t("设定资料")} onClick={() => onOpenAccountAction("profile")} reduceMotion={reduceMotion} />
+            <AccountActionButton disabled={busy} icon={<ImageUp size={19} strokeWidth={1.8} />} label={t("设定头像")} onClick={() => onOpenAccountAction("avatar")} reduceMotion={reduceMotion} />
+          </>
+        ) : null}
+        <AccountActionButton
+          danger
+          disabled={busy || !account.userId}
+          icon={signingOut ? <RefreshCw size={19} strokeWidth={1.8} /> : <LogOut size={19} strokeWidth={1.8} />}
+          label={signingOut ? t("登出中") : t("登出账号")}
+          onClick={onSignOut}
+          reduceMotion={reduceMotion}
+        />
+      </motion.div>
+    </section>
+  );
+}
+
+function AccountActionButton({
+  danger = false,
+  disabled,
+  icon,
+  label,
+  onClick,
+  reduceMotion,
+}: {
+  danger?: boolean;
+  disabled: boolean;
+  icon: ReactNode;
+  label: string;
+  onClick: () => void;
+  reduceMotion: boolean;
+}) {
+  return (
+    <motion.button
+      className={`account-picker-actions__button${danger ? " account-picker-actions__button--danger" : ""}`}
+      disabled={disabled}
+      onClick={onClick}
+      type="button"
+      variants={reduceMotion ? undefined : {
+        hidden: { opacity: 0, y: 32 },
+        visible: {
+          opacity: 1,
+          transition: ACCOUNT_ACTION_ENTER_TRANSITION,
+          y: 0,
+        },
+      }}
+    >
+      <span aria-hidden="true">{icon}</span>
+      <span>{label}</span>
+    </motion.button>
+  );
+}
+
+function AccountAvatar({
+  account,
+  layoutKey,
+  shouldReduceMotion,
+}: {
+  account: AuthAccountChoice;
+  layoutKey?: string;
+  shouldReduceMotion?: boolean;
+}) {
+  const avatarUrl = getPriestessDisplayAvatarUrl(account.avatarUrl);
+
+  return (
+    <motion.span
+      className="account-picker__avatar"
+      data-account-shared-part="avatar"
+      layoutId={layoutKey ? `${layoutKey}-avatar` : undefined}
+      transition={shouldReduceMotion ? { duration: 0 } : { layout: ACCOUNT_SHARED_LAYOUT_TRANSITION }}
+    >
+      <img alt="" src={avatarUrl} />
+    </motion.span>
+  );
+}
+
+function AccountIdentity({
+  account,
+  busyLabel,
+  layoutKey,
+  shouldReduceMotion,
+}: {
+  account: AuthAccountChoice;
+  busyLabel: string;
+  layoutKey?: string;
+  shouldReduceMotion?: boolean;
+}) {
+  const { t } = usePriestessTranslation("login");
+
+  return (
+    <motion.span
+      className="account-picker__identity"
+      data-account-shared-part="identity"
+      layout="position"
+      layoutId={layoutKey ? `${layoutKey}-identity` : undefined}
+      transition={shouldReduceMotion ? { duration: 0 } : { layout: ACCOUNT_SHARED_LAYOUT_TRANSITION }}
+    >
+      <span className="account-picker__name">{getAccountDisplayLabel(account, t)}</span>
+      <span className="account-picker__meta">{getAccountMetaLabel(account)}</span>
+      {account.current ? <span className="account-picker__state">{t("已登录")}</span> : null}
+      {isSignedOutAccount(account) ? <span className="account-picker__state account-picker__state--signed-out">{t("已登出")}</span> : null}
+      {busyLabel ? <span className="account-picker__state account-picker__state--busy">{busyLabel}</span> : null}
+    </motion.span>
   );
 }
 
@@ -322,88 +587,12 @@ export function getAccountSelectLabel(
     : translate("{{action}} {{displayLabel}}{{metaText}}{{currentText}} 继续访问 {{appLabel}}", options);
 }
 
-export function AccountPickerActionsDialog({ account, busy, onClose, onOpenAccountAction, onSignOut }: {
-  account: AuthAccountChoice | null;
-  busy: boolean;
-  onClose: () => void;
-  onOpenAccountAction: (action: AccountPickerAction) => void;
-  onSignOut: () => void;
-}) {
-  const { t } = usePriestessTranslation("login");
-
-  return (
-    <AccountDialogShell className="account-dialog--account-actions" labelledBy="account-picker-actions-title" open={Boolean(account)}>
-      <button aria-label={t("关闭账号操作弹窗")} className="account-dialog__close" disabled={busy} onClick={onClose} type="button">
-        <X size={17} strokeWidth={1.8} />
-      </button>
-      {account ? (
-        <>
-          <div className="account-picker-actions__header">
-            <AccountAvatar account={account} />
-            <div className="account-picker-actions__identity">
-              <span>{t("账号操作")}</span>
-              <h3 id="account-picker-actions-title">{getAccountDisplayLabel(account, t)}</h3>
-              <span>{getAccountMetaLabel(account)}</span>
-            </div>
-          </div>
-          {isSignedOutAccount(account) ? (
-            <div className="account-picker-actions__notice" role="status">
-              {t("这个账号已在此浏览器登出，不能修改资料、密码或头像。")}
-            </div>
-          ) : null}
-          <div className="account-picker-actions__list">
-            {isEditableAccount(account) ? (
-              <>
-                <AccountActionButton disabled={busy} icon={<LockKeyhole size={19} strokeWidth={1.8} />} label={t("修改密码")} onClick={() => onOpenAccountAction("password")} />
-                <AccountActionButton disabled={busy} icon={<Pencil size={19} strokeWidth={1.8} />} label={t("设定资料")} onClick={() => onOpenAccountAction("profile")} />
-                <AccountActionButton disabled={busy} icon={<ImageUp size={19} strokeWidth={1.8} />} label={t("设定头像")} onClick={() => onOpenAccountAction("avatar")} />
-              </>
-            ) : null}
-            <AccountActionButton
-              danger
-              disabled={busy || !account.userId}
-              icon={busy ? <RefreshCw size={19} strokeWidth={1.8} /> : <LogOut size={19} strokeWidth={1.8} />}
-              label={busy ? t("登出中") : t("登出账号")}
-              onClick={onSignOut}
-            />
-          </div>
-        </>
-      ) : null}
-    </AccountDialogShell>
-  );
-}
-
-function AccountActionButton({ danger = false, disabled, icon, label, onClick }: {
-  danger?: boolean;
-  disabled: boolean;
-  icon: ReactNode;
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <button className={`account-picker-actions__button${danger ? " account-picker-actions__button--danger" : ""}`} disabled={disabled} onClick={onClick} type="button">
-      <span aria-hidden="true">{icon}</span>
-      <span>{label}</span>
-    </button>
-  );
+export function getSafeAvatarUrl(value: string) {
+  return getSafePriestessAvatarUrl(value);
 }
 
 function interpolateSourceText(key: string, options: Record<string, unknown> = {}) {
   return key.replace(/\{\{(\w+)\}\}/g, (_, optionKey: string) => String(options[optionKey] ?? ""));
-}
-
-function AccountAvatar({ account }: { account: AuthAccountChoice }) {
-  const avatarUrl = getPriestessDisplayAvatarUrl(account.avatarUrl);
-
-  return (
-    <span className="account-picker__avatar">
-      <img alt="" src={avatarUrl} />
-    </span>
-  );
-}
-
-export function getSafeAvatarUrl(value: string) {
-  return getSafePriestessAvatarUrl(value);
 }
 
 function getAccountDisplayLabel(account: AuthAccountChoice, translate: (key: string, options?: Record<string, unknown>) => string = interpolateSourceText) {

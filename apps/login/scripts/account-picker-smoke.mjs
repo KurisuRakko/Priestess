@@ -34,7 +34,7 @@ try {
   const sharedLibDir = new URL("../../../packages/priestess-shared/src/lib/", import.meta.url).pathname;
   const sharedI18nModule = await server.ssrLoadModule(`/@fs${sharedLibDir}i18n.tsx`);
   const sharedApiModule = await server.ssrLoadModule(`/@fs${sharedLibDir}priestessApi.ts`);
-  const { AccountPickerActionsDialog, AccountPickerCard, getAccountKey, getAccountMoreActionsLabel, getAccountRemoveDescription, getAccountRemoveLabel, getAccountSelectLabel, getSafeAvatarUrl } = accountPickerModule;
+  const { AccountPickerActionsView, AccountPickerCard, getAccountKey, getAccountMoreActionsLabel, getAccountRemoveDescription, getAccountRemoveLabel, getAccountSelectLabel, getSafeAvatarUrl } = accountPickerModule;
   const { buildAccountManagementActionPath, getAccountManagementActionSection, readAccountManagementAction, removeAccountManagementActionFromSearch, resolveAccountManagementActionTarget } = accountManagementActionModule;
   const { buildAuthAccountAuthorizeParams, getAuthAccountAuthorizeBlocker, shouldShowAuthAccountPicker } = accountAuthorizationModule;
   const { getAuthRequestAppLabel, getAuthRequestReturnToOrigin, readAuthRequest } = authRequestModule;
@@ -55,7 +55,7 @@ try {
   testLoginNextHelpers({ buildLoginPathWithNext, getCurrentAccountNextPath, normalizePriestessNextPath, readLoginNext });
   testLoginLayoutState({ resolveLoginLayoutState });
   testMobileLoginRevealState({ MOBILE_LOGIN_BREAKPOINT_PX, MOBILE_LOGIN_REVEAL_TIMEOUT_MS, isMobileLoginDataReady, resolveMobileLoginRevealStep, shouldAnimateMobileLoginReveal });
-  testAccountPickerMarkup({ AccountPickerActionsDialog, AccountPickerCard, getAccountKey, getAccountMoreActionsLabel, getAccountRemoveDescription, getAccountRemoveLabel, getAccountSelectLabel, getSafeAvatarUrl });
+  testAccountPickerMarkup({ AccountPickerActionsView, AccountPickerCard, getAccountKey, getAccountMoreActionsLabel, getAccountRemoveDescription, getAccountRemoveLabel, getAccountSelectLabel, getSafeAvatarUrl });
   testLoginFormBackButton({ LoginForm });
   await testSharedApiContract({ activateLocalAccountChoice, authorizeLocalSession, checkRegisterInvite, checkRegisterVerification, confirmLocalRegistration, listLocalAccountChoices, listLocalBrowserAccounts, loginLocalSession, removeLocalAccountChoice, requestRegisterVerification });
   await testLocalLoginTurnstileRetry({ loginLocalSessionWithTurnstileRetry, PriestessApiError });
@@ -329,7 +329,7 @@ function testAuthRequestHelpers({ getAuthRequestAppLabel, getAuthRequestReturnTo
   assert.equal(getAuthRequestAppLabel({ appId: "", returnTo: "javascript:alert(1)" }), "当前应用");
 }
 
-function testAccountPickerMarkup({ AccountPickerActionsDialog, AccountPickerCard, getAccountKey, getAccountMoreActionsLabel, getAccountRemoveDescription, getAccountRemoveLabel, getAccountSelectLabel, getSafeAvatarUrl }) {
+function testAccountPickerMarkup({ AccountPickerActionsView, AccountPickerCard, getAccountKey, getAccountMoreActionsLabel, getAccountRemoveDescription, getAccountRemoveLabel, getAccountSelectLabel, getSafeAvatarUrl }) {
   const accounts = [
     buildAccount({
       choiceId: "choice-bowen",
@@ -409,18 +409,23 @@ function testAccountPickerMarkup({ AccountPickerActionsDialog, AccountPickerCard
   assert.doesNotMatch(standaloneHtml, /https:\/\/example\.com/);
   assert.match(standaloneHtml, /aria-label="使用 Bowen Yang，z5717379@ad\.unsw\.edu\.au，已登录 进入 Priestess 个人中心"/);
 
-  const currentActionsHtml = renderAccountActionsDialog(AccountPickerActionsDialog, {
+  const currentActionsHtml = renderAccountActionsView(AccountPickerActionsView, {
     account: accounts[0],
   });
   assert.match(currentActionsHtml, /账号操作/);
+  assert.match(currentActionsHtml, /返回账号选择/);
   assert.match(currentActionsHtml, /Bowen Yang/);
+  assert.match(currentActionsHtml, /data-account-shared-part="avatar"/);
+  assert.match(currentActionsHtml, /data-account-shared-part="identity"/);
   assert.match(currentActionsHtml, /修改密码/);
   assert.match(currentActionsHtml, /设定资料/);
   assert.match(currentActionsHtml, /设定头像/);
   assert.match(currentActionsHtml, /登出账号/);
+  assert.doesNotMatch(currentActionsHtml, /account-dialog-backdrop/);
+  assert.doesNotMatch(currentActionsHtml, /role="dialog"/);
   assert.doesNotMatch(currentActionsHtml, /这个账号已在此浏览器登出/);
 
-  const otherActionsHtml = renderAccountActionsDialog(AccountPickerActionsDialog, {
+  const otherActionsHtml = renderAccountActionsView(AccountPickerActionsView, {
     account: accounts[1],
   });
   assert.match(otherActionsHtml, /KurisuRakko/);
@@ -438,7 +443,7 @@ function testAccountPickerMarkup({ AccountPickerActionsDialog, AccountPickerCard
     revoked: true,
     userId: "u-signed-out",
   });
-  const signedOutActionsHtml = renderAccountActionsDialog(AccountPickerActionsDialog, {
+  const signedOutActionsHtml = renderAccountActionsView(AccountPickerActionsView, {
     account: signedOutAccount,
   });
   assert.match(signedOutActionsHtml, /Signed Out User/);
@@ -448,7 +453,7 @@ function testAccountPickerMarkup({ AccountPickerActionsDialog, AccountPickerCard
   assert.doesNotMatch(signedOutActionsHtml, /设定资料/);
   assert.doesNotMatch(signedOutActionsHtml, /设定头像/);
 
-  const busyActionsHtml = renderAccountActionsDialog(AccountPickerActionsDialog, {
+  const busyActionsHtml = renderAccountActionsView(AccountPickerActionsView, {
     account: accounts[0],
     busy: true,
   });
@@ -1073,13 +1078,15 @@ function renderPicker(AccountPickerCard, props) {
   }));
 }
 
-function renderAccountActionsDialog(AccountPickerActionsDialog, props) {
-  return renderWithI18n(React.createElement(AccountPickerActionsDialog, {
+function renderAccountActionsView(AccountPickerActionsView, props) {
+  return renderWithI18n(React.createElement(AccountPickerActionsView, {
     account: props.account,
     busy: props.busy ?? false,
-    onClose() {},
+    onBack() {},
     onOpenAccountAction() {},
     onSignOut() {},
+    shouldReduceMotion: true,
+    signingOut: props.busy ?? false,
   }));
 }
 
