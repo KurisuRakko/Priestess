@@ -23,6 +23,8 @@ const ORIGIN_CONTENT_IN_MS = 150;
 const ORIGIN_CONTENT_OUT_MS = 90;
 const SPINNER_ROTATE_MS = 900;
 const IDENTITY_LOADING_MIN_MS = 420;
+// 保存账号头像先完成跨卡片位移，再进入放大揭示，避免中途改目标导致速度归零。
+const IDENTITY_SOURCE_LOADING_MIN_MS = 720;
 const IDENTITY_SUCCESS_SEQUENCE_MS = 880;
 const IDENTITY_FAILURE_SEQUENCE_MS = 620;
 const IDENTITY_HANDOFF_SEQUENCE_MS = 620;
@@ -556,6 +558,7 @@ function LoginTransitionOverlayInner(props: RenderState & { onFinish: () => void
             avatarUrl={cleanAvatarUrl}
             description={cleanDescription}
             displayName={cleanUsername}
+            exiting={isExiting}
             identityMotionSource={identityMotionSource}
             phase={identityPhase}
             statusText={phase === PHASE_LOADING ? loadingTitleText : titleText}
@@ -809,7 +812,11 @@ function createOverlayController(params: LoginTransitionOverlayParams = {}): Log
       renderState = buildRenderState(baseParams, phase, phaseKey, nextParams);
       renderOverlay();
     };
-    const minimumLoadingMs = baseParams.identityReveal ? IDENTITY_LOADING_MIN_MS : 0;
+    const minimumLoadingMs = baseParams.identityMotionSource
+      ? IDENTITY_SOURCE_LOADING_MIN_MS
+      : baseParams.identityReveal
+        ? IDENTITY_LOADING_MIN_MS
+        : 0;
     const remainingLoadingMs = Math.max(0, minimumLoadingMs - (Date.now() - loadingPhaseStartedAt));
     if (remainingLoadingMs > 0) {
       outcomeTransitionTimerId = window.setTimeout(showOutcome, remainingLoadingMs);

@@ -236,56 +236,59 @@ export function QrLoginConfirmPage({ onNavigateToLogin, onNotice }: QrLoginConfi
           warningCountdown={warningCountdown}
         />
 
-        <motion.div
-          animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-          aria-hidden={overlayMode ? true : undefined}
-          className="qr-mobile-content"
-          initial={{ opacity: 0, y: 15, filter: "blur(8px)" }}
-          inert={overlayMode ? true : undefined}
-          key={status}
-          transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
-        >
-          {status === "loading" ? (
-            <LoadingView />
-          ) : status === "error" ? (
-            <ErrorView
-              errorKind={errorKind}
-              message={errorMessage}
-              onNavigateToLogin={onNavigateToLogin}
-              onRetry={() => void loadQrSession()}
-            />
-          ) : status === "pending" && qrSession ? (
-            <PendingView
-              accountLabel={accountLabel}
-              applicationLogo={applicationLogo}
-              applicationName={applicationName}
-              avatarUrl={avatarUrl}
-              canConfirm={canConfirmSession || canFinalConfirmSession}
-              canReject={canRejectSession}
-              isSubmitting={isSubmitting}
-              mainConfirmLabel={mainConfirmLabel}
-              onConfirm={confirmLogin}
-              onReject={rejectLogin}
-              pcContext={qrSession.pcContext}
-              pcIpAddress={pcIpAddress}
-              pcLocation={pcLocation}
-            />
-          ) : status === "agreed" ? (
-            <ResultView
-              icon={<CheckCircle2 size={80} strokeWidth={1.5} />}
-              tone="success"
-              title={t("已授权登录")}
-              description={t("请回到电脑端继续使用。")}
-            />
-          ) : (
-            <ResultView
-              icon={<XCircle size={80} strokeWidth={1.5} />}
-              tone="danger"
-              title={t("已取消登录")}
-              description={t("本次扫码登录请求已经取消。")}
-            />
-          )}
-        </motion.div>
+        <AnimatePresence initial={false} mode="wait">
+          <motion.div
+            animate={{ opacity: 1, y: 0 }}
+            aria-hidden={overlayMode ? true : undefined}
+            className="qr-mobile-content"
+            exit={{ opacity: 0, y: -12 }}
+            initial={{ opacity: 0, y: 15 }}
+            inert={overlayMode ? true : undefined}
+            key={status}
+            transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+          >
+            {status === "loading" ? (
+              <LoadingView />
+            ) : status === "error" ? (
+              <ErrorView
+                errorKind={errorKind}
+                message={errorMessage}
+                onNavigateToLogin={onNavigateToLogin}
+                onRetry={() => void loadQrSession()}
+              />
+            ) : status === "pending" && qrSession ? (
+              <PendingView
+                accountLabel={accountLabel}
+                applicationLogo={applicationLogo}
+                applicationName={applicationName}
+                avatarUrl={avatarUrl}
+                canConfirm={canConfirmSession || canFinalConfirmSession}
+                canReject={canRejectSession}
+                isSubmitting={isSubmitting}
+                mainConfirmLabel={mainConfirmLabel}
+                onConfirm={confirmLogin}
+                onReject={rejectLogin}
+                pcContext={qrSession.pcContext}
+                pcIpAddress={pcIpAddress}
+                pcLocation={pcLocation}
+              />
+            ) : status === "agreed" ? (
+              <ResultView
+                icon={<CheckCircle2 size={80} strokeWidth={1.5} />}
+                tone="success"
+                title={t("已授权登录")}
+                description={t("请回到电脑端继续使用。")}
+              />
+            ) : (
+              <ResultView
+                icon={<XCircle size={80} strokeWidth={1.5} />}
+                tone="danger"
+                title={t("已取消登录")}
+                description={t("本次扫码登录请求已经取消。")}
+              />
+            )}
+          </motion.div>
+        </AnimatePresence>
 
         <BottomActions
           errorKind={errorKind}
@@ -565,11 +568,11 @@ function BottomActions({
             </motion.button>
           </motion.div>
         ) : status === "agreed" || status === "rejected" ? (
-          <motion.button animate={{ opacity: 1, y: 0 }} className="qr-mobile-secondary qr-mobile-secondary--large" initial={{ opacity: 0, y: 10 }} key="resolved" onClick={onClose} type="button">
+          <motion.button animate={{ opacity: 1, y: 0 }} className="qr-mobile-secondary qr-mobile-secondary--large" exit={{ opacity: 0, y: -10 }} initial={{ opacity: 0, y: 10 }} key="resolved" onClick={onClose} type="button">
             {t("关闭")}
           </motion.button>
         ) : status === "error" ? (
-          <motion.div animate={{ opacity: 1, y: 0 }} className="qr-mobile-action-stack" initial={{ opacity: 0, y: 10 }} key="error">
+          <motion.div animate={{ opacity: 1, y: 0 }} className="qr-mobile-action-stack" exit={{ opacity: 0, y: -10 }} initial={{ opacity: 0, y: 10 }} key="error">
             {errorKind === "login-required" ? (
               <button className="qr-mobile-primary" onClick={onNavigateToLogin} type="button">
                 {t("返回登录页")}

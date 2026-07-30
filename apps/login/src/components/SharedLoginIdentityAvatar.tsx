@@ -17,12 +17,14 @@ type MotionOrigin = {
 
 type SharedLoginIdentityAvatarProps = {
   avatarUrl: string;
+  exiting: boolean;
   phase: LoginIdentityTransitionPhase;
   source: LoginIdentityMotionSource;
 };
 
 export function SharedLoginIdentityAvatar({
   avatarUrl,
+  exiting,
   phase,
   source,
 }: SharedLoginIdentityAvatarProps) {
@@ -55,34 +57,44 @@ export function SharedLoginIdentityAvatar({
 
   const isSuccess = phase === "success";
   const isFailure = phase === "failure";
-  const motionMode = shouldReduceMotion
-    ? "direct"
-    : isFailure
-      ? "returning"
-      : isSuccess
-        ? "expanding"
-        : "source-to-ring";
+  const isSuccessExit = exiting && isSuccess;
+  const motionMode = isSuccessExit
+    ? "exiting"
+    : shouldReduceMotion
+      ? "direct"
+      : isFailure
+        ? "returning"
+        : isSuccess
+          ? "expanding"
+          : "source-to-ring";
 
-  const animate = shouldReduceMotion
+  const animate = isSuccessExit
     ? {
-        opacity: isSuccess ? 1 : 0,
-        scale: isSuccess ? 1 : LOADING_AVATAR_SCALE,
+        opacity: 0,
+        scale: 0.96,
         x: 0,
-        y: 0,
+        y: -8,
       }
-    : isFailure && motionOrigin
+    : shouldReduceMotion
       ? {
-          opacity: 0,
-          scale: motionOrigin.scale,
-          x: motionOrigin.x,
-          y: motionOrigin.y,
-        }
-      : {
-          opacity: 1,
+          opacity: isSuccess ? 1 : 0,
           scale: isSuccess ? 1 : LOADING_AVATAR_SCALE,
           x: 0,
           y: 0,
-        };
+        }
+      : isFailure && motionOrigin
+        ? {
+            opacity: 0,
+            scale: motionOrigin.scale,
+            x: motionOrigin.x,
+            y: motionOrigin.y,
+          }
+        : {
+            opacity: 1,
+            scale: isSuccess ? 1 : LOADING_AVATAR_SCALE,
+            x: 0,
+            y: 0,
+          };
 
   return (
     <span
@@ -107,24 +119,29 @@ export function SharedLoginIdentityAvatar({
                 x: motionOrigin.x,
                 y: motionOrigin.y,
               }}
-          transition={shouldReduceMotion
-            ? { duration: 0 }
-            : isFailure
-              ? {
-                  duration: 0.44,
-                  ease: [0.4, 0, 0.2, 1],
-                }
-              : isSuccess
+          transition={isSuccessExit
+            ? {
+                duration: shouldReduceMotion ? 0 : 0.18,
+                ease: [0.4, 0, 0.2, 1],
+              }
+            : shouldReduceMotion
+              ? { duration: 0 }
+              : isFailure
                 ? {
-                    duration: 0.52,
-                    ease: SHARED_AVATAR_EASE,
+                    duration: 0.44,
+                    ease: [0.4, 0, 0.2, 1],
                   }
-                : {
-                    opacity: { duration: 0.16, ease: "linear" },
-                    scale: { duration: 0.62, ease: SHARED_AVATAR_EASE },
-                    x: { duration: 0.62, ease: SHARED_AVATAR_EASE },
-                    y: { duration: 0.68, ease: [0.22, 1, 0.36, 1] },
-                  }}
+                : isSuccess
+                  ? {
+                      duration: 0.52,
+                      ease: SHARED_AVATAR_EASE,
+                    }
+                  : {
+                      opacity: { duration: 0.16, ease: "linear" },
+                      scale: { duration: 0.62, ease: SHARED_AVATAR_EASE },
+                      x: { duration: 0.62, ease: SHARED_AVATAR_EASE },
+                      y: { duration: 0.68, ease: [0.22, 1, 0.36, 1] },
+                    }}
         >
           <img
             alt=""

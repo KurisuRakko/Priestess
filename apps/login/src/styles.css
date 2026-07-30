@@ -317,13 +317,20 @@ input:focus-visible {
   min-width: 0;
 }
 
+.login-form-mode-panel {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+}
+
 .login-card--submit-stage .auth-card-content {
   /* 提交阶段保留表单占位，避免卡片高度跳动；只把可见内容让位给状态层。 */
   opacity: 0 !important;
-  filter: blur(2px) !important;
   pointer-events: none;
-  transition: opacity 180ms var(--ease-out), filter 180ms var(--ease-out);
+  transition: opacity 180ms var(--ease-out);
   transition-delay: 560ms;
+  will-change: opacity;
 }
 
 .qr-drawer-slot {
@@ -365,7 +372,9 @@ input:focus-visible {
   transition:
     border-width var(--auth-drawer-duration) var(--auth-layout-ease),
     box-shadow var(--auth-drawer-duration) var(--auth-layout-ease);
-  will-change: transform, opacity, clip-path;
+  contain: paint;
+  backface-visibility: hidden;
+  will-change: transform, opacity;
 }
 
 .auth-grid--register .qr-drawer-surface {
@@ -1221,7 +1230,6 @@ input:focus-visible {
 
 @media (prefers-reduced-motion: reduce) {
   .login-card--submit-stage .auth-card-content {
-    filter: none;
     transition-delay: 0ms;
   }
 

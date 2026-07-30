@@ -116,7 +116,7 @@
   inset: 0;
 }
 
-.login-identity-transition.is-loading .login-identity-transition__ring-motion {
+.login-identity-transition__ring-motion {
   /* 两圈后回到相同角度，非线性节奏仍能无方向跳变地循环。 */
   animation: lso-identity-ring-rotate 1320ms cubic-bezier(0.42, 0, 0.18, 1) infinite;
 }
@@ -125,15 +125,17 @@
   animation: lso-identity-ring-resolve 880ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-.login-identity-transition.is-success .login-identity-transition__ring-motion {
-  animation: lso-identity-ring-success-turn 620ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-.login-identity-transition__ring {
+.login-identity-transition__ring,
+.login-identity-transition__ring-outcome {
   display: block;
   width: 100%;
   height: 100%;
   overflow: visible;
+}
+
+.login-identity-transition__ring-outcome {
+  position: absolute;
+  inset: 0;
 }
 
 .login-identity-transition__ring-track,
@@ -189,13 +191,20 @@
   line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
-  opacity: 0;
-  transform: translateY(8px);
-  animation: lso-identity-text-in 300ms 220ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.login-identity-transition__status-slot {
+  display: grid;
+  width: 100%;
+  margin-top: 14px;
+}
+
+.login-identity-transition.is-success .login-identity-transition__status-slot {
+  margin-top: 6px;
 }
 
 .login-identity-transition__status {
-  margin-top: 14px;
+  grid-area: 1 / 1;
   color: rgb(0 0 0 / 56%);
   font-size: 16px;
   font-weight: 500;
@@ -203,10 +212,7 @@
 }
 
 .login-identity-transition.is-success .login-identity-transition__status {
-  margin-top: 6px;
-  opacity: 0;
-  transform: translateY(6px);
-  animation: lso-identity-text-in 300ms 260ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  color: rgb(0 0 0 / 56%);
 }
 
 .login-identity-transition.is-failure .login-identity-transition__status {
@@ -221,9 +227,10 @@
   font-size: 14px;
   font-weight: 400;
   line-height: 1.45;
-  opacity: 0;
-  transform: translateY(6px);
-  animation: lso-identity-text-in 260ms 220ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.login-success-overlay.is-exiting .login-identity-transition__avatar {
+  animation: lso-identity-avatar-exit 180ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
 }
 
 .login-identity-transition__failure-mark {
@@ -695,16 +702,6 @@
   }
 }
 
-@keyframes lso-identity-ring-success-turn {
-  from {
-    transform: rotate(0deg);
-  }
-
-  to {
-    transform: rotate(310deg);
-  }
-}
-
 @keyframes lso-identity-ring-complete {
   from {
     stroke-dasharray: 48 241;
@@ -759,6 +756,18 @@
   }
 }
 
+@keyframes lso-identity-avatar-exit {
+  from {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% - 8px)) scale(0.96);
+  }
+}
+
 @keyframes lso-identity-group-lift {
   from {
     transform: translateY(0);
@@ -766,18 +775,6 @@
 
   to {
     transform: translateY(-20px);
-  }
-}
-
-@keyframes lso-identity-text-in {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
   }
 }
 

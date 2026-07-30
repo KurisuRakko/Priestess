@@ -360,6 +360,7 @@ async function testPasswordLoginRevealsIdentityAfterVerification(browserInstance
     await usernameInput.fill("identity-user");
     await page.locator("input[autocomplete='current-password']").fill(TEST_PASSWORD);
     const submitButton = page.locator(".login-form .primary-button[type='submit']");
+    await startLoginTransitionFrameProbe(page, "identity-entry");
     await submitButton.evaluate((element) => {
       element.addEventListener("click", () => {
         window.__priestessSmokeSubmitDispatchedAt = Date.now();
@@ -373,18 +374,48 @@ async function testPasswordLoginRevealsIdentityAfterVerification(browserInstance
       requestStartDelayMs < 650,
       `network login must not wait for the 760ms card-centering transition (observed ${requestStartDelayMs}ms)`,
     );
+    const submitSurface = page.locator(".login-card--submit-stage .auth-card-content");
+    await submitSurface.waitFor({ state: "attached", timeout: 1000 });
+    const submitSurfaceStyle = await submitSurface.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        filter: style.filter,
+        transitionProperty: style.transitionProperty,
+      };
+    });
+    assert.equal(submitSurfaceStyle.filter, "none", "the large login form must not animate a rasterizing blur during handoff");
+    assert.equal(submitSurfaceStyle.transitionProperty, "opacity");
 
     const loadingOverlay = page.locator(".login-success-overlay.is-loading");
     const loadingIdentity = loadingOverlay.locator('[data-login-identity-phase="loading"]');
     await loadingIdentity.waitFor({ state: "visible", timeout: 5000 });
     const loadingObservedAt = Date.now();
+    await page.waitForTimeout(180);
+    const entryFrames = await finishLoginTransitionFrameProbe(page, "identity-entry");
+    assert.ok(entryFrames);
+    assert.ok(entryFrames.frameCount >= 20, `login handoff should provide a measurable frame sequence: ${JSON.stringify(entryFrames)}`);
+    assert.ok(entryFrames.p95FrameGapMs <= 35, `login handoff should stay near a smooth frame cadence: ${JSON.stringify(entryFrames)}`);
+    assert.ok(entryFrames.longFrameCount <= 1, `login handoff should not repeatedly stall the main thread: ${JSON.stringify(entryFrames)}`);
+    assert.equal(entryFrames.blurredFrameCount, 0, "login handoff must not animate a large blurred form surface");
     assert.equal(await loadingIdentity.locator("[data-login-identity-avatar]").count(), 0);
     assert.equal(await loadingIdentity.locator("[data-login-identity-name]").count(), 0);
     assert.equal(await loadingIdentity.locator(".login-identity-transition__status").innerText(), "Trying to sign you in…");
+    await loadingIdentity.locator(".login-identity-transition__status").evaluate((element) => {
+      window.__priestessIdentityStatusExitObserved = false;
+      const observer = new MutationObserver(() => {
+        if (element.getAttribute("data-login-identity-status-presence") === "exiting") {
+          window.__priestessIdentityStatusExitObserved = true;
+          observer.disconnect();
+        }
+      });
+      observer.observe(element, { attributeFilter: ["data-login-identity-status-presence"] });
+    });
 
     const loadingMotion = await loadingIdentity.evaluate((element) => {
       const ringMotion = element.querySelector(".login-identity-transition__ring-motion");
       const ringArc = element.querySelector(".login-identity-transition__ring-arc");
+      window.__priestessIdentityRingElement = ringMotion;
+      window.__priestessIdentityRingAnimation = ringMotion?.getAnimations()[0] || null;
       return {
         arcAnimationName: ringArc ? getComputedStyle(ringArc).animationName : "",
         motionAnimationName: ringMotion ? getComputedStyle(ringMotion).animationName : "",
@@ -399,7 +430,22 @@ async function testPasswordLoginRevealsIdentityAfterVerification(browserInstance
     await successOverlay.waitFor({ state: "visible", timeout: 5000 });
     assert.ok(Date.now() - loadingObservedAt >= 340, "fast login must preserve the pending phase near the 420ms contract");
     assert.equal(await successOverlay.locator("[data-login-identity-name]").innerText(), `User ${scenario.appId}`);
-    assert.equal(await successOverlay.locator(".login-identity-transition__status").innerText(), "Signed in successfully");
+    const successStatus = successOverlay.locator('[data-login-identity-status-phase="success"]');
+    await successStatus.waitFor({ state: "visible", timeout: 1000 });
+    assert.equal(await successStatus.innerText(), "Signed in successfully");
+    assert.equal(
+      await page.evaluate(() => window.__priestessIdentityStatusExitObserved),
+      true,
+      "the pending status must run its exit state before the success text takes over",
+    );
+    assert.equal(
+      await successOverlay.locator(".login-identity-transition__ring-motion").evaluate((element) => (
+        element === window.__priestessIdentityRingElement
+        && element.getAnimations()[0] === window.__priestessIdentityRingAnimation
+      )),
+      true,
+      "the loading ring must preserve the same rotation timeline through success",
+    );
     assert.match(
       await successOverlay.locator("[data-login-identity-avatar]").getAttribute("src"),
       /priestess-default-avatar\.png/,
@@ -419,9 +465,11 @@ async function testPasswordLoginRevealsIdentityAfterVerification(browserInstance
     });
     assert.ok(placement.contentCenterY < placement.cardCenterY - 8, "identity result should sit in the card's upper visual region");
 
-    await page.waitForTimeout(950);
+    await Promise.all([
+      page.locator(".account-shell").waitFor({ state: "attached", timeout: 2500 }),
+      page.waitForTimeout(950),
+    ]);
     assert.equal(new URL(page.url()).pathname, "/manage", "the destination should load behind the success confirmation");
-    assert.equal(await page.locator(".account-shell").count(), 1);
     const settled = await successOverlay.evaluate((overlay) => {
       const avatar = overlay.querySelector("[data-login-identity-avatar]");
       const ring = overlay.querySelector(".login-identity-transition__ring-shell");
@@ -433,9 +481,24 @@ async function testPasswordLoginRevealsIdentityAfterVerification(browserInstance
     assert.ok(settled.avatarWidth >= 103 && settled.avatarWidth <= 105, "revealed avatar should settle at 104px");
     assert.ok(settled.ringOpacity <= 0.05, "resolved ring should shrink away after the avatar fills it");
 
+    await successOverlay.evaluate((overlay) => {
+      window.__priestessIdentityExitObserved = false;
+      const observer = new MutationObserver(() => {
+        if (overlay.classList.contains("is-exiting")) {
+          window.__priestessIdentityExitObserved = true;
+          observer.disconnect();
+        }
+      });
+      observer.observe(overlay, { attributeFilter: ["class"] });
+    });
     await page.waitForTimeout(900);
     assert.equal(await successOverlay.count(), 1, "successful identity must remain visible during the 1.6s confirmation hold");
     await successOverlay.waitFor({ state: "detached", timeout: 2500 });
+    assert.equal(
+      await page.evaluate(() => window.__priestessIdentityExitObserved),
+      true,
+      "the completed identity layer must expose an exit phase before unmounting",
+    );
   }, { locale: "en-US", reducedMotion: "no-preference", viewport: { height: 900, width: 1440 } });
 }
 
@@ -554,9 +617,14 @@ async function testBareLoginSelectsSavedAccount(browserInstance, appUrl) {
     await accountButton.click();
     const sharedAvatar = page.locator('.login-success-overlay.is-loading [data-login-identity-avatar="shared"]');
     await sharedAvatar.waitFor({ state: "visible", timeout: 5000 });
+    const sharedLoadingObservedAt = Date.now();
     assert.equal(await sharedAvatar.getAttribute("data-login-identity-source"), "account-picker");
     const accountIdentity = page.locator('.login-success-overlay.is-success [data-login-identity-phase="success"]');
     await accountIdentity.waitFor({ state: "visible", timeout: 5000 });
+    assert.ok(
+      Date.now() - sharedLoadingObservedAt >= 620,
+      "fast saved-account activation must let the avatar finish entering the ring before expansion",
+    );
     assert.equal(await accountIdentity.locator("[data-login-identity-name]").innerText(), `User ${scenario.appId}`);
     assert.equal(new URL(page.url()).pathname, "/login", "saved-account navigation must wait until identity reveal is perceptible");
     await page.waitForURL((url) => url.pathname === "/manage", { timeout: 5000 });
@@ -643,7 +711,23 @@ async function testSavedAccountAvatarMovesIntoIdentityRing(browserInstance, appU
     await page.waitForTimeout(620);
     const successWidth = await revealedAvatar.evaluate((element) => element.getBoundingClientRect().width);
     assert.ok(successWidth >= 103 && successWidth <= 105, "the same shared avatar should expand to the resolved identity size");
+    await revealedAvatar.evaluate((element) => {
+      window.__priestessSharedAvatarExitObserved = false;
+      const observer = new MutationObserver(() => {
+        if (element.getAttribute("data-login-identity-motion") === "exiting") {
+          window.__priestessSharedAvatarExitObserved = true;
+          observer.disconnect();
+        }
+      });
+      observer.observe(element, { attributeFilter: ["data-login-identity-motion"] });
+    });
     await page.waitForURL((url) => url.pathname === "/manage", { timeout: 6000 });
+    await page.locator(".login-success-overlay").waitFor({ state: "detached", timeout: 5000 });
+    assert.equal(
+      await page.evaluate(() => window.__priestessSharedAvatarExitObserved),
+      true,
+      "the shared avatar must run an explicit exit state before the overlay unmounts",
+    );
   }, { locale: "en-US", reducedMotion: "no-preference", viewport: { height: 900, width: 1440 } });
 }
 
@@ -771,6 +855,18 @@ async function testTotpReturnsToAccountPicker(browserInstance, appUrl) {
     const totpInput = page.locator("input[autocomplete='one-time-code']");
     await totpInput.waitFor({ state: "visible", timeout: 5000 });
     assert.equal(await totpInput.isEnabled(), true);
+    await page.locator(".login-success-overlay").waitFor({ state: "detached", timeout: 5000 });
+
+    const outgoingTotpPanel = page.locator('[data-login-form-panel="totp"]');
+    await page.getByRole("button", { name: "返回密码登录" }).click();
+    await page.locator('[data-login-form-panel="totp"][data-login-form-presence="exiting"]').waitFor({ state: "attached", timeout: 1000 });
+    await page.locator('[data-login-form-panel="password"]').waitFor({ state: "visible", timeout: 2000 });
+    await outgoingTotpPanel.waitFor({ state: "detached", timeout: 1000 });
+
+    await page.locator(".login-form .primary-button[type='submit']").click();
+    await page.locator('[data-login-identity-phase="handoff"]').waitFor({ state: "visible", timeout: 5000 });
+    await page.locator("input[autocomplete='one-time-code']").waitFor({ state: "visible", timeout: 5000 });
+    await page.locator(".login-success-overlay").waitFor({ state: "detached", timeout: 5000 });
     await totpInput.fill("123456");
     await page.locator(".login-form .primary-button[type='submit']").click();
     await page.locator('.login-success-overlay.is-success [data-login-identity-avatar="revealed"]').waitFor({ state: "visible", timeout: 5000 });
@@ -1053,6 +1149,53 @@ async function waitForSuccessfulAccountPicker(page) {
 
 async function assertInputValue(locator, expected, timeoutMs) {
   await waitFor(async() => await locator.inputValue() === expected, timeoutMs, `expected input value ${expected}`);
+}
+
+async function startLoginTransitionFrameProbe(page, key) {
+  await page.evaluate((probeKey) => {
+    const probe = {
+      blurredFrameCount: 0,
+      frameGaps: [],
+      lastFrameAt: null,
+      running: true,
+    };
+    window[probeKey] = probe;
+
+    const sample = (now) => {
+      if (!probe.running) return;
+      if (probe.lastFrameAt !== null) {
+        probe.frameGaps.push(now - probe.lastFrameAt);
+      }
+      probe.lastFrameAt = now;
+
+      const submitSurface = document.querySelector(".login-card--submit-stage .auth-card-content");
+      if (submitSurface instanceof HTMLElement) {
+        const filter = getComputedStyle(submitSurface).filter;
+        if (filter !== "none" && filter !== "blur(0px)") {
+          probe.blurredFrameCount += 1;
+        }
+      }
+      requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  }, `__priestessLoginFrameProbe_${key}`);
+}
+
+async function finishLoginTransitionFrameProbe(page, key) {
+  return page.evaluate((probeKey) => {
+    const probe = window[probeKey];
+    if (!probe) return null;
+    probe.running = false;
+    delete window[probeKey];
+    const sortedGaps = [...probe.frameGaps].sort((left, right) => left - right);
+    const p95Index = Math.min(sortedGaps.length - 1, Math.floor(sortedGaps.length * 0.95));
+    return {
+      blurredFrameCount: probe.blurredFrameCount,
+      frameCount: sortedGaps.length,
+      longFrameCount: sortedGaps.filter((gap) => gap > 50).length,
+      p95FrameGapMs: sortedGaps.length > 0 ? sortedGaps[Math.max(0, p95Index)] : 0,
+    };
+  }, `__priestessLoginFrameProbe_${key}`);
 }
 
 async function startMockApiServer() {

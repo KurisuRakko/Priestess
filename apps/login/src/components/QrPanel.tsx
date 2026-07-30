@@ -21,8 +21,8 @@ export function QrPanel({
 }: QrPanelProps) {
   const { t } = usePriestessTranslation("login");
   const shouldReduceMotion = useReducedMotion();
-  const itemEnter = shouldReduceMotion ? false : { opacity: 0, y: 12, filter: "blur(6px)" };
-  const itemAnimate = { opacity: 1, y: 0, filter: "blur(0px)" };
+  const itemEnter = shouldReduceMotion ? false : { opacity: 0, y: 12 };
+  const itemAnimate = { opacity: 1, y: 0 };
   const normalizedQrValue = qrValue.trim();
   const hasQrValue = normalizedQrValue.length > 0;
   const shouldShowQrOverlay = hasQrValue && (visualState === "scanned" || visualState === "confirmed");

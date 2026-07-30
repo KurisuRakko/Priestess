@@ -381,8 +381,8 @@ export function LoginExperience({
   const loginEnter = shouldReduceMotion
     ? false
     : mobileLoginReveal.isMobileViewport
-      ? { opacity: 1, y: "100%", scale: 1, filter: "blur(0px)" }
-      : { opacity: 0, x: 360, y: 24, scale: 0.972, filter: "blur(10px)" };
+      ? { opacity: 1, y: "100%", scale: 1 }
+      : { opacity: 0, x: 360, y: 24, scale: 0.972 };
   const activeMobilePanel = isRegisterMode
     ? "register"
     : isForgotPasswordMode
@@ -426,8 +426,8 @@ export function LoginExperience({
     loginCardRef.current?.scrollTo({ behavior: "auto", top: 0 });
   }, [activeMobilePanel, loginCardRef, mobileLoginReveal.isMobileViewport]);
   const qrDrawerVariants = {
-    closed: { x: "-96%", opacity: 0, clipPath: "inset(0 100% 0 0)" },
-    open: { x: "0%", opacity: 1, clipPath: "inset(0 0% 0 0)" },
+    closed: { x: "-100%", opacity: 0 },
+    open: { x: "0%", opacity: 1 },
   };
   const qrDrawerTransition = shouldReduceMotion
     ? { duration: 0 }
@@ -476,7 +476,7 @@ export function LoginExperience({
                 data-desktop-entry-travel={!mobileLoginReveal.isMobileViewport && !shouldReduceMotion ? "large" : undefined}
                 data-login-card-entry={loginCardEntryComplete ? "ready" : "entering"}
                 initial={loginEnter}
-                animate={{ opacity: 1, x: 0, y: 0, scale: 1, filter: "blur(0px)" }}
+                animate={{ opacity: 1, x: 0, y: 0, scale: 1 }}
                 onAnimationComplete={() => setLoginCardEntryComplete(true)}
                 style={{ pointerEvents: loginCardEntryComplete ? "auto" : "none" }}
                 transition={shouldReduceMotion
