@@ -498,7 +498,9 @@ function testAccountPickerMarkup({ AccountPickerActionsView, AccountPickerCard, 
   });
   assert.match(busyHtml, /aria-busy="true"/);
   assert.match(busyHtml, /aria-label="正在使用 Bowen Yang，z5717379@ad\.unsw\.edu\.au，已登录 继续访问 canvas"/);
-  assert.match(busyHtml, /继续中/);
+  assert.match(busyHtml, /account-picker__row--authorizing/);
+  assert.match(busyHtml, /disabled=""/);
+  assert.doesNotMatch(busyHtml, /继续中|Continuing/);
 
   const removingHtml = renderPicker(AccountPickerCard, {
     accounts,

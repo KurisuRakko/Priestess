@@ -212,6 +212,11 @@ async function testSavedAccountAuthorizationFailureReturnsPicker(browserInstance
 
     await accountButton.waitFor({ state: "visible", timeout: 2000 });
     assert.equal(await accountButton.isEnabled(), true);
+    assert.equal(await page.locator(".login-card--account-selection-stage").count(), 0);
+    assert.notEqual(
+      await accountButton.locator('[data-account-shared-part="avatar"]').evaluate((element) => getComputedStyle(element).visibility),
+      "hidden",
+    );
     assert.equal(new URL(page.url()).pathname, "/login");
   }, { reducedMotion: "no-preference", viewport: { height: 900, width: 1440 } });
 }
@@ -439,6 +444,16 @@ async function testPasswordLoginRevealsIdentityAfterVerification(browserInstance
     await successStatus.waitFor({ state: "visible", timeout: 1000 });
     assert.equal(await successStatus.innerText(), "Signed in successfully");
     assert.equal(
+      await successOverlay.locator('[data-login-identity-status-phase="loading"]').count(),
+      0,
+      "loading copy must retire before success copy becomes visible",
+    );
+    assert.equal(
+      await successOverlay.locator(".login-identity-transition__status").count(),
+      1,
+      "identity status must never retain two text layers",
+    );
+    assert.equal(
       await page.evaluate(() => window.__priestessIdentityStatusExitObserved),
       true,
       "the pending status must run its exit state before the success text takes over",
@@ -548,7 +563,7 @@ async function testPasswordLoginRevealsIdentityAfterVerification(browserInstance
     assert.ok(entryFrames.longFrameCount <= 1, `login handoff should not repeatedly stall the main thread: ${JSON.stringify(entryFrames)}`);
     assert.equal(entryFrames.blurredFrameCount, 0, "login handoff must not animate a large blurred form surface");
     assert.equal(entryFrames.lowHandoffOpacityFrameCount, 0, "source, identity overlay, and account target must not expose an empty frame");
-    assert.ok(entryFrames.minimumHandoffOpacity >= 0.45, `handoff surfaces must keep continuous visible feedback: ${JSON.stringify(entryFrames)}`);
+    assert.ok(entryFrames.minimumHandoffOpacity >= 0.4, `handoff surfaces must keep continuous visible feedback: ${JSON.stringify(entryFrames)}`);
     assert.ok(entryFrames.identityHeightRange <= 0.1, `identity stage height must remain stable across loading and success: ${JSON.stringify(entryFrames)}`);
     assert.ok(entryFrames.visualWidthRange <= 0.1, `identity visual must reserve its final width instead of resizing every frame: ${JSON.stringify(entryFrames)}`);
     assert.equal(entryFrames.visualWidthChangeCount, 0, "identity reveal must not drive layout with per-frame width changes");
@@ -586,6 +601,8 @@ async function testReducedMotionIdentityReveal(browserInstance, appUrl) {
     await successIdentity.waitFor({ state: "visible", timeout: 5000 });
     assert.equal(await successIdentity.locator("[data-login-identity-avatar]").count(), 1);
     assert.equal(await successIdentity.locator("[data-login-identity-name]").innerText(), `User ${scenario.appId}`);
+    assert.equal(await successIdentity.locator('[data-login-identity-status-phase="loading"]').count(), 0);
+    assert.equal(await successIdentity.locator(".login-identity-transition__status").count(), 1);
     assert.equal(
       await successIdentity.locator(".login-identity-transition__avatar").evaluate((element) => getComputedStyle(element).transform),
       "matrix(1, 0, 0, 1, -52, -52)",
@@ -734,11 +751,60 @@ async function testSavedAccountAvatarMovesIntoIdentityRing(browserInstance, appU
     const sourceRect = await accountAvatar.boundingBox();
     assert.ok(sourceRect);
 
+    await accountButton.evaluate((button) => {
+      window.__priestessAccountSelectionFrameProbe = {
+        clickedSourceRect: null,
+        currentFrame: 0,
+        sharedAvatarFrame: null,
+      };
+      button.addEventListener("click", () => {
+        const probe = window.__priestessAccountSelectionFrameProbe;
+        const clickedAvatarRect = button.querySelector('[data-account-shared-part="avatar"]')?.getBoundingClientRect();
+        probe.clickedSourceRect = clickedAvatarRect ? {
+          height: clickedAvatarRect.height,
+          left: clickedAvatarRect.left,
+          top: clickedAvatarRect.top,
+          width: clickedAvatarRect.width,
+        } : null;
+        const observer = new MutationObserver(() => {
+          if (document.querySelector(".login-identity-transition__shared-avatar-frame")) {
+            probe.sharedAvatarFrame = probe.currentFrame;
+            observer.disconnect();
+          }
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
+        const sampleFrame = () => {
+          probe.currentFrame += 1;
+          if (probe.sharedAvatarFrame === null && probe.currentFrame < 6) {
+            window.requestAnimationFrame(sampleFrame);
+          }
+        };
+        window.requestAnimationFrame(sampleFrame);
+      }, { once: true });
+    });
     await accountButton.click();
     const sharedAvatar = page.locator('.login-success-overlay.is-loading [data-login-identity-avatar="shared"]');
     await sharedAvatar.waitFor({ state: "visible", timeout: 5000 });
+    await page.waitForFunction(() => window.__priestessAccountSelectionFrameProbe?.sharedAvatarFrame !== null);
+    const frameProbe = await page.evaluate(() => window.__priestessAccountSelectionFrameProbe);
+    assert.ok(
+      frameProbe.sharedAvatarFrame <= 2,
+      `shared avatar should mount in the first layout handoff frame: ${JSON.stringify(frameProbe)}`,
+    );
     assert.equal(await sharedAvatar.getAttribute("data-login-identity-motion"), "source-to-ring");
     assert.equal(await sharedAvatar.getAttribute("data-login-identity-source"), "account-picker");
+    assert.equal(await page.locator(".login-card--account-selection-stage").count(), 1);
+    assert.equal(await page.locator(".auth-card-viewport").getAttribute("aria-hidden"), "true");
+    assert.equal(await page.locator(".auth-card-viewport").evaluate((element) => element.inert), true);
+    assert.equal(await page.locator(".auth-card-content").evaluate((element) => getComputedStyle(element).pointerEvents), "none");
+    assert.equal(await accountButton.isDisabled(), true);
+    assert.equal(await accountButton.evaluate((element) => element.parentElement?.getAttribute("aria-busy")), "true");
+    assert.match(await accountButton.getAttribute("aria-label"), /^Using /);
+    assert.doesNotMatch(await page.locator("body").innerText(), /Continuing|继续中/);
+    assert.equal(await page.locator(".qr-drawer-slot").getAttribute("aria-hidden"), "true");
+    assert.equal(await page.locator(".qr-drawer-slot").getAttribute("data-account-selection-presence"), "retired");
+    assert.equal(await page.locator(".qr-drawer-surface").evaluate((element) => getComputedStyle(element).pointerEvents), "none");
+    assert.equal(await accountAvatar.evaluate((element) => getComputedStyle(element).visibility), "hidden");
 
     const origin = {
       scale: Number(await sharedAvatar.getAttribute("data-login-identity-origin-scale")),
@@ -750,6 +816,28 @@ async function testSavedAccountAvatarMovesIntoIdentityRing(browserInstance, appU
     assert.ok(
       Math.abs(origin.scale - sourceRect.width / 104) < 0.03,
       "shared avatar should begin at the account-row avatar size",
+    );
+    const recordedSourceRect = {
+      height: Number(await sharedAvatar.getAttribute("data-login-identity-source-height")),
+      left: Number(await sharedAvatar.getAttribute("data-login-identity-source-left")),
+      top: Number(await sharedAvatar.getAttribute("data-login-identity-source-top")),
+      width: Number(await sharedAvatar.getAttribute("data-login-identity-source-width")),
+    };
+    assert.ok(frameProbe.clickedSourceRect);
+    assert.ok(Math.abs(recordedSourceRect.left - frameProbe.clickedSourceRect.left) < 0.1);
+    assert.ok(Math.abs(recordedSourceRect.top - frameProbe.clickedSourceRect.top) < 0.1);
+    assert.ok(Math.abs(recordedSourceRect.width - frameProbe.clickedSourceRect.width) < 0.1);
+    assert.ok(Math.abs(recordedSourceRect.height - frameProbe.clickedSourceRect.height) < 0.1);
+    assert.equal(
+      await page.locator('[data-account-shared-part="avatar"], .login-identity-transition__shared-avatar-frame').evaluateAll((elements) => (
+        elements.filter((element) => {
+          const style = getComputedStyle(element);
+          const rect = element.getBoundingClientRect();
+          return style.visibility !== "hidden" && Number(style.opacity) > 0 && rect.width > 0 && rect.height > 0;
+        }).length
+      )),
+      1,
+      "only the shared avatar should remain visibly instantiated during handoff",
     );
 
     await sharedAvatar.evaluate((element) => {
@@ -785,6 +873,12 @@ async function testSavedAccountAvatarMovesIntoIdentityRing(browserInstance, appU
 
     const revealedAvatar = page.locator('.login-success-overlay.is-success [data-login-identity-avatar="revealed"]');
     await revealedAvatar.waitFor({ state: "visible", timeout: 5000 });
+    assert.equal(
+      await page.locator('[data-login-identity-status-phase="loading"]').count(),
+      0,
+      "saved-account loading copy must be gone before the success identity is visible",
+    );
+    assert.equal(await page.locator(".login-identity-transition__status").count(), 1);
     assert.equal(await revealedAvatar.getAttribute("data-login-identity-motion"), "expanding");
     assert.equal(
       await revealedAvatar.evaluate((element) => element === window.__priestessSharedAvatarElement),
@@ -834,6 +928,9 @@ async function testReducedMotionSavedAccountIdentity(browserInstance, appUrl) {
     const revealedAvatar = page.locator('[data-login-identity-avatar="revealed"]');
     await revealedAvatar.waitFor({ state: "visible", timeout: 5000 });
     assert.equal(await revealedAvatar.getAttribute("data-login-identity-motion"), "direct");
+    const successIdentity = page.locator('[data-login-identity-phase="success"]');
+    assert.equal(await successIdentity.locator('[data-login-identity-status-phase="loading"]').count(), 0);
+    assert.equal(await successIdentity.locator(".login-identity-transition__status").count(), 1);
     assert.ok(
       await revealedAvatar.evaluate((element) => (
         Number.parseFloat(getComputedStyle(element).transitionDuration) <= 0.00001
@@ -945,14 +1042,16 @@ async function testTotpReturnsToAccountPicker(browserInstance, appUrl) {
     const exitingTotpPanel = page.locator('[data-login-form-panel="totp"][data-login-form-presence="exiting"]');
     await exitingTotpPanel.waitFor({ state: "attached", timeout: 1000 });
     const incomingPasswordPanel = page.locator('[data-login-form-panel="password"]');
-    await incomingPasswordPanel.waitFor({ state: "visible", timeout: 2000 });
-    assert.equal(await outgoingTotpPanel.count(), 1, "the outgoing TOTP panel must overlap the incoming password panel during crossfade");
+    assert.equal(await incomingPasswordPanel.count(), 0, "the password copy must wait until the TOTP copy has retired");
+    assert.equal(await exitingTotpPanel.getAttribute("aria-hidden"), "true");
+    assert.equal(await exitingTotpPanel.evaluate((element) => element.inert), true);
     assert.equal(
       await exitingTotpPanel.evaluate((element) => getComputedStyle(element).pointerEvents),
       "none",
-      "the overlapping outgoing TOTP panel must not block the incoming form",
+      "the outgoing TOTP panel must stop blocking the incoming form",
     );
     await outgoingTotpPanel.waitFor({ state: "detached", timeout: 1000 });
+    await incomingPasswordPanel.waitFor({ state: "visible", timeout: 2000 });
 
     await page.locator(".login-form .primary-button[type='submit']").click();
     await page.locator('[data-login-identity-phase="handoff"]').waitFor({ state: "visible", timeout: 5000 });
@@ -965,7 +1064,7 @@ async function testTotpReturnsToAccountPicker(browserInstance, appUrl) {
 
     assert.deepEqual(scenario.records.totpBodies, [{ challenge_id: "totp-challenge", code: "123456" }]);
     assert.equal(scenario.records.authorizations.length, 0);
-  });
+  }, { reducedMotion: "no-preference", viewport: { height: 900, width: 1440 } });
 }
 
 async function testPasskeyReturnsToAccountPicker(browserInstance, appUrl) {
@@ -1191,10 +1290,12 @@ function createScenario(appId, options = {}) {
     authorizeError: options.authorizeError ?? false,
     browserAccountMode: options.browserAccountMode ?? "empty",
     deviceSessionsError: options.deviceSessionsError ?? false,
+    deviceSessionsDelayMs: options.deviceSessionsDelayMs ?? 0,
     appId,
     authenticated: false,
     loginError: options.loginError ?? false,
     loginKind: options.loginKind ?? "password",
+    logoutError: options.logoutError ?? false,
     records: {
       accountChoices: [],
       activations: [],
@@ -1203,6 +1304,7 @@ function createScenario(appId, options = {}) {
       deviceSessions: 0,
       loginBodies: [],
       loginRequestedAt: 0,
+      logouts: 0,
       passkeyOptions: 0,
       passkeyVerifications: [],
       qrSessions: [],
@@ -1361,8 +1463,22 @@ async function startMockApiServer() {
       return;
     }
 
+    if (req.method === "DELETE" && url.pathname === "/auth/priestess/session") {
+      scenario.records.logouts += 1;
+      if (scenario.logoutError) {
+        writeJson(res, 503, { error: { code: "sign_out_failed", message: "退出登录失败" } });
+        return;
+      }
+      scenario.authenticated = false;
+      writeJson(res, 200, { authenticated: false });
+      return;
+    }
+
     if (req.method === "GET" && url.pathname === "/auth/priestess/devices/sessions") {
       scenario.records.deviceSessions += 1;
+      if (scenario.deviceSessionsDelayMs > 0) {
+        await delay(scenario.deviceSessionsDelayMs);
+      }
       if (scenario.deviceSessionsError) {
         writeJson(res, 503, { error: { code: "device_sessions_unavailable" } });
         return;

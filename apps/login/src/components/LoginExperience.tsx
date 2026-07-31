@@ -21,6 +21,7 @@ import { type LoginLayoutAuthMode } from "../lib/loginLayoutState";
 import type { MobileLoginRevealState } from "../lib/useMobileLoginReveal";
 import type { LoginIdentityMotionSource } from "./loginIdentityMotion";
 import { PriestessLanguageSwitcher } from "./PriestessLanguageSwitcher";
+import "./LoginExperienceTransitions.css";
 
 type AccountChoicesState = ReturnType<typeof useAuthAccountChoices>;
 type TranslationFn = (key: string, options?: Record<string, unknown>) => string;
@@ -82,6 +83,7 @@ function AccountSwitchMotionPanel({
         : shouldAnimateDesktop
           ? getDesktopSharedAxisEnter()
           : { opacity: 1, x: 0 }}
+      aria-hidden={isPresent ? undefined : true}
       className="auth-account-switch-panel"
       data-auth-account-motion-origin={panel === "account-picker" ? "left" : "right"}
       data-auth-account-panel={panel}
@@ -97,6 +99,7 @@ function AccountSwitchMotionPanel({
         : shouldAnimateDesktop
           ? getDesktopSharedAxisInitial(direction)
           : false}
+      inert={isPresent ? undefined : true}
       style={{
         display: "flex",
         flexDirection: "column",
@@ -139,6 +142,7 @@ function AuthModeMotionPanel({
         : shouldAnimateDesktop
           ? getDesktopSharedAxisEnter()
           : { opacity: 1, x: 0 }}
+      aria-hidden={isPresent ? undefined : true}
       className="auth-card-content"
       data-auth-mode-motion-origin={panel === "login" ? "left" : "right"}
       data-auth-mode-panel={panel}
@@ -154,6 +158,7 @@ function AuthModeMotionPanel({
         : shouldAnimateMobile
           ? getMobileSharedAxisInitial(direction)
           : getDesktopSharedAxisInitial(direction)}
+      inert={isPresent ? undefined : true}
       ref={panelRef}
       style={{
         display: "flex",
@@ -183,6 +188,7 @@ type LoginExperienceProps = {
   directAuthorizeBusy: boolean;
   forgotPasswordIdentity: string;
   hasQrRequest: boolean;
+  isAccountSelectionStage: boolean;
   isForgotPasswordMode: boolean;
   isLocalLoginCooldownActive: boolean;
   isLoginSubmitCardStage: boolean;
@@ -233,6 +239,7 @@ export function LoginExperience({
   directAuthorizeBusy,
   forgotPasswordIdentity,
   hasQrRequest,
+  isAccountSelectionStage,
   isForgotPasswordMode,
   isLocalLoginCooldownActive,
   isLoginSubmitCardStage,
@@ -496,6 +503,7 @@ export function LoginExperience({
                   className={[
                     "login-card",
                     renderedAccountPickerCardMode ? "login-card--account-picker" : "",
+                    isAccountSelectionStage ? "login-card--account-selection-stage" : "",
                     isLoginSubmitCardStage ? "login-card--submit-stage" : "",
                   ].filter(Boolean).join(" ")}
                   style={{ width: "100%", display: "flex", flexDirection: "column" }}
@@ -503,11 +511,13 @@ export function LoginExperience({
                   {/* 方向语义：登录页在左、注册/找回在右。桌面端先让旧内容完整离场，
                       再从相反方向大幅引入新内容；手机端继续沿用短行程 fade-through。 */}
                   <motion.div
+                    aria-hidden={isAccountSelectionStage || isLoginSubmitCardStage ? true : undefined}
                     className="auth-card-viewport"
                     data-desktop-height-motion={!mobileLoginReveal.isMobileViewport && !shouldReduceMotion ? "tween" : undefined}
                     animate={shouldReduceMotion || mobileLoginReveal.isMobileViewport || panelHeight === null
                       ? undefined
                       : { height: panelHeight }}
+                    inert={isAccountSelectionStage || isLoginSubmitCardStage ? true : undefined}
                     style={mobileLoginReveal.isMobileViewport ? { height: "auto" } : undefined}
                     transition={shouldReduceMotion ? { duration: 0 } : DESKTOP_HEIGHT_TRANSITION}
                   >
@@ -611,7 +621,11 @@ export function LoginExperience({
                 </motion.div>
               </motion.div>
 
-              <div className="qr-drawer-slot" aria-hidden={!isQrDrawerOpen}>
+              <div
+                className="qr-drawer-slot"
+                aria-hidden={!isQrDrawerOpen || isAccountSelectionStage}
+                data-account-selection-presence={isAccountSelectionStage ? "retired" : "present"}
+              >
                 {/* slot 只负责布局宽度；可视抽屉层由 Motion 驱动，避免 CSS transform 抢同一段动画。 */}
                 <motion.div
                   className="qr-drawer-surface"

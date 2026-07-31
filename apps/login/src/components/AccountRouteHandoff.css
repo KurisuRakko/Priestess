@@ -33,8 +33,7 @@
 }
 
 .account-route-stage[data-account-route-phase="transferring"] .account-page,
-.account-route-stage[data-account-route-phase="transferring"] .account-topbar__actions,
-.account-route-stage[data-account-route-phase="transferring"] .account-topbar__identity-copy {
+.account-route-stage[data-account-route-phase="transferring"] .account-topbar__leading {
   animation: account-route-stage-enter 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 

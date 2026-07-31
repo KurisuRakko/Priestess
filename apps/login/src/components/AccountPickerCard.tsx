@@ -245,7 +245,7 @@ export function AccountPickerCard({
                         <div
                           key={accountKey}
                           aria-busy={isAccountBusy || isAccountRemoving || undefined}
-                          className={`account-picker__row${isAccountLocked ? " account-picker__row--disabled" : ""}${isAccountRemoving ? " account-picker__row--removing" : ""}${isAccountSignedOut ? " account-picker__row--signed-out" : ""}`}
+                          className={`account-picker__row${isAccountLocked ? " account-picker__row--disabled" : ""}${isAccountBusy ? " account-picker__row--authorizing" : ""}${isAccountRemoving ? " account-picker__row--removing" : ""}${isAccountSignedOut ? " account-picker__row--signed-out" : ""}`}
                         >
                           <button
                             aria-label={getAccountSelectLabel(account, appLabel, isAccountBusy, t, mode)}
@@ -266,7 +266,7 @@ export function AccountPickerCard({
                             />
                             <AccountIdentity
                               account={account}
-                              busyLabel={isAccountBusy ? t("继续中") : isAccountRemoving ? t("登出中") : ""}
+                              busyLabel={isAccountRemoving ? t("登出中") : ""}
                               layoutKey={accountKey}
                               shouldReduceMotion={shouldReduceMotion}
                             />
@@ -347,6 +347,7 @@ const AccountPickerMotionView = forwardRef<HTMLDivElement, AccountPickerMotionVi
   return (
     <motion.div
       animate={{ opacity: 1, y: 0 }}
+      aria-hidden={isPresent ? undefined : true}
       className="account-picker-card-view"
       data-account-picker-presence={isPresent ? "present" : "exiting"}
       data-account-picker-view={view}
@@ -359,6 +360,7 @@ const AccountPickerMotionView = forwardRef<HTMLDivElement, AccountPickerMotionVi
         y: travel,
       }}
       initial={shouldReduceMotion ? false : { opacity: 0, y: travel }}
+      inert={isPresent ? undefined : true}
       ref={ref}
       style={{ pointerEvents: isPresent ? "auto" : "none" }}
       transition={shouldReduceMotion ? { duration: 0 } : ACCOUNT_VIEW_TRANSITION}

@@ -1,4 +1,4 @@
-import { motion, useReducedMotion, type HTMLMotionProps } from "motion/react";
+import { motion, useIsPresent, useReducedMotion, type HTMLMotionProps } from "motion/react";
 import type { ReactNode } from "react";
 import { usePriestessTranslation } from "@priestess/shared";
 
@@ -60,6 +60,7 @@ export function AccountMotionCard({
   ...props
 }: HTMLMotionProps<"article"> & AccountMotionProps) {
   const shouldReduceMotion = useReducedMotion();
+  const isPresent = useIsPresent();
   return (
     <motion.article
       className={className}
@@ -67,6 +68,9 @@ export function AccountMotionCard({
       whileHover={buildHoverMotion(Boolean(shouldReduceMotion), interactive)}
       {...buildCardMotion(Boolean(shouldReduceMotion), delay)}
       {...props}
+      aria-hidden={isPresent ? props["aria-hidden"] : true}
+      data-account-motion-presence={isPresent ? "present" : "exiting"}
+      inert={isPresent ? props.inert : true}
     >
       {children}
     </motion.article>
@@ -80,12 +84,16 @@ export function AccountMotionPresenceItem({
   ...props
 }: HTMLMotionProps<"div"> & AccountMotionProps) {
   const shouldReduceMotion = useReducedMotion();
+  const isPresent = useIsPresent();
   return (
     <motion.div
       className={className}
       layout={!shouldReduceMotion}
       {...buildCardMotion(Boolean(shouldReduceMotion), delay)}
       {...props}
+      aria-hidden={isPresent ? props["aria-hidden"] : true}
+      data-account-motion-presence={isPresent ? "present" : "exiting"}
+      inert={isPresent ? props.inert : true}
     >
       {children}
     </motion.div>

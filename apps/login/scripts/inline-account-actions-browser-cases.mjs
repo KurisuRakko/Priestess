@@ -47,6 +47,15 @@ async function testInlineAccountActions({
     await moreButton.click();
     await page.waitForSelector('[data-account-picker-view="actions"]');
     await waitForExitingPanelStopsPointer(page, '[data-account-picker-view="list"]', "inline account list");
+    const exitingListView = page.locator('[data-account-picker-view="list"][data-account-picker-presence="exiting"]');
+    await exitingListView.waitFor({ state: "attached", timeout: 1000 });
+    assert.equal(await exitingListView.getAttribute("aria-hidden"), "true");
+    assert.equal(await exitingListView.evaluate((element) => element.inert), true);
+    assert.equal(
+      await exitingListView.locator(".account-picker__heading").evaluate((element) => getComputedStyle(element).visibility),
+      "hidden",
+      "retired account-list copy must not remain over the actions view",
+    );
     await listView.waitFor({ state: "detached", timeout: 1500 });
     await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "返回账号选择", null, { timeout: 1500 });
     await waitForAccountSharedElementsSettled(page);

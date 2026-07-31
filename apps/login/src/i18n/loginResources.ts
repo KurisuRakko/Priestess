@@ -105,7 +105,6 @@ export const loginTextResources: PriestessI18nResources = {
       "重试": "Retry",
       "已登录": "Signed in",
       "已登出": "Signed out",
-      "继续中": "Continuing",
       "登出中": "Signing out",
       "没有可用账号": "No available accounts",
       "请先登录或创建 Priestess 账号，再选择账号继续。": "Sign in or create a Priestess account before choosing an account.",

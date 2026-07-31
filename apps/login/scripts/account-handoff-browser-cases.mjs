@@ -9,6 +9,141 @@ export async function runAccountHandoffBrowserCases({
 }) {
   await testAccountHandoffTimeoutCanRetry({ appUrl, browserInstance, createScenario, submitPassword, withScenario });
   await testLanguagePreferencePersistsThroughHandoff({ appUrl, browserInstance, createScenario, submitPassword, withScenario });
+  await testManageLoadingCopyRetires({ appUrl, browserInstance, createScenario, withScenario });
+  await testManageHeaderAndFlowSignOut({ appUrl, browserInstance, createScenario, withScenario });
+}
+
+async function testManageLoadingCopyRetires({
+  appUrl,
+  browserInstance,
+  createScenario,
+  withScenario,
+}) {
+  const scenario = createScenario("manage-loading-copy");
+  scenario.authenticated = true;
+
+  await withScenario(browserInstance, scenario, async(page) => {
+    await page.goto(`${appUrl}/manage`, { waitUntil: "domcontentloaded" });
+    const devicesTab = page.locator(".account-nav").getByRole("button", { name: "设备" });
+    await devicesTab.waitFor({ state: "visible", timeout: 5000 });
+    await devicesTab.click();
+    const deviceList = page.locator(".account-device-list");
+    await page.locator(".account-device-list, .account-inline-alert").first().waitFor({ state: "visible", timeout: 5000 });
+
+    // 首次 effect 在开发态可能被 StrictMode 的校验重挂载取消；从用户主动刷新触发稳定的 loading → content 交接。
+    scenario.deviceSessionsDelayMs = 700;
+    await page.locator(".account-device-panel__header").getByRole("button", { name: "刷新" }).click();
+    const loadingCopy = page.locator(".account-inline-loading");
+    await loadingCopy.waitFor({ state: "visible", timeout: 5000 });
+    await deviceList.waitFor({ state: "visible", timeout: 5000 });
+
+    const exitingLoadingCopy = page.locator('.account-inline-loading[data-account-motion-presence="exiting"]');
+    await exitingLoadingCopy.waitFor({ state: "attached", timeout: 1000 });
+    assert.equal(await exitingLoadingCopy.getAttribute("aria-hidden"), "true");
+    assert.equal(await exitingLoadingCopy.evaluate((element) => element.inert), true);
+    assert.equal(
+      await exitingLoadingCopy.evaluate((element) => getComputedStyle(element).visibility),
+      "hidden",
+      "resolved Manage data must not retain loading copy over the device list",
+    );
+    await loadingCopy.waitFor({ state: "detached", timeout: 1500 });
+  }, { reducedMotion: "no-preference", viewport: { height: 900, width: 1440 } });
+}
+
+async function testManageHeaderAndFlowSignOut({
+  appUrl,
+  browserInstance,
+  createScenario,
+  withScenario,
+}) {
+  const viewports = [
+    { height: 900, name: "desktop", width: 1440 },
+    { height: 844, name: "mobile-390", width: 390 },
+    { height: 667, name: "mobile-375", width: 375 },
+  ];
+
+  for (const [index, viewport] of viewports.entries()) {
+    const scenario = createScenario(`manage-layout-${viewport.name}`);
+    scenario.authenticated = true;
+
+    await withScenario(browserInstance, scenario, async(page) => {
+      await page.goto(`${appUrl}/manage`, { waitUntil: "domcontentloaded" });
+      const topbar = page.locator(".account-topbar");
+      const leading = topbar.locator(".account-topbar__leading");
+      const currentAccount = topbar.locator(".account-topbar__identity");
+      const footer = page.locator(".account-page__signout");
+      const signOutButton = footer.locator(".account-button--danger");
+      await currentAccount.waitFor({ state: "visible", timeout: 5000 });
+
+      assert.equal(await leading.locator(".brand-mark").count(), 1);
+      assert.equal(await leading.locator(".priestess-language-switcher").count(), 1);
+      assert.equal(await currentAccount.locator(":scope > .account-topbar__avatar").count(), 1);
+      assert.equal(await currentAccount.locator(":scope > *").count(), 1, "top-right account control should contain only the avatar");
+      assert.doesNotMatch(
+        await topbar.innerText(),
+        new RegExp(`User ${scenario.appId}|${scenario.appId}@example\\.com|退出|Sign out`),
+      );
+      assert.equal(await topbar.locator(".account-button--danger").count(), 0);
+
+      const headerGeometry = await topbar.evaluate((element) => {
+        const left = element.querySelector(".account-topbar__leading")?.getBoundingClientRect();
+        const right = element.querySelector(".account-topbar__identity")?.getBoundingClientRect();
+        return {
+          avatarInsideViewport: Boolean(right && right.left >= 0 && right.right <= window.innerWidth),
+          avatarSize: right?.width || 0,
+          leftCenter: left ? left.left + left.width / 2 : 0,
+          noHorizontalOverflow: document.documentElement.scrollWidth <= window.innerWidth,
+          rightCenter: right ? right.left + right.width / 2 : 0,
+        };
+      });
+      assert.equal(headerGeometry.avatarInsideViewport, true);
+      assert.ok(headerGeometry.avatarSize >= 44);
+      assert.ok(headerGeometry.leftCenter < headerGeometry.rightCenter);
+      assert.equal(headerGeometry.noHorizontalOverflow, true);
+
+      const flowMetrics = await footer.evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        return {
+          documentGap: document.documentElement.scrollHeight - (rect.bottom + window.scrollY),
+          initialTop: rect.top,
+          position: getComputedStyle(element).position,
+          viewportHeight: window.innerHeight,
+        };
+      });
+      assert.equal(flowMetrics.position, "static");
+      assert.ok(
+        flowMetrics.initialTop >= flowMetrics.viewportHeight,
+        `sign-out must begin below the initial ${viewport.name} viewport: ${JSON.stringify(flowMetrics)}`,
+      );
+      assert.ok(flowMetrics.documentGap >= 0 && flowMetrics.documentGap <= 64);
+
+      await signOutButton.scrollIntoViewIfNeeded();
+      await signOutButton.waitFor({ state: "visible" });
+      if (viewport.width <= 390) {
+        const footerWidth = await footer.evaluate((element) => element.clientWidth);
+        const buttonWidth = await signOutButton.evaluate((element) => element.getBoundingClientRect().width);
+        assert.ok(Math.abs(footerWidth - buttonWidth) < 2, "mobile sign-out button should fill the available width");
+      }
+
+      if (index === viewports.length - 1) {
+        scenario.logoutError = true;
+        await signOutButton.click();
+        const failureNotice = page.locator(".toast");
+        await failureNotice.waitFor({ state: "visible", timeout: 2500 });
+        assert.match(await failureNotice.innerText(), /账户服务|退出/);
+        assert.equal(new URL(page.url()).pathname, "/manage");
+        assert.equal(await signOutButton.isEnabled(), true);
+
+        scenario.logoutError = false;
+        await signOutButton.click();
+        await page.waitForURL((url) => url.pathname === "/login", { timeout: 5000 });
+        assert.equal(scenario.records.logouts, 2);
+      }
+    }, {
+      reducedMotion: "reduce",
+      viewport: { height: viewport.height, width: viewport.width },
+    });
+  }
 }
 
 async function testLanguagePreferencePersistsThroughHandoff({

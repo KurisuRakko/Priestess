@@ -16,7 +16,7 @@ type LoginIdentityTransitionProps = {
   statusText: string;
 };
 
-// 状态文案拥有独立 presence 生命周期，保证 loading、success 与 failure 都有完整退场。
+// 状态文案拥有独立 presence 生命周期；阶段改变时旧文案立即退休，再挂载新文案，避免成功动画下仍写着“加载中”。
 function IdentityStatusLine({
   phase,
   shouldReduceMotion,
@@ -34,13 +34,13 @@ function IdentityStatusLine({
       className="login-identity-transition__status"
       data-login-identity-status-phase={phase}
       data-login-identity-status-presence={isPresent ? "present" : "exiting"}
-      exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: -7 }}
+      exit={{ opacity: 0 }}
       initial={shouldReduceMotion ? false : { opacity: 0, y: 7 }}
       transition={shouldReduceMotion
         ? { duration: 0 }
         : isPresent
           ? { duration: 0.26, ease: [0.16, 1, 0.3, 1] }
-          : { duration: 0.16, ease: [0.4, 0, 0.2, 1] }}
+          : { duration: 0 }}
     >
       {statusText}
     </motion.div>
@@ -130,7 +130,7 @@ export function LoginIdentityTransition({
               y: { duration: 0.52, ease: [0.16, 1, 0.3, 1] },
             }}
       >
-        <AnimatePresence initial={false} mode="sync">
+        <AnimatePresence initial={false} mode="wait">
           <IdentityStatusLine
             key={`${phase}:${statusText}`}
             phase={phase}

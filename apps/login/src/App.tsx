@@ -20,8 +20,9 @@ import { AccountRouteStage } from "./components/AccountRouteStage";
 import { LoginExperience } from "./components/LoginExperience";
 import { QrLoginConfirmPage, ResetPasswordPage, type TotpChallenge } from "./components/lazyRouteModules";
 import { type LoginCredentials } from "./components/LoginForm";
-import { startLoginTransitionOverlay, type LoginTransitionOverlayController, type LoginTransitionOverlayParams } from "./components/LoginTransitionOverlay";
+import { type LoginTransitionOverlayController } from "./components/LoginTransitionOverlay";
 import { NotFoundPage } from "./components/NotFoundPage";
+import { useLoginOverlayStage } from "./components/useLoginOverlayStage";
 import { useQrLoginCompletion } from "./components/useQrLoginCompletion";
 import { getAuthAccountAuthorizeBlocker, shouldShowAuthAccountPicker } from "./lib/accountAuthorization";
 import { completeAccountSelection, getAuthAccountActivationErrorMessage } from "./lib/accountSelection";
@@ -33,7 +34,6 @@ import {
   AUTH_MODE_DRAWER_IN_MS,
   AUTH_MODE_TRANSITION_MS,
   clearLocalLoginCooldownUntil,
-  getLoginCardOriginRect,
   isLocalPasswordLoginRiskError,
   LOCAL_LOGIN_COOLDOWN_MS,
   LOCAL_LOGIN_FAILURE_LIMIT,
@@ -82,7 +82,6 @@ export function App() {
   const loginAbortControllerRef = useRef<AbortController | null>(null);
   const authModeLayoutTimeoutRef = useRef<number | null>(null);
   const authModeTransitionTimeoutRef = useRef<number | null>(null);
-  const loginSubmitStageTimeoutRef = useRef<number | null>(null);
   const [notice, setNotice] = useState("");
   const [accountActionBusyId, setAccountActionBusyId] = useState("");
   const [accountAuthorizeError, setAccountAuthorizeError] = useState("");
@@ -92,7 +91,6 @@ export function App() {
   const [forgotPasswordIdentity, setForgotPasswordIdentity] = useState("");
   const [isAuthModeTransitioning, setIsAuthModeTransitioning] = useState(false);
   const [isLoginIntroStage, setIsLoginIntroStage] = useState(() => getCurrentRoute() === "login");
-  const [isLoginSubmitStage, setIsLoginSubmitStage] = useState(false);
   const [isRegisterDrawerStage, setIsRegisterDrawerStage] = useState(false);
   const [route, setRoute] = useState<AppRoute>(() => getCurrentRoute());
   const [localLoginCooldownUntil, setLocalLoginCooldownUntil] = useState(readLocalLoginCooldownUntil);
@@ -100,6 +98,19 @@ export function App() {
   const [removingAccountId, setRemovingAccountId] = useState("");
   const [showLoginFormForAccountPicker, setShowLoginFormForAccountPicker] = useState(false);
   const [totpChallenge, setTotpChallenge] = useState<TotpChallenge | null>(null);
+  const {
+    clearSubmitStageTimeout: clearLoginSubmitStageTimeout,
+    isAccountSelectionStage,
+    isSubmitStage: isLoginSubmitStage,
+    releaseSubmitStage: releaseLoginSubmitStage,
+    startAccountSelectionOverlay,
+    startCenteredOverlay: startCenteredLoginOverlay,
+  } = useLoginOverlayStage({
+    loginCardRef,
+    loginTransitionOverlayRef,
+    prefersReducedMotion: Boolean(shouldReduceMotion),
+    setLoginIntroStage: setIsLoginIntroStage,
+  });
   const authRequest = route === "login" ? readAuthRequest() : null;
   const authRequestKey = getAuthRequestKey(authRequest);
   const hasQrRequest = authRequest !== null;
@@ -148,9 +159,6 @@ export function App() {
     setNotice(message);
     window.setTimeout(() => setNotice((current) => current === message ? "" : current), 2600);
   }, []);
-  const captureLoginCardOriginRect = (): LoginTransitionOverlayParams["originRect"] => (
-    getLoginCardOriginRect(loginCardRef.current)
-  );
   const navigateTo = useCallback((path: string, options: { replace?: boolean } = {}) => {
     if (options.replace) {
       window.history.replaceState(null, "", path);
@@ -179,27 +187,6 @@ export function App() {
       authModeTransitionTimeoutRef.current = null;
     }
   };
-  const clearLoginSubmitStageTimeout = () => {
-    if (loginSubmitStageTimeoutRef.current !== null) {
-      window.clearTimeout(loginSubmitStageTimeoutRef.current);
-      loginSubmitStageTimeoutRef.current = null;
-    }
-  };
-  const releaseLoginSubmitStage = () => {
-    clearLoginSubmitStageTimeout();
-    setIsLoginSubmitStage(false);
-  };
-  const centerLoginCardForOverlay = () => new Promise<void>((resolve) => {
-    clearLoginSubmitStageTimeout();
-    setIsLoginIntroStage(false);
-    // 登录提交复用首屏/注册切换的居中布局：先收起二维码，再启动结果 overlay。
-    setIsLoginSubmitStage(true);
-    const delay = shouldReduceMotion ? 40 : AUTH_MODE_DRAWER_IN_MS;
-    loginSubmitStageTimeoutRef.current = window.setTimeout(() => {
-      loginSubmitStageTimeoutRef.current = null;
-      window.requestAnimationFrame(() => resolve());
-    }, delay);
-  });
   const switchAuthMode = (nextMode: AuthMode) => {
     if (authMode === nextMode || isAuthModeTransitioning) {
       return;
@@ -393,7 +380,7 @@ export function App() {
     setAuthorizingAccountId(accountKey);
     setDirectAuthorizeBusy(true);
 
-    const controllerPromise = startCenteredLoginOverlay({
+    const controllerPromise = startAccountSelectionOverlay({
       avatarUrl: account.avatarUrl,
       identityMotionSource: identitySource,
       identityReveal: true,
@@ -459,6 +446,8 @@ export function App() {
       );
       setAccountAuthorizeError(message);
       const controller = await controllerPromise;
+      // 失败态开始时先恢复账号卡布局；忙碌行仍隐藏源头像，直到共享头像回收完成。
+      releaseLoginSubmitStage();
       await controller.fail({
         description: message,
         durationMs: LOGIN_RESULT_ANIMATION_MS,
@@ -634,20 +623,6 @@ export function App() {
       displayName: session.user?.displayName || username,
       username,
     };
-  };
-
-  const startCenteredLoginOverlay = async(params: Omit<LoginTransitionOverlayParams, "onClose" | "originRect">) => {
-    await centerLoginCardForOverlay();
-    const originRect = captureLoginCardOriginRect();
-    const controller = startLoginTransitionOverlay({
-      ...params,
-      originRect,
-      onClose: () => {
-        loginTransitionOverlayRef.current = null;
-      },
-    });
-    loginTransitionOverlayRef.current = controller;
-    return controller;
   };
 
   const runLoginFailureTransition = async(controller: LoginTransitionOverlayController, message: string) => {
@@ -934,6 +909,7 @@ export function App() {
       forgotPasswordIdentity={forgotPasswordIdentity}
       hasQrRequest={hasQrRequest}
       isForgotPasswordMode={isForgotPasswordMode}
+      isAccountSelectionStage={isAccountSelectionStage}
       isLocalLoginCooldownActive={isLocalLoginCooldownActive}
       isLoginSubmitCardStage={isLoginSubmitCardStage}
       isQrDrawerOpen={isQrDrawerOpen}
@@ -972,7 +948,8 @@ export function App() {
   return (
     <>
       {route === "login" ? (
-        <div className="account-route-source-stage" data-account-route-source="login">
+        <div aria-hidden={accountRouteHandoff.state ? true : undefined} className="account-route-source-stage" data-account-route-source="login"
+          inert={accountRouteHandoff.state ? true : undefined}>
           {loginExperience}
         </div>
       ) : null}

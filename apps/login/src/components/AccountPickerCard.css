@@ -96,6 +96,11 @@
   background: rgba(252, 251, 248, 0.72);
 }
 
+.account-picker__row--authorizing [data-account-shared-part="avatar"] {
+  /* 共享头像从点击坐标接管后隐藏原实例，避免退场帧出现双头像。 */
+  visibility: hidden;
+}
+
 .account-picker__row--signed-out {
   border-color: rgba(185, 75, 75, 0.18);
   background: rgba(252, 251, 248, 0.56);
@@ -200,6 +205,15 @@
   flex-direction: column;
   width: 100%;
   min-width: 0;
+}
+
+/* 共享布局需要暂时保留旧视图来计算头像轨迹，但旧标题、按钮和身份文字不能继续叠在新页上。 */
+.account-picker-card-view[data-account-picker-presence="exiting"] {
+  visibility: hidden;
+}
+
+.account-picker-card-view[data-account-picker-presence="exiting"] [data-account-shared-part="avatar"] {
+  visibility: visible;
 }
 
 .account-picker-actions {

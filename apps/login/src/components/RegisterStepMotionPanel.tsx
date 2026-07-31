@@ -33,16 +33,19 @@ export function RegisterStepMotionPanel({
     <motion.div
       ref={panelRef}
       animate={shouldReduceMotion ? { opacity: 1, x: 0 } : "center"}
+      aria-hidden={isPresent ? undefined : true}
       className="register-step-panel"
       custom={direction}
       data-register-step-motion-origin={direction > 0 ? "right" : "left"}
       data-register-step-panel={step}
+      data-register-step-presence={isPresent ? "present" : "exiting"}
       data-desktop-motion={desktopMotionMode}
       data-mobile-motion={mobileMotionMode}
       exit={shouldReduceMotion
         ? { opacity: 0 }
         : "exit"}
       initial={shouldReduceMotion ? false : "enter"}
+      inert={isPresent ? undefined : true}
       style={{ pointerEvents: isPresent ? "auto" : "none" }}
       transition={shouldReduceMotion
         ? { duration: 0 }

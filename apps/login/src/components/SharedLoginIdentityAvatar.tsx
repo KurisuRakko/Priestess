@@ -111,6 +111,10 @@ export function SharedLoginIdentityAvatar({
           data-login-identity-origin-x={motionOrigin.x.toFixed(2)}
           data-login-identity-origin-y={motionOrigin.y.toFixed(2)}
           data-login-identity-source={source.kind}
+          data-login-identity-source-height={source.avatarRect.height.toFixed(2)}
+          data-login-identity-source-left={source.avatarRect.left.toFixed(2)}
+          data-login-identity-source-top={source.avatarRect.top.toFixed(2)}
+          data-login-identity-source-width={source.avatarRect.width.toFixed(2)}
           initial={shouldReduceMotion
             ? false
             : {

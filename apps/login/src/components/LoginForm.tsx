@@ -59,6 +59,7 @@ function LoginFormModePanel({
       className="login-form-mode-panel"
       data-login-form-panel={isTotpMode ? "totp" : "password"}
       data-login-form-presence={isPresent ? "present" : "exiting"}
+      aria-hidden={isPresent ? undefined : true}
       exit={shouldReduceMotion
         ? { opacity: 0 }
         : {
@@ -67,6 +68,7 @@ function LoginFormModePanel({
             x: direction * 64,
           }}
       initial={shouldReduceMotion ? false : { opacity: 0, x: direction * 96 }}
+      inert={isPresent ? undefined : true}
       style={{ pointerEvents: isPresent ? "auto" : "none" }}
     >
       {children}
@@ -181,7 +183,7 @@ export function LoginForm({
       </div>
 
       <div className="login-form-mode-stack">
-        <AnimatePresence initial={false} mode="sync">
+        <AnimatePresence initial={false} mode="wait">
           <LoginFormModePanel
             isTotpMode={isTotpMode}
             key={isTotpMode ? "totp" : "password"}

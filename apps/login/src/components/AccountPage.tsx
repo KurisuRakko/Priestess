@@ -256,36 +256,33 @@ export function AccountPage({
       <header className="account-topbar" aria-label={t("Priestess 个人中心")}>
         <div className="account-topbar__leading">
           <BrandMark size="sm" />
-          {isAuthenticated ? (
-            <div className="account-topbar__identity" aria-label={t("当前账号")}>
-              <span
-                className="account-topbar__avatar"
-                data-account-handoff-avatar-target="true"
-                ref={handoffAvatarRef}
-              >
-                <img
-                  alt=""
-                  onError={() => {
-                    if (topbarAvatarUrl !== PRIESTESS_DEFAULT_AVATAR_URL) setTopbarAvatarLoadFailed(true);
-                  }}
-                  src={topbarAvatarUrl}
-                />
-              </span>
-              <span className="account-topbar__identity-copy">
-                <strong>{displayName}</strong>
-                <span>{user?.email || user?.username}</span>
-              </span>
-            </div>
-          ) : null}
+          <PriestessLanguageSwitcher />
         </div>
         {isAuthenticated ? (
-          <div className="account-topbar__actions">
-            <PriestessLanguageSwitcher />
-            <button className="account-button account-button--danger" disabled={isLoggingOut} onClick={logout} type="button">
-              <LogOut aria-hidden="true" size={17} strokeWidth={1.8} />
-              <span>{isLoggingOut ? t("退出中") : t("退出")}</span>
-            </button>
-          </div>
+          <button
+            aria-label={t("当前账号")}
+            className="account-topbar__identity"
+            onClick={() => {
+              selectSection("overview");
+              window.scrollTo({ behavior: "auto", top: 0 });
+            }}
+            title={t("当前账号")}
+            type="button"
+          >
+            <span
+              className="account-topbar__avatar"
+              data-account-handoff-avatar-target="true"
+              ref={handoffAvatarRef}
+            >
+              <img
+                alt=""
+                onError={() => {
+                  if (topbarAvatarUrl !== PRIESTESS_DEFAULT_AVATAR_URL) setTopbarAvatarLoadFailed(true);
+                }}
+                src={topbarAvatarUrl}
+              />
+            </span>
+          </button>
         ) : null}
       </header>
 
@@ -310,52 +307,61 @@ export function AccountPage({
         ) : null}
 
         {isAuthenticated ? (
-          <div className="account-layout">
-            <nav className="account-nav" aria-label={t("个人中心分区")}>
-              {ACCOUNT_NAV_ITEMS.map((item) => (
-                <button
-                  aria-current={activeSection === item.id ? "page" : undefined}
-                  className={activeSection === item.id ? "is-active" : ""}
-                  key={item.id}
-                  onClick={() => selectSection(item.id)}
-                  type="button"
-                >
-                  <span aria-hidden="true">{item.icon}</span>
-                  <span>{t(item.label)}</span>
-                </button>
-              ))}
-            </nav>
+          <>
+            <div className="account-layout">
+              <nav className="account-nav" aria-label={t("个人中心分区")}>
+                {ACCOUNT_NAV_ITEMS.map((item) => (
+                  <button
+                    aria-current={activeSection === item.id ? "page" : undefined}
+                    className={activeSection === item.id ? "is-active" : ""}
+                    key={item.id}
+                    onClick={() => selectSection(item.id)}
+                    type="button"
+                  >
+                    <span aria-hidden="true">{item.icon}</span>
+                    <span>{t(item.label)}</span>
+                  </button>
+                ))}
+              </nav>
 
-            <div className="account-content">
-              {activeSection === "overview" ? (
-                <OverviewSection
-                  displayName={displayName}
-                  onCopy={copyAccountValue}
-                  onEditAvatar={() => setProfileQuickEditMode("avatar")}
-                  onEditAddress={() => setProfileQuickEditMode("address")}
-                  onEditBirthday={() => setProfileQuickEditMode("birthday")}
-                  onEditDisplayName={() => setProfileQuickEditMode("displayName")}
-                  onEditEmail={() => setProfileQuickEditMode("email")}
-                  onEditPreferredLanguages={() => setProfileQuickEditMode("preferredLanguages")}
-                  onEditPhone={() => setProfileQuickEditMode("phone")}
-                  user={user}
-                />
-              ) : null}
-              {activeSection === "security" ? (
-                <AccountSecuritySection
-                  enabled={user?.enabled ?? null}
-                  onEditEmail={() => setProfileQuickEditMode("email")}
-                  onEditPhone={() => setProfileQuickEditMode("phone")}
-                  onOpenPasswordChange={() => setIsPasswordChangeOpen(true)}
-                  onNotice={onNotice}
-                  user={user}
-                />
-              ) : null}
-              {activeSection === "devices" ? <AccountDevicesSection onNotice={onNotice} onRequireLogin={onRequireLogin} /> : null}
-              {activeSection === "services" ? <AccountServicesSection /> : null}
-              {activeSection === "privacy" ? <AccountPrivacySection /> : null}
+              <div className="account-content">
+                {activeSection === "overview" ? (
+                  <OverviewSection
+                    displayName={displayName}
+                    onCopy={copyAccountValue}
+                    onEditAvatar={() => setProfileQuickEditMode("avatar")}
+                    onEditAddress={() => setProfileQuickEditMode("address")}
+                    onEditBirthday={() => setProfileQuickEditMode("birthday")}
+                    onEditDisplayName={() => setProfileQuickEditMode("displayName")}
+                    onEditEmail={() => setProfileQuickEditMode("email")}
+                    onEditPreferredLanguages={() => setProfileQuickEditMode("preferredLanguages")}
+                    onEditPhone={() => setProfileQuickEditMode("phone")}
+                    user={user}
+                  />
+                ) : null}
+                {activeSection === "security" ? (
+                  <AccountSecuritySection
+                    enabled={user?.enabled ?? null}
+                    onEditEmail={() => setProfileQuickEditMode("email")}
+                    onEditPhone={() => setProfileQuickEditMode("phone")}
+                    onOpenPasswordChange={() => setIsPasswordChangeOpen(true)}
+                    onNotice={onNotice}
+                    user={user}
+                  />
+                ) : null}
+                {activeSection === "devices" ? <AccountDevicesSection onNotice={onNotice} onRequireLogin={onRequireLogin} /> : null}
+                {activeSection === "services" ? <AccountServicesSection /> : null}
+                {activeSection === "privacy" ? <AccountPrivacySection /> : null}
+              </div>
             </div>
-          </div>
+            {/* 退出保持在普通文档流末尾，长页面内容不会被固定操作遮挡。 */}
+            <footer className="account-page__signout">
+              <button className="account-button account-button--danger" disabled={isLoggingOut} onClick={logout} type="button">
+                <LogOut aria-hidden="true" size={17} strokeWidth={1.8} />
+                <span>{isLoggingOut ? t("退出中") : t("退出")}</span>
+              </button>
+            </footer>
+          </>
         ) : null}
 
         <PasswordChangeDialog
