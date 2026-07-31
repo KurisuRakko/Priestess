@@ -62,6 +62,14 @@
     cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
 }
 
+/* 桌面卡片保留上方重心，但把成功身份组从 42% 放到更均衡的 47%。
+ * 移动端继续使用原来的卡片定位，避免压缩全屏表单的可视空间。 */
+@media (min-width: 821px) {
+  .login-success-overlay.has-origin .login-success-overlay-content {
+    top: var(--lso-origin-status-y-desktop, var(--lso-origin-status-y, 42vh));
+  }
+}
+
 .login-success-overlay.has-origin.is-exiting .login-success-overlay-content {
   animation: lso-origin-content-out var(--lso-origin-content-out-ms, 160ms) cubic-bezier(0.4, 0, 0.6, 1) forwards;
 }
@@ -419,6 +427,38 @@
   width: min(300px, calc(100vw - 72px));
 }
 
+.login-success-overlay-session-reference {
+  position: fixed;
+  z-index: 1;
+  left: calc(var(--lso-origin-card-left, 0px) + 32px);
+  bottom: calc(var(--lso-origin-card-bottom, 0px) + 24px);
+  max-width: min(260px, calc(100vw - 64px));
+  overflow: hidden;
+  color: rgb(0 0 0 / 32%);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.045em;
+  line-height: 1.35;
+  text-transform: uppercase;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+  user-select: none;
+  opacity: 0;
+  animation: lso-session-reference-in 240ms 80ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+.login-success-overlay.has-origin.is-exiting .login-success-overlay-session-reference {
+  animation: lso-session-reference-out 160ms cubic-bezier(0.4, 0, 0.6, 1) forwards;
+}
+
+@media (max-width: 820px) {
+  .login-success-overlay-session-reference {
+    display: none;
+  }
+}
+
 /* 减少动画偏好下保留小状态卡片，但不做位移和绘制动画。 */
 .login-success-overlay.has-origin.is-reduced-motion {
   background: transparent;
@@ -435,6 +475,15 @@
   transform: translate(-50%, -50%);
   animation: none;
   transition: opacity var(--lso-overlay-fade-out-ms, 220ms) linear;
+}
+
+.login-success-overlay.has-origin.is-reduced-motion .login-success-overlay-session-reference {
+  opacity: 1;
+  animation: none;
+}
+
+.login-success-overlay.has-origin.is-reduced-motion.is-exiting .login-success-overlay-session-reference {
+  opacity: 0;
 }
 
 .login-success-overlay.has-origin.is-reduced-motion.is-exiting .login-success-overlay-content {
@@ -575,6 +624,15 @@
     opacity: 0 !important;
   }
 
+  .login-success-overlay.has-origin .login-success-overlay-session-reference {
+    opacity: 1 !important;
+    animation: none !important;
+  }
+
+  .login-success-overlay.has-origin.is-exiting .login-success-overlay-session-reference {
+    opacity: 0 !important;
+  }
+
   .login-identity-transition,
   .login-identity-transition__visual,
   .login-identity-transition__ring-shell,
@@ -650,6 +708,30 @@
   to {
     opacity: 0;
     transform: translateY(-4px);
+  }
+}
+
+@keyframes lso-session-reference-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes lso-session-reference-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(2px);
   }
 }
 

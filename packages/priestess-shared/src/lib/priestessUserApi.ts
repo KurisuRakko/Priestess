@@ -97,6 +97,11 @@ export type LocalDeviceSession = {
   userAgentSummary: string;
 };
 
+type LocalDeviceSessionsRequestOptions = Pick<RequestOptions, "signal"> & {
+  /** 手动刷新设备页时跳过短暂缓存，避免显示刚撤销的旧会话。 */
+  forceRefresh?: boolean;
+};
+
 export type LocalRakkoServiceSession = {
   appId: string;
   createdAt: string;
@@ -169,12 +174,34 @@ export async function uploadLocalProfileAvatar(file: File, options: Pick<Request
   return normalizeLocalProfileAvatarUploadResult(payload);
 }
 
-export async function listLocalDeviceSessions(options: Pick<RequestOptions, "signal"> = {}) {
-  const payload = await requestJson(`${PRIESTESS_AUTH_BASE}/devices/sessions`, { signal: options.signal });
-  const record = isRecord(payload) ? payload : {};
-  const sessions = readUnknown(record, ["sessions"]);
-  if (!Array.isArray(sessions)) return [];
-  return sessions.map(normalizeLocalDeviceSession);
+const LOCAL_DEVICE_SESSIONS_CACHE_TTL_MS = 5_000;
+let localDeviceSessionsCache: { loadedAt: number; sessions: LocalDeviceSession[] } | null = null;
+let localDeviceSessionsInFlight: Promise<LocalDeviceSession[]> | null = null;
+
+export async function listLocalDeviceSessions(options: LocalDeviceSessionsRequestOptions = {}) {
+  const now = Date.now();
+  if (!options.forceRefresh && localDeviceSessionsCache && now - localDeviceSessionsCache.loadedAt < LOCAL_DEVICE_SESSIONS_CACHE_TTL_MS) {
+    return localDeviceSessionsCache.sessions;
+  }
+  if (localDeviceSessionsInFlight) {
+    return localDeviceSessionsInFlight;
+  }
+
+  const request = requestJson(`${PRIESTESS_AUTH_BASE}/devices/sessions`, { signal: options.signal })
+    .then((payload) => {
+      const record = isRecord(payload) ? payload : {};
+      const sessions = readUnknown(record, ["sessions"]);
+      const normalized = Array.isArray(sessions) ? sessions.map(normalizeLocalDeviceSession) : [];
+      localDeviceSessionsCache = { loadedAt: Date.now(), sessions: normalized };
+      return normalized;
+    })
+    .finally(() => {
+      if (localDeviceSessionsInFlight === request) {
+        localDeviceSessionsInFlight = null;
+      }
+    });
+  localDeviceSessionsInFlight = request;
+  return request;
 }
 
 export async function revokeLocalDeviceSession(sessionId: string, options: Pick<RequestOptions, "signal"> = {}) {
@@ -183,6 +210,7 @@ export async function revokeLocalDeviceSession(sessionId: string, options: Pick<
     signal: options.signal,
   });
   const record = isRecord(payload) ? payload : {};
+  localDeviceSessionsCache = null;
   return {
     authenticated: readBoolean(record, ["authenticated"]) ?? true,
     current: readBoolean(record, ["current"]) ?? false,

@@ -66,6 +66,7 @@ try {
   await testBareLoginRemainsUsable(browser, appUrl);
   await testLazyStandaloneRoutesRender(browser, appUrl);
   await testPasswordLoginRevealsIdentityAfterVerification(browser, appUrl);
+  await testSessionReferenceFallback(browser, appUrl);
   await runAccountHandoffBrowserCases({
     appUrl,
     browserInstance: browser,
@@ -455,6 +456,24 @@ async function testPasswordLoginRevealsIdentityAfterVerification(browserInstance
       /priestess-default-avatar\.png/,
     );
 
+    const sessionReference = successOverlay.locator("[data-login-session-reference='true']");
+    await sessionReference.waitFor({ state: "visible", timeout: 1500 });
+    const expectedSessionReference = `${scenario.deviceSessionId.slice(0, 8)}…${scenario.deviceSessionId.slice(-4)}`;
+    assert.equal(await sessionReference.textContent(), `Session · ${expectedSessionReference}`);
+    assert.equal(await successOverlay.innerText().then((text) => text.includes(scenario.deviceSessionId)), false, "full session id must not enter the success DOM");
+    const sessionReferenceGeometry = await page.evaluate(() => {
+      const card = document.querySelector(".login-card")?.getBoundingClientRect();
+      const label = document.querySelector("[data-login-session-reference='true']")?.getBoundingClientRect();
+      if (!card || !label) return null;
+      return {
+        bottomInset: card.bottom - label.bottom,
+        leftInset: label.left - card.left,
+      };
+    });
+    assert.ok(sessionReferenceGeometry && sessionReferenceGeometry.leftInset >= 30 && sessionReferenceGeometry.leftInset <= 36, `session reference should align to the card's lower-left inset: ${JSON.stringify(sessionReferenceGeometry)}`);
+    assert.ok(sessionReferenceGeometry && sessionReferenceGeometry.bottomInset >= 20 && sessionReferenceGeometry.bottomInset <= 30, `session reference should sit above the card bottom edge: ${JSON.stringify(sessionReferenceGeometry)}`);
+    assert.equal(scenario.records.deviceSessions, 1, "successful desktop login should share one current-device request with the account target");
+
     const placement = await successOverlay.evaluate((overlay) => {
       const card = document.querySelector(".login-card");
       const content = overlay.querySelector(".login-success-overlay-content");
@@ -464,10 +483,15 @@ async function testPasswordLoginRevealsIdentityAfterVerification(browserInstance
       return {
         avatarWidth: avatar?.getBoundingClientRect().width ?? 0,
         cardCenterY: cardRect ? cardRect.top + cardRect.height / 2 : 0,
+        cardTop: cardRect?.top ?? 0,
+        cardHeight: cardRect?.height ?? 0,
         contentCenterY: contentRect ? contentRect.top + contentRect.height / 2 : 0,
       };
     });
-    assert.ok(placement.contentCenterY < placement.cardCenterY - 8, "identity result should sit in the card's upper visual region");
+    const placementProgress = placement.cardHeight > 0
+      ? (placement.contentCenterY - placement.cardTop) / placement.cardHeight
+      : 0;
+    assert.ok(placementProgress >= 0.44 && placementProgress <= 0.50, `desktop identity result should sit near the card's 47% visual anchor: ${JSON.stringify({ placement, placementProgress })}`);
 
     await Promise.all([
       page.locator(".account-shell").waitFor({ state: "attached", timeout: 2500 }),
@@ -567,6 +591,24 @@ async function testReducedMotionIdentityReveal(browserInstance, appUrl) {
       "matrix(1, 0, 0, 1, -52, -52)",
     );
   }, { locale: "en-US", reducedMotion: "reduce", viewport: { height: 844, width: 390 } });
+}
+
+async function testSessionReferenceFallback(browserInstance, appUrl) {
+  const scenario = createScenario("session-reference-fallback", { deviceSessionsError: true });
+
+  await withScenario(browserInstance, scenario, async(page) => {
+    await page.goto(`${appUrl}/login`, { waitUntil: "domcontentloaded" });
+    await page.locator("input[autocomplete='username']").waitFor({ state: "visible" });
+    await submitPassword(page, "session-reference-fallback-user");
+
+    const successOverlay = page.locator(".login-success-overlay.is-success");
+    await successOverlay.waitFor({ state: "visible", timeout: 5000 });
+    const sessionReference = successOverlay.locator("[data-login-session-reference='true']");
+    await sessionReference.waitFor({ state: "visible", timeout: 1500 });
+    assert.equal(await sessionReference.textContent(), "Session · Signed in");
+    assert.equal(scenario.records.deviceSessions, 1);
+    await successOverlay.waitFor({ state: "detached", timeout: 5000 });
+  }, { locale: "en-US", reducedMotion: "reduce", viewport: { height: 900, width: 1440 } });
 }
 
 async function testLazyStandaloneRoutesRender(browserInstance, appUrl) {
@@ -1148,6 +1190,7 @@ function createScenario(appId, options = {}) {
     accountModeBeforeAuth: options.accountModeBeforeAuth ?? "empty",
     authorizeError: options.authorizeError ?? false,
     browserAccountMode: options.browserAccountMode ?? "empty",
+    deviceSessionsError: options.deviceSessionsError ?? false,
     appId,
     authenticated: false,
     loginError: options.loginError ?? false,
@@ -1157,6 +1200,7 @@ function createScenario(appId, options = {}) {
       activations: [],
       authorizations: [],
       browserAccounts: 0,
+      deviceSessions: 0,
       loginBodies: [],
       loginRequestedAt: 0,
       passkeyOptions: 0,
@@ -1174,7 +1218,8 @@ function createScenario(appId, options = {}) {
     removedUserIds: new Set(),
     qrSessionExpiresIn: options.qrSessionExpiresIn ?? 120,
     qrConfirmAfterPolls: options.qrConfirmAfterPolls ?? 0,
-    requireTurnstile: options.requireTurnstile ?? false,
+      requireTurnstile: options.requireTurnstile ?? false,
+    deviceSessionId: options.deviceSessionId ?? `pls_${appId}_desktop_session_7c2d`,
   };
 }
 
@@ -1313,6 +1358,28 @@ async function startMockApiServer() {
     if (req.method === "GET" && url.pathname === "/auth/priestess/session") {
       scenario.records.sessionReads += 1;
       writeJson(res, 200, scenario.authenticated ? authenticatedSession(scenario) : { authenticated: false });
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/auth/priestess/devices/sessions") {
+      scenario.records.deviceSessions += 1;
+      if (scenario.deviceSessionsError) {
+        writeJson(res, 503, { error: { code: "device_sessions_unavailable" } });
+        return;
+      }
+      if (!scenario.authenticated) {
+        writeJson(res, 401, { error: { code: "local_session_required" } });
+        return;
+      }
+      writeJson(res, 200, {
+        sessions: [{
+          browser: "Smoke Browser",
+          current: true,
+          device: "桌面浏览器",
+          expires_at: new Date(Date.now() + 300_000).toISOString(),
+          session_id: scenario.deviceSessionId,
+        }],
+      });
       return;
     }
 

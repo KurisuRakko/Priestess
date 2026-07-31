@@ -6,6 +6,7 @@ import {
   getPriestessApiErrorCode,
   getPriestessApiErrorMessage,
   loginLocalSession,
+  listLocalDeviceSessions,
   removeLocalAccountChoice,
   Toast,
   usePriestessTranslation,
@@ -54,6 +55,24 @@ import { useQrLoginSession } from "./lib/useQrLoginSession";
 import { readTurnstileSiteKey } from "./components/TurnstileWidget";
 
 type AuthMode = LoginLayoutAuthMode;
+
+const DESKTOP_LOGIN_VIEWPORT_MIN_WIDTH = 821;
+
+function attachDesktopSessionReference(controller: LoginTransitionOverlayController) {
+  if (typeof window === "undefined" || window.innerWidth < DESKTOP_LOGIN_VIEWPORT_MIN_WIDTH) {
+    return;
+  }
+
+  // 会话编号只用于成功卡片的诊断提示；请求异步进行，不阻塞身份揭示、交接或成功停留。
+  void listLocalDeviceSessions({ forceRefresh: true })
+    .then((sessions) => {
+      controller.setSessionReference(sessions.find((session) => session.current)?.sessionId || null);
+    })
+    .catch(() => {
+      // 设备接口不可用时仍保留稳定的成功卡片布局，不把辅助信息升级成登录错误。
+      controller.setSessionReference(null);
+    });
+}
 
 export function App() {
   const { t } = usePriestessTranslation("login");
@@ -269,6 +288,7 @@ export function App() {
     const standaloneHandoff = request
       ? null
       : accountRouteHandoff.beginForSession(params.session, readLoginNext());
+    attachDesktopSessionReference(params.controller);
     const prepareDestination = async() => {
       if (destinationPrepared || params.signal.aborted) return;
       destinationPrepared = true;
@@ -331,6 +351,7 @@ export function App() {
       loadingTitle: t("正在准备你的账号…"),
       primaryColor: "#c65f72",
     });
+    attachDesktopSessionReference(controller);
     let destinationCommitted = false;
     await controller.succeed({
       avatarUrl: session.user?.avatarUrl || "",
@@ -399,6 +420,9 @@ export function App() {
       const standaloneHandoff = result.kind === "manage"
         ? accountRouteHandoff.beginForSession(result.session, readLoginNext())
         : null;
+      if (result.kind === "manage") {
+        attachDesktopSessionReference(controller);
+      }
       const prepareDestination = async() => {
         if (destinationPrepared || result.kind !== "manage") return;
         destinationPrepared = true;
@@ -518,6 +542,7 @@ export function App() {
 
       const handoff = accountRouteHandoff.beginForSession(session, target.path);
       let destinationCommitted = false;
+      attachDesktopSessionReference(controller);
       await controller.succeed({
         avatarUrl: session.user?.avatarUrl || account.avatarUrl,
         continuationAfterHold: true,

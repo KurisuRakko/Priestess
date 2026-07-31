@@ -88,6 +88,7 @@ export type LoginTransitionOverlayParams = {
   onChallengeExpire?: () => void;
   onChallengeToken?: (token: string) => void;
   postAnimationDelayMs?: number;
+  sessionReference?: string | null;
   onVisualComplete?: () => unknown;
   onClose?: () => void;
   originRect?: OriginRect | null;
@@ -108,6 +109,7 @@ type RenderState = Required<Pick<LoginTransitionOverlayParams, "avatarUrl" | "co
   onChallengeToken?: (token: string) => void;
   originRect: NormalizedOriginRect | null;
   identityMotionSource: LoginIdentityMotionSource | null;
+  sessionReference: string | null | undefined;
 };
 
 export type LoginTransitionOverlayController = {
@@ -115,6 +117,8 @@ export type LoginTransitionOverlayController = {
   handoff: (handoffParams?: LoginTransitionOverlayParams) => Promise<void>;
   succeed: (successParams?: LoginTransitionOverlayParams) => Promise<void>;
   fail: (failureParams?: LoginTransitionOverlayParams) => Promise<void>;
+  /** 登录成功后异步注入已脱敏的当前会话标识，不改变过渡时序。 */
+  setSessionReference: (sessionId: string | null | undefined) => void;
   dismiss: () => void;
 };
 
@@ -144,6 +148,18 @@ function normalizeText(value: unknown) {
   }
 
   return value.trim();
+}
+
+function formatSessionReference(value: unknown) {
+  const sessionId = normalizeText(value);
+  if (!sessionId) {
+    return null;
+  }
+  // 会话 ID 只是诊断标识，成功卡片不应把可用于撤销会话的完整值放进 DOM。
+  if (sessionId.length <= 8) {
+    return `${sessionId.slice(0, Math.max(1, Math.floor(sessionId.length / 2)))}…`;
+  }
+  return `${sessionId.slice(0, 8)}…${sessionId.slice(-4)}`;
 }
 
 function normalizeDuration(durationMs: unknown) {
@@ -336,6 +352,7 @@ function buildRenderState(
       onChallengeExpire: undefined,
       onChallengeToken: undefined,
       originRect: baseOriginRect,
+      sessionReference: undefined,
     };
   }
 
@@ -364,6 +381,7 @@ function buildRenderState(
       onChallengeExpire: params.onChallengeExpire,
       onChallengeToken: params.onChallengeToken,
       originRect: normalizeOriginRect(params.originRect) || baseOriginRect,
+      sessionReference: undefined,
     };
   }
 
@@ -397,6 +415,7 @@ function buildRenderState(
     onChallengeExpire: undefined,
     onChallengeToken: undefined,
     originRect: normalizeOriginRect(params.originRect) || baseOriginRect,
+    sessionReference: formatSessionReference(params.sessionReference),
   };
 }
 
@@ -426,6 +445,7 @@ function LoginTransitionOverlayInner(props: RenderState & { onFinish: () => void
     onChallengeToken,
     onFinish,
     originRect,
+    sessionReference,
   } = props;
   const prefersReducedMotion = usePrefersReducedMotion();
   const [isExiting, setIsExiting] = useState(false);
@@ -446,6 +466,9 @@ function LoginTransitionOverlayInner(props: RenderState & { onFinish: () => void
       "--lso-origin-content-width": `${Math.max(0, rect.width)}px`,
       "--lso-origin-center-x": `${rect.left + rect.width / 2}px`,
       "--lso-origin-status-y": `${rect.top + rect.height * 0.42}px`,
+      "--lso-origin-status-y-desktop": `${rect.top + rect.height * 0.47}px`,
+      "--lso-origin-card-left": `${rect.left}px`,
+      "--lso-origin-card-bottom": `${Math.max(0, window.innerHeight - rect.top - rect.height)}px`,
     };
   }, [originRect]);
 
@@ -682,7 +705,14 @@ function LoginTransitionOverlayInner(props: RenderState & { onFinish: () => void
             )}
           </>
         ) : null}
+
       </div>
+
+      {hasOriginStatusCard && (phase === PHASE_SUCCESS || phase === PHASE_HANDOFF) && sessionReference !== undefined ? (
+        <span className="login-success-overlay-session-reference" data-login-session-reference="true">
+          {translatePriestess("account:会话")} · {sessionReference || translatePriestess("account:已登录")}
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -693,6 +723,7 @@ function createNoopController(): LoginTransitionOverlayController {
     handoff: () => Promise.resolve(),
     succeed: () => Promise.resolve(),
     fail: () => Promise.resolve(),
+    setSessionReference: () => {},
     dismiss: () => {},
   };
 }
@@ -712,6 +743,7 @@ function createOverlayController(params: LoginTransitionOverlayParams = {}): Log
   let outcomeTransitionTimerId: number | null = null;
   let currentOutcomePromise: Promise<void> | null = null;
   let currentChallengePromise: Promise<string> | null = null;
+  let sessionReference: string | null | undefined;
   let resolveCurrentOutcome: (() => void) | null = null;
   let rejectCurrentChallenge: ((error: Error) => void) | null = null;
   let resolveCurrentChallenge: ((token: string) => void) | null = null;
@@ -814,6 +846,7 @@ function createOverlayController(params: LoginTransitionOverlayParams = {}): Log
         onChallengeToken={renderState.onChallengeToken}
         onVisualComplete={renderState.onVisualComplete}
         originRect={renderState.originRect}
+        sessionReference={renderState.sessionReference}
         onFinish={cleanup}
       />,
     );
@@ -843,7 +876,10 @@ function createOverlayController(params: LoginTransitionOverlayParams = {}): Log
       rejectChallenge(new Error(translatePriestess("login:人机验证已取消")));
       currentPhase = phase;
       phaseKey += 1;
-      renderState = buildRenderState(baseParams, phase, phaseKey, nextParams);
+      renderState = {
+        ...buildRenderState(baseParams, phase, phaseKey, nextParams),
+        sessionReference,
+      };
       renderOverlay();
     };
     const minimumLoadingMs = baseParams.identityMotionSource
@@ -906,6 +942,12 @@ function createOverlayController(params: LoginTransitionOverlayParams = {}): Log
     },
     fail(failureParams = {}) {
       return transitionToOutcome(PHASE_FAILURE, failureParams);
+    },
+    setSessionReference(sessionId) {
+      if (isFinished) return;
+      sessionReference = sessionId === undefined ? undefined : formatSessionReference(sessionId);
+      renderState = { ...renderState, sessionReference };
+      renderOverlay();
     },
     dismiss() {
       if (currentPhase === PHASE_CLOSING) {

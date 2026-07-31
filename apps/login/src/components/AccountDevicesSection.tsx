@@ -34,11 +34,11 @@ export function AccountDevicesSection({ onNotice, onRequireLogin }: AccountDevic
   const [revokingSessionId, setRevokingSessionId] = useState("");
   const [sessions, setSessions] = useState<LocalDeviceSession[]>([]);
 
-  const loadSessions = useCallback(async(signal?: AbortSignal) => {
+  const loadSessions = useCallback(async(signal?: AbortSignal, forceRefresh = false) => {
     setIsLoading(true);
     setError("");
     try {
-      const nextSessions = await listLocalDeviceSessions({ signal });
+      const nextSessions = await listLocalDeviceSessions({ forceRefresh, signal });
       if (signal?.aborted) return;
       setSessions(nextSessions);
     } catch (requestError) {
@@ -72,7 +72,7 @@ export function AccountDevicesSection({ onNotice, onRequireLogin }: AccountDevic
         onRequireLogin();
         return;
       }
-      await loadSessions();
+      await loadSessions(undefined, true);
     } catch (requestError) {
       setError(getPriestessApiErrorMessage(requestError, t("注销浏览器失败")));
     } finally {
@@ -95,7 +95,7 @@ export function AccountDevicesSection({ onNotice, onRequireLogin }: AccountDevic
             <h3 id="account-device-list-title">{t("已登录浏览器")}</h3>
             <p>{t("每条记录来自后端确认的 HttpOnly 会话。")}</p>
           </div>
-          <button className="account-button account-button--quiet" disabled={isLoading} onClick={() => void loadSessions()} type="button">
+          <button className="account-button account-button--quiet" disabled={isLoading} onClick={() => void loadSessions(undefined, true)} type="button">
             <RefreshCw aria-hidden="true" size={17} strokeWidth={1.8} />
             <span>{t("刷新")}</span>
           </button>

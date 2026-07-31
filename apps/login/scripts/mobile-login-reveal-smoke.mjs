@@ -102,6 +102,7 @@ async function testMobilePlainLoginReveal(browserInstance, appUrl) {
     assert.equal(cardLayout.boxShadow, "none");
     assert.equal(cardLayout.overflowY, "auto");
     assert.ok(scenario.records.sessions > 0, "plain mobile login should check the local session");
+    assert.equal(scenario.records.deviceSessions, 0, "mobile success layout must not request desktop session metadata");
     assert.equal(scenario.records.qrCreates, 0, "mobile must not create QR sessions");
     assert.equal(scenario.records.qrPolls, 0, "mobile must not poll QR sessions");
   });
@@ -617,6 +618,7 @@ function createScenario(options = {}) {
       browserAccounts: 0,
       qrCreates: 0,
       qrPolls: 0,
+      deviceSessions: 0,
       sessions: 0,
     },
     sessionDelayMs: options.sessionDelayMs ?? 0,
@@ -656,6 +658,12 @@ async function startMockApiServer() {
       scenario.records.sessions += 1;
       if (scenario.sessionDelayMs > 0) await delay(scenario.sessionDelayMs);
       if (!res.destroyed) writeJson(res, 200, { authenticated: false });
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/auth/priestess/devices/sessions") {
+      scenario.records.deviceSessions += 1;
+      writeJson(res, 401, { error: { code: "local_session_required" } });
       return;
     }
 
