@@ -20,6 +20,7 @@ import { type AuthAccountChoice, type useAuthAccountChoices } from "../lib/useAu
 import { type LoginLayoutAuthMode } from "../lib/loginLayoutState";
 import type { MobileLoginRevealState } from "../lib/useMobileLoginReveal";
 import type { LoginIdentityMotionSource } from "./loginIdentityMotion";
+import { PriestessLanguageSwitcher } from "./PriestessLanguageSwitcher";
 
 type AccountChoicesState = ReturnType<typeof useAuthAccountChoices>;
 type TranslationFn = (key: string, options?: Record<string, unknown>) => string;
@@ -194,7 +195,11 @@ type LoginExperienceProps = {
   onChooseAuthAccount: (account: AuthAccountChoice, identitySource: LoginIdentityMotionSource | null) => void;
   onCreateAccount: () => void;
   onForgotPassword: (identity: string) => void;
-  onOpenAuthAccountAction: (account: AuthAccountChoice, action: AccountPickerAction) => Promise<void> | void;
+  onOpenAuthAccountAction: (
+    account: AuthAccountChoice,
+    action: AccountPickerAction,
+    identitySource: LoginIdentityMotionSource | null,
+  ) => Promise<void> | void;
   onPasskeyLogin: () => void;
   onRegisterNotice: (message: string) => void;
   onRemoveAuthAccount: (account: AuthAccountChoice) => Promise<void> | void;
@@ -453,6 +458,7 @@ export function LoginExperience({
         <>
           <header className="topbar" aria-label="Priestess">
             <BrandMark size="sm" />
+            <PriestessLanguageSwitcher />
           </header>
 
           <motion.section

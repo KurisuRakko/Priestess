@@ -73,6 +73,8 @@ export type LoginTransitionOverlayParams = {
   challengeDescription?: string;
   challengeSiteKey?: string;
   challengeTitle?: string;
+  continuationAfterHold?: boolean;
+  continuationTitle?: string;
   loadingTitle?: string;
   title?: string;
   description?: string;
@@ -91,11 +93,12 @@ export type LoginTransitionOverlayParams = {
   originRect?: OriginRect | null;
 };
 
-type RenderState = Required<Pick<LoginTransitionOverlayParams, "avatarUrl" | "identityReveal" | "loadingTitle" | "title" | "description" | "organizationName" | "username" | "primaryColor">> & {
+type RenderState = Required<Pick<LoginTransitionOverlayParams, "avatarUrl" | "continuationTitle" | "identityReveal" | "loadingTitle" | "title" | "description" | "organizationName" | "username" | "primaryColor">> & {
   challengeAction: string;
   challengeDescription: string;
   challengeSiteKey: string;
   challengeTitle: string;
+  continuationAfterHold: boolean;
   phase: LoginTransitionPhase;
   timeline: Timeline;
   phaseKey: number;
@@ -315,6 +318,8 @@ function buildRenderState(
       challengeSiteKey: "",
       challengeTitle: "",
       avatarUrl: normalizedAvatarUrl,
+      continuationAfterHold: false,
+      continuationTitle: "",
       identityReveal: Boolean(baseParams.identityReveal),
       identityMotionSource: baseParams.identityMotionSource || null,
       phase: PHASE_LOADING,
@@ -341,6 +346,8 @@ function buildRenderState(
       challengeSiteKey: normalizeText(params.challengeSiteKey),
       challengeTitle: normalizeText(params.challengeTitle) || translatePriestess("login:请完成人机验证"),
       avatarUrl: normalizedAvatarUrl,
+      continuationAfterHold: false,
+      continuationTitle: "",
       identityReveal: Boolean(baseParams.identityReveal),
       identityMotionSource: baseParams.identityMotionSource || null,
       phase,
@@ -366,6 +373,8 @@ function buildRenderState(
     challengeSiteKey: "",
     challengeTitle: "",
     avatarUrl: normalizeText(params.avatarUrl) || normalizedAvatarUrl,
+    continuationAfterHold: Boolean(params.continuationAfterHold),
+    continuationTitle: normalizeText(params.continuationTitle),
     identityReveal: Boolean(baseParams.identityReveal),
     identityMotionSource: baseParams.identityMotionSource || null,
     phase,
@@ -399,6 +408,8 @@ function LoginTransitionOverlayInner(props: RenderState & { onFinish: () => void
     challengeAction,
     challengeSiteKey,
     challengeTitle,
+    continuationAfterHold,
+    continuationTitle,
     loadingTitle,
     title,
     organizationName,
@@ -418,6 +429,7 @@ function LoginTransitionOverlayInner(props: RenderState & { onFinish: () => void
   } = props;
   const prefersReducedMotion = usePrefersReducedMotion();
   const [isExiting, setIsExiting] = useState(false);
+  const [isWaitingForContinuation, setIsWaitingForContinuation] = useState(false);
   const hasTriggeredVisualCompleteRef = useRef(false);
 
   // 提交态按真实登录卡片定位，让身份揭示稳定落在卡片上半区，而不是相对整个屏幕硬偏移。
@@ -441,6 +453,7 @@ function LoginTransitionOverlayInner(props: RenderState & { onFinish: () => void
   const hasIdentityMotionSource = identityMotionSource !== null;
   const loadingTitleText = normalizeText(loadingTitle) || getDefaultLoadingTitle();
   const titleText = normalizeText(title) || (phase === PHASE_FAILURE ? getDefaultFailureTitle() : getDefaultSuccessTitle());
+  const continuationTitleText = normalizeText(continuationTitle) || titleText;
   const cleanOrganizationName = normalizeText(organizationName);
   const cleanUsername = normalizeText(username);
   const cleanDescription = normalizeText(description);
@@ -477,6 +490,7 @@ function LoginTransitionOverlayInner(props: RenderState & { onFinish: () => void
 
   useEffect(() => {
     setIsExiting(false);
+    setIsWaitingForContinuation(false);
     hasTriggeredVisualCompleteRef.current = false;
   }, [phase, phaseKey]);
 
@@ -499,24 +513,36 @@ function LoginTransitionOverlayInner(props: RenderState & { onFinish: () => void
         return;
       }
 
-      const continuationPromise = hasTriggeredVisualCompleteRef.current
+      let continuationSettled = false;
+      const runContinuation = () => (hasTriggeredVisualCompleteRef.current
         ? Promise.resolve()
         : Promise.resolve()
           .then(() => {
             hasTriggeredVisualCompleteRef.current = true;
-            if (typeof onVisualComplete === "function") {
-              return onVisualComplete();
-            }
-            return undefined;
+            return typeof onVisualComplete === "function" ? onVisualComplete() : undefined;
           })
-          .catch(() => undefined);
-      const minimumHoldPromise = waitFor(timeline.postAnimationDelayMs);
+          .catch(() => undefined))
+        .finally(() => {
+          continuationSettled = true;
+        });
 
-      await Promise.allSettled([continuationPromise, minimumHoldPromise]);
+      if (continuationAfterHold) {
+        await waitFor(timeline.postAnimationDelayMs);
+        if (continuationTitleText !== titleText) setIsWaitingForContinuation(true);
+        await runContinuation();
+      } else {
+        const continuationPromise = runContinuation();
+        await waitFor(timeline.postAnimationDelayMs);
+        if (!continuationSettled && continuationTitleText !== titleText) {
+          setIsWaitingForContinuation(true);
+        }
+        await continuationPromise;
+      }
       if (isCancelled) {
         return;
       }
 
+      setIsWaitingForContinuation(false);
       setIsExiting(true);
       await waitFor(timeline.fadeOutMs);
 
@@ -532,7 +558,7 @@ function LoginTransitionOverlayInner(props: RenderState & { onFinish: () => void
       isCancelled = true;
       timerIds.forEach((timerId) => window.clearTimeout(timerId));
     };
-  }, [onFinish, onVisualComplete, outcomeAnimationCompletionMs, phase, phaseKey, timeline.fadeOutMs, timeline.postAnimationDelayMs]);
+  }, [continuationAfterHold, continuationTitleText, onFinish, onVisualComplete, outcomeAnimationCompletionMs, phase, phaseKey, timeline.fadeOutMs, timeline.postAnimationDelayMs, titleText]);
 
   return (
     <div
@@ -563,7 +589,11 @@ function LoginTransitionOverlayInner(props: RenderState & { onFinish: () => void
             exiting={isExiting}
             identityMotionSource={identityMotionSource}
             phase={identityPhase}
-            statusText={phase === PHASE_LOADING ? loadingTitleText : titleText}
+            statusText={phase === PHASE_LOADING
+              ? loadingTitleText
+              : isWaitingForContinuation
+                ? continuationTitleText
+                : titleText}
           />
         ) : (
           <div className="login-success-overlay-icon" aria-hidden="true">
@@ -765,6 +795,8 @@ function createOverlayController(params: LoginTransitionOverlayParams = {}): Log
         challengeAction={renderState.challengeAction}
         challengeSiteKey={renderState.challengeSiteKey}
         challengeTitle={renderState.challengeTitle}
+        continuationAfterHold={renderState.continuationAfterHold}
+        continuationTitle={renderState.continuationTitle}
         avatarUrl={renderState.avatarUrl}
         identityReveal={renderState.identityReveal}
         identityMotionSource={renderState.identityMotionSource}

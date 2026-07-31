@@ -132,6 +132,14 @@ async function testInlineAccountActions({
     await page.waitForSelector('[data-account-picker-view="actions"]');
     await page.getByRole("button", { name: "修改密码" }).click();
     await page.waitForURL((url) => url.pathname === "/manage" && url.searchParams.get("account_action") === "password" && url.hash === "#security", { timeout: 5000 });
+    const passwordDialog = page.getByRole("dialog", { name: "修改密码" });
+    await passwordDialog.waitFor({ state: "visible", timeout: 2500 });
+    assert.equal(
+      await passwordDialog.locator("input[autocomplete='current-password']").evaluate((element) => element === document.activeElement),
+      true,
+      "the destination action must keep its URL until the mounted dialog has received focus",
+    );
+    await page.waitForURL((url) => url.pathname === "/manage" && !url.searchParams.has("account_action") && url.hash === "#security", { timeout: 2500 });
     assert.deepEqual(scenario.records.activations.at(-1), {
       body: {},
       userId: "user-inline-account-actions-primary",

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import {
   AlertTriangle,
   CalendarDays,
@@ -36,7 +36,9 @@ import { AccountSecuritySection } from "./AccountSecuritySection";
 import { AccountServicesSection } from "./AccountServicesSection";
 import "./AccountPage.css";
 import { PasswordChangeDialog } from "./PasswordChangeDialog";
+import { PriestessLanguageSwitcher } from "./PriestessLanguageSwitcher";
 import { ProfileQuickEditDialog, type ProfileQuickEditMode } from "./ProfileQuickEditDialog";
+import type { AccountDestination, AccountPageSection } from "../lib/accountDestination";
 import {
   getAccountManagementActionSection,
   readAccountManagementAction,
@@ -44,13 +46,18 @@ import {
   type AccountManagementActionSection,
 } from "../lib/accountManagementAction";
 
-type AccountPageProps = {
+export type AccountPageProps = {
+  bootstrapDestination?: AccountDestination | null;
+  bootstrapSession?: LocalSession | null;
+  handoffActive?: boolean;
+  handoffAttempt?: number;
+  onHandoffReady?: (targetAvatar: HTMLElement) => void;
   onNavigateToLogin: () => void;
   onRequireLogin: () => void;
   onNotice: (message: string) => void;
 };
 
-type AccountSection = "overview" | "security" | "devices" | "services" | "privacy";
+type AccountSection = AccountPageSection;
 
 const ACCOUNT_NAV_ITEMS: Array<{ icon: ReactNode; id: AccountSection; label: string }> = [
   { icon: <UserRound size={17} strokeWidth={1.8} />, id: "overview", label: "你的信息" },
@@ -62,15 +69,29 @@ const ACCOUNT_NAV_ITEMS: Array<{ icon: ReactNode; id: AccountSection; label: str
 
 const ACCOUNT_SECTION_IDS = new Set<AccountSection>(ACCOUNT_NAV_ITEMS.map((item) => item.id));
 
-export function AccountPage({ onNavigateToLogin, onRequireLogin, onNotice }: AccountPageProps) {
+export function AccountPage({
+  bootstrapDestination = null,
+  bootstrapSession = null,
+  handoffActive = true,
+  handoffAttempt = 0,
+  onHandoffReady,
+  onNavigateToLogin,
+  onRequireLogin,
+  onNotice,
+}: AccountPageProps) {
   const { t } = usePriestessTranslation("account");
-  const [activeSection, setActiveSection] = useState<AccountSection>(() => readSectionFromHash());
+  const accountShellRef = useRef<HTMLElement | null>(null);
+  const handoffAvatarRef = useRef<HTMLSpanElement | null>(null);
+  const handledAccountActionRef = useRef("");
+  const [activeSection, setActiveSection] = useState<AccountSection>(() => bootstrapDestination?.section ?? readSectionFromHash());
   const [error, setError] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(!bootstrapSession);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isPasswordChangeOpen, setIsPasswordChangeOpen] = useState(false);
+  const [pendingAccountAction, setPendingAccountAction] = useState(bootstrapDestination?.action ?? null);
   const [profileQuickEditMode, setProfileQuickEditMode] = useState<ProfileQuickEditMode | null>(null);
-  const [session, setSession] = useState<LocalSession | null>(null);
+  const [session, setSession] = useState<LocalSession | null>(bootstrapSession);
+  const [topbarAvatarLoadFailed, setTopbarAvatarLoadFailed] = useState(false);
 
   const loadSession = useCallback(async(signal?: AbortSignal) => {
     setIsLoading(true);
@@ -93,10 +114,18 @@ export function AccountPage({ onNavigateToLogin, onRequireLogin, onNotice }: Acc
   }, [t]);
 
   useEffect(() => {
+    if (bootstrapSession) {
+      // 同源交接直接复用刚由登录接口确认的会话，避免目标页再次请求 /session。
+      setSession(bootstrapSession);
+      setIsLoading(false);
+      setError("");
+      return undefined;
+    }
+
     const abortController = new AbortController();
     void loadSession(abortController.signal);
     return () => abortController.abort();
-  }, [loadSession]);
+  }, [bootstrapSession, loadSession]);
 
   useEffect(() => {
     const syncSectionFromHash = () => setActiveSection(readSectionFromHash());
@@ -108,7 +137,41 @@ export function AccountPage({ onNavigateToLogin, onRequireLogin, onNotice }: Acc
   const isAuthenticated = Boolean(session?.authenticated && user);
   const shouldRedirectToLogin = !isLoading && !error && !isAuthenticated;
   const displayName = user?.displayName || user?.username || t("Priestess 用户");
+  const displayAvatarUrl = getPriestessDisplayAvatarUrl(user?.avatarUrl || "");
+  const topbarAvatarUrl = topbarAvatarLoadFailed ? PRIESTESS_DEFAULT_AVATAR_URL : displayAvatarUrl;
   const isInitialSessionLoading = isLoading && session === null;
+
+  useEffect(() => {
+    setTopbarAvatarLoadFailed(false);
+  }, [user?.avatarUrl]);
+
+  useLayoutEffect(() => {
+    if (!onHandoffReady || !bootstrapSession?.authenticated || !user || !handoffAvatarRef.current) {
+      return undefined;
+    }
+
+    let cancelled = false;
+    const avatarTarget = handoffAvatarRef.current;
+    const avatarImage = avatarTarget.querySelector("img");
+    const waitForAvatar = avatarImage && !avatarImage.complete
+      ? new Promise<void>((resolve) => {
+          avatarImage.addEventListener("load", () => resolve(), { once: true });
+          avatarImage.addEventListener("error", () => resolve(), { once: true });
+        })
+      : Promise.resolve();
+
+    void waitForAvatar.then(() => new Promise<void>((resolve) => {
+      window.requestAnimationFrame(() => window.requestAnimationFrame(() => resolve()));
+    })).then(() => {
+      if (!cancelled && avatarTarget.isConnected && accountShellRef.current) {
+        onHandoffReady(avatarTarget);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [bootstrapSession, handoffAttempt, onHandoffReady, topbarAvatarUrl, user]);
 
   const selectSection = (section: AccountSection) => {
     setActiveSection(section);
@@ -154,10 +217,14 @@ export function AccountPage({ onNavigateToLogin, onRequireLogin, onNotice }: Acc
   }, [onRequireLogin, shouldRedirectToLogin]);
 
   useEffect(() => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated || !handoffActive) return;
 
-    const accountAction = readAccountManagementAction();
+    const accountAction = pendingAccountAction ?? readAccountManagementAction();
     if (!accountAction) return;
+    const actionKey = `${accountAction}:${window.location.pathname}${window.location.search}${window.location.hash}`;
+    if (handledAccountActionRef.current === actionKey) return;
+    handledAccountActionRef.current = actionKey;
+    setPendingAccountAction(accountAction);
 
     const actionSection = getAccountManagementActionSection(accountAction);
     setActiveSection(actionSection);
@@ -165,23 +232,55 @@ export function AccountPage({ onNavigateToLogin, onRequireLogin, onNotice }: Acc
       setIsPasswordChangeOpen(true);
     } else if (accountAction === "avatar") {
       setProfileQuickEditMode("avatar");
+    } else {
+      setPendingAccountAction(null);
+      clearAccountManagementActionFromUrl(actionSection);
     }
+  }, [handoffActive, isAuthenticated, pendingAccountAction]);
 
-    // action 只负责首次打开目标状态；profile 是已弃用的兼容入口，只进入主界面并清理 URL。
+  const confirmAccountActionMounted = () => {
+    if (!pendingAccountAction) return;
+    const actionSection = getAccountManagementActionSection(pendingAccountAction);
+    setPendingAccountAction(null);
+    // 参数只在目标 dialog 已挂载、获得焦点后清理；其它 query 与 hash 均原样保留。
     clearAccountManagementActionFromUrl(actionSection);
-  }, [isAuthenticated]);
+  };
 
   if (shouldRedirectToLogin) {
     return null;
   }
 
   return (
-    <main className="account-shell">
+    <main className="account-shell" ref={accountShellRef} data-account-page-mounted="true">
       <FloatingBackdrop />
       <header className="account-topbar" aria-label={t("Priestess 个人中心")}>
-        <BrandMark size="sm" />
+        <div className="account-topbar__leading">
+          <BrandMark size="sm" />
+          {isAuthenticated ? (
+            <div className="account-topbar__identity" aria-label={t("当前账号")}>
+              <span
+                className="account-topbar__avatar"
+                data-account-handoff-avatar-target="true"
+                ref={handoffAvatarRef}
+              >
+                <img
+                  alt=""
+                  onError={() => {
+                    if (topbarAvatarUrl !== PRIESTESS_DEFAULT_AVATAR_URL) setTopbarAvatarLoadFailed(true);
+                  }}
+                  src={topbarAvatarUrl}
+                />
+              </span>
+              <span className="account-topbar__identity-copy">
+                <strong>{displayName}</strong>
+                <span>{user?.email || user?.username}</span>
+              </span>
+            </div>
+          ) : null}
+        </div>
         {isAuthenticated ? (
           <div className="account-topbar__actions">
+            <PriestessLanguageSwitcher />
             <button className="account-button account-button--danger" disabled={isLoggingOut} onClick={logout} type="button">
               <LogOut aria-hidden="true" size={17} strokeWidth={1.8} />
               <span>{isLoggingOut ? t("退出中") : t("退出")}</span>
@@ -263,6 +362,7 @@ export function AccountPage({ onNavigateToLogin, onRequireLogin, onNotice }: Acc
           onChanged={(nextSession) => setSession(nextSession)}
           onClose={() => setIsPasswordChangeOpen(false)}
           onNotice={onNotice}
+          onAfterOpen={pendingAccountAction === "password" ? confirmAccountActionMounted : undefined}
           open={isPasswordChangeOpen}
         />
         <ProfileQuickEditDialog
@@ -270,6 +370,7 @@ export function AccountPage({ onNavigateToLogin, onRequireLogin, onNotice }: Acc
           onChanged={(nextUser) => setSession((current) => current ? { ...current, user: nextUser } : current)}
           onClose={() => setProfileQuickEditMode(null)}
           onNotice={onNotice}
+          onAfterOpen={pendingAccountAction === "avatar" ? confirmAccountActionMounted : undefined}
           user={user}
         />
       </section>
@@ -297,7 +398,7 @@ function OverviewSection({ displayName, onCopy, onEditAddress, onEditAvatar, onE
         <CopyInfoCard icon={<Copy size={19} strokeWidth={1.8} />} label={t("用户 ID")} onCopy={onCopy} value={user?.userId || t("未提供")} />
         <DisplayNameInfoCard avatarUrl={user?.avatarUrl || ""} displayName={displayName} onEditAvatar={onEditAvatar} onEditDisplayName={onEditDisplayName} />
         <InfoCard icon={<Server size={19} strokeWidth={1.8} />} label={t("用户名")} value={user?.username || t("未提供")} />
-        <InfoCard icon={<UsersRound size={19} strokeWidth={1.8} />} label={t("用户组")} value={formatUserGroupLabel(user?.role)} />
+        <InfoCard icon={<UsersRound size={19} strokeWidth={1.8} />} label={t("用户组")} value={formatUserGroupLabel(user?.role, t)} />
         <EditableInfoCard ariaLabel={t("修改邮箱")} icon={<Mail size={19} strokeWidth={1.8} />} label={t("邮箱")} onEdit={onEditEmail} value={user?.email || t("未设置")} />
         <EditableInfoCard ariaLabel={t("修改偏好语言")} icon={<Languages size={19} strokeWidth={1.8} />} label={t("偏好语言")} onEdit={onEditPreferredLanguages} value={formatPreferredLanguagesSummary(preferredLanguages, t)} />
         <EditableCopyInfoCard ariaLabel={t("修改电话号")} icon={<Phone size={19} strokeWidth={1.8} />} label={t("电话号")} onCopy={onCopy} onEdit={onEditPhone} value={user?.phone || t("未设置")} />
@@ -308,8 +409,8 @@ function OverviewSection({ displayName, onCopy, onEditAddress, onEditAvatar, onE
   );
 }
 
-function formatUserGroupLabel(role: string | undefined) {
-  return role === "admin" ? "Admin" : "User";
+function formatUserGroupLabel(role: string | undefined, t: (key: string) => string) {
+  return role === "admin" ? t("管理员") : t("用户");
 }
 
 function formatPreferredLanguagesSummary(languages: string[], t: (key: string, options?: Record<string, unknown>) => string) {

@@ -213,7 +213,7 @@ function PasskeyManageCard({ busy, deleting, onDelete, onRename, passkey, renami
       </div>
       <dl>
         <div>
-          <dt>Credential</dt>
+          <dt>{t("凭证")}</dt>
           <dd>{shortenCredentialId(passkey.credentialId)}</dd>
         </div>
         <div>

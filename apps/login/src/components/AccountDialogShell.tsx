@@ -1,5 +1,5 @@
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import type { ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import "./AccountPageDialog.css";
 
@@ -10,12 +10,36 @@ type AccountDialogShellProps = {
   children?: ReactNode;
   className?: string;
   labelledBy: string;
+  onAfterOpen?: () => void;
   open: boolean;
 };
 
-export function AccountDialogShell({ children, className, labelledBy, open }: AccountDialogShellProps) {
+export function AccountDialogShell({ children, className, labelledBy, onAfterOpen, open }: AccountDialogShellProps) {
   const shouldReduceMotion = useReducedMotion();
+  const dialogRef = useRef<HTMLElement | null>(null);
+  const hasReportedOpenRef = useRef(false);
   const dialogClassName = ["account-dialog", className].filter(Boolean).join(" ");
+
+  useEffect(() => {
+    if (!open) {
+      hasReportedOpenRef.current = false;
+      return undefined;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      const dialog = dialogRef.current;
+      if (!dialog || hasReportedOpenRef.current) return;
+      const focusTarget = dialog.querySelector<HTMLElement>(
+        'input:not(:disabled):not([type="hidden"]):not([type="file"]), select:not(:disabled), textarea:not(:disabled)',
+      ) ?? dialog.querySelector<HTMLElement>(
+        'button:not(:disabled), [tabindex]:not([tabindex="-1"])',
+      ) ?? dialog;
+      focusTarget.focus({ preventScroll: true });
+      hasReportedOpenRef.current = true;
+      onAfterOpen?.();
+    });
+    return () => window.cancelAnimationFrame(frameId);
+  }, [onAfterOpen, open]);
 
   // 关闭时由 AnimatePresence 接管卸载时机，保证个人中心弹窗都有完整退场动画。
   const dialog = (
@@ -37,6 +61,8 @@ export function AccountDialogShell({ children, className, labelledBy, open }: Ac
             initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.97, y: 18 }}
             animate={shouldReduceMotion ? { opacity: 1 } : { opacity: 1, scale: 1, y: 0 }}
             role="dialog"
+            ref={dialogRef}
+            tabIndex={-1}
             transition={{
               duration: shouldReduceMotion ? 0.12 : 0.24,
               ease: DIALOG_PANEL_EASE,

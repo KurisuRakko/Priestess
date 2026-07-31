@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useReducedMotion } from "motion/react";
 import {
   activateLocalAccountChoice,
@@ -15,7 +15,9 @@ import {
   verifyLocalTotpLogin,
 } from "@priestess/shared";
 import { getAccountKey, type AccountPickerAction } from "./components/AccountPickerCard";
+import { AccountRouteStage } from "./components/AccountRouteStage";
 import { LoginExperience } from "./components/LoginExperience";
+import { QrLoginConfirmPage, ResetPasswordPage, type TotpChallenge } from "./components/lazyRouteModules";
 import { type LoginCredentials } from "./components/LoginForm";
 import { startLoginTransitionOverlay, type LoginTransitionOverlayController, type LoginTransitionOverlayParams } from "./components/LoginTransitionOverlay";
 import { NotFoundPage } from "./components/NotFoundPage";
@@ -35,7 +37,6 @@ import {
   LOCAL_LOGIN_COOLDOWN_MS,
   LOCAL_LOGIN_FAILURE_LIMIT,
   LOGIN_FAILURE_HOLD_MS,
-  LOGIN_INTRO_QR_DELAY_MS,
   LOGIN_RESULT_ANIMATION_MS,
   LOGIN_SUCCESS_HOLD_MS,
   readLocalLoginCooldownUntil,
@@ -43,34 +44,16 @@ import {
 } from "./lib/loginAppState";
 import { buildLoginPathWithNext, getCurrentAccountNextPath, readLoginNext } from "./lib/loginNext";
 import { resolveLoginLayoutState, type LoginLayoutAuthMode } from "./lib/loginLayoutState";
-import { getCurrentRoute, LOGIN_ROUTE_PATH, LEGACY_LOGIN_ROUTE_PATH, matchesRoutePath, type AppRoute } from "./lib/routes";
+import { getCurrentRoute, LOGIN_ROUTE_PATH, type AppRoute } from "./lib/routes";
 import { settleAsync } from "./lib/settleAsync";
 import { getAuthAccountChoiceErrorMessage, type AuthAccountChoice, useAuthAccountChoices } from "./lib/useAuthAccountChoices";
 import { useMobileLoginReveal } from "./lib/useMobileLoginReveal";
+import { useAccountRouteHandoff } from "./lib/useAccountRouteHandoff";
+import { useLoginRoutePresentation } from "./lib/useLoginRoutePresentation";
 import { useQrLoginSession } from "./lib/useQrLoginSession";
 import { readTurnstileSiteKey } from "./components/TurnstileWidget";
 
 type AuthMode = LoginLayoutAuthMode;
-
-// 非登录路由按需加载，避免用户只访问登录页时提前解析个人中心与扫码确认代码。
-const AccountPage = lazy(async() => {
-  const module = await import("./components/AccountPage");
-  return { default: module.AccountPage };
-});
-const QrLoginConfirmPage = lazy(async() => {
-  const module = await import("./components/QrLoginConfirmPage");
-  return { default: module.QrLoginConfirmPage };
-});
-const ResetPasswordPage = lazy(async() => {
-  const module = await import("./components/ResetPasswordPage");
-  return { default: module.ResetPasswordPage };
-});
-
-type TotpChallenge = {
-  challengeId: string;
-  displayName: string;
-  username: string;
-};
 
 export function App() {
   const { t } = usePriestessTranslation("login");
@@ -142,30 +125,31 @@ export function App() {
     requestKey: authRequestKey,
     t,
   });
-
-  const showNotice = (message: string) => {
+  const showNotice = useCallback((message: string) => {
     setNotice(message);
     window.setTimeout(() => setNotice((current) => current === message ? "" : current), 2600);
-  };
-
+  }, []);
   const captureLoginCardOriginRect = (): LoginTransitionOverlayParams["originRect"] => (
     getLoginCardOriginRect(loginCardRef.current)
   );
-
-  const navigateTo = (path: string, options: { replace?: boolean } = {}) => {
+  const navigateTo = useCallback((path: string, options: { replace?: boolean } = {}) => {
     if (options.replace) {
       window.history.replaceState(null, "", path);
     } else {
       window.history.pushState(null, "", path);
     }
     setRoute(getCurrentRoute());
-  };
-
+  }, []);
+  const accountRouteHandoff = useAccountRouteHandoff({
+    commitDestination: (path) => navigateTo(path, { replace: true }),
+    loadErrorMessage: t("个人中心加载失败，请重试。"),
+    prefersReducedMotion: Boolean(shouldReduceMotion),
+    timeoutErrorMessage: t("个人中心准备超时，请重试。"),
+  });
   const openForgotPassword = (identity: string) => {
     setForgotPasswordIdentity(identity.trim());
     switchAuthMode("forgot-password");
   };
-
   const clearAuthModeTransitionTimeout = () => {
     if (authModeLayoutTimeoutRef.current !== null) {
       window.clearTimeout(authModeLayoutTimeoutRef.current);
@@ -176,19 +160,16 @@ export function App() {
       authModeTransitionTimeoutRef.current = null;
     }
   };
-
   const clearLoginSubmitStageTimeout = () => {
     if (loginSubmitStageTimeoutRef.current !== null) {
       window.clearTimeout(loginSubmitStageTimeoutRef.current);
       loginSubmitStageTimeoutRef.current = null;
     }
   };
-
   const releaseLoginSubmitStage = () => {
     clearLoginSubmitStageTimeout();
     setIsLoginSubmitStage(false);
   };
-
   const centerLoginCardForOverlay = () => new Promise<void>((resolve) => {
     clearLoginSubmitStageTimeout();
     setIsLoginIntroStage(false);
@@ -200,15 +181,12 @@ export function App() {
       window.requestAnimationFrame(() => resolve());
     }, delay);
   });
-
   const switchAuthMode = (nextMode: AuthMode) => {
     if (authMode === nextMode || isAuthModeTransitioning) {
       return;
     }
-
     clearAuthModeTransitionTimeout();
     setIsAuthModeTransitioning(true);
-
     // 桌面二维码可见时严格按“抽屉退场 → 内容换页 → 卡片收拢”的顺序执行。
     // 旧实现会立即替换内容、760ms 后再改变布局，视觉上像卡片被拉扯了两次。
     const isDrawerVisuallyOpen = isQrDrawerOpen && window.matchMedia("(min-width: 821px)").matches;
@@ -239,11 +217,23 @@ export function App() {
     }, transitionMs);
   };
 
-  const resetLocalLoginFailureState = () => {
+  const resetLocalLoginFailureState = useCallback(() => {
     setLocalLoginFailureCount(0);
     setLocalLoginCooldownUntil(0);
     clearLocalLoginCooldownUntil();
-  };
+  }, []);
+  const completeLoginIntro = useCallback(() => setIsLoginIntroStage(false), []);
+  useLoginRoutePresentation({
+    authMode,
+    isLoginIntroStage,
+    localLoginCooldownUntil,
+    onCooldownExpired: resetLocalLoginFailureState,
+    onLoginIntroComplete: completeLoginIntro,
+    onNotice: showNotice,
+    route,
+    shouldReduceMotion: Boolean(shouldReduceMotion),
+    t,
+  });
 
   const activateLocalLoginCooldown = () => {
     const cooldownUntil = Date.now() + LOCAL_LOGIN_COOLDOWN_MS;
@@ -275,7 +265,11 @@ export function App() {
     const displayName = params.session.user?.displayName || params.session.user?.username || params.fallbackUsername;
     const request = readAuthRequest();
     let destinationPrepared = false;
-    const prepareDestination = () => {
+    let destinationCommitted = false;
+    const standaloneHandoff = request
+      ? null
+      : accountRouteHandoff.beginForSession(params.session, readLoginNext());
+    const prepareDestination = async() => {
       if (destinationPrepared || params.signal.aborted) return;
       destinationPrepared = true;
       if (request) {
@@ -285,12 +279,16 @@ export function App() {
         accountChoices.refresh();
         return;
       }
-      showNotice(t("登录成功"));
-      navigateTo(readLoginNext(), { replace: true });
+      destinationCommitted = await standaloneHandoff?.complete() ?? false;
+      if (destinationCommitted) {
+        showNotice(t("登录成功"));
+      }
     };
 
     await params.controller.succeed({
       avatarUrl: params.session.user?.avatarUrl || "",
+      continuationAfterHold: !request,
+      continuationTitle: request ? "" : t("正在准备个人中心…"),
       durationMs: LOGIN_RESULT_ANIMATION_MS,
       onVisualComplete: prepareDestination,
       postAnimationDelayMs: LOGIN_SUCCESS_HOLD_MS,
@@ -306,10 +304,12 @@ export function App() {
     if (request) {
       releaseLoginSubmitStage();
       showNotice(t("已添加账号，请选择要继续使用的账号"));
+    } else if (!destinationCommitted) {
+      releaseLoginSubmitStage();
     }
   };
 
-  const finishRegisteredSession = async(session: LocalSession, _fallbackIdentity: string) => {
+  const finishRegisteredSession = async(session: LocalSession, fallbackIdentity: string) => {
     if (!session.authenticated) {
       throw new Error(t("注册完成但本地会话尚未建立"));
     }
@@ -325,8 +325,30 @@ export function App() {
       return;
     }
 
-    showNotice(t("注册成功"));
-    navigateTo(readLoginNext(), { replace: true });
+    const handoff = accountRouteHandoff.beginForSession(session, readLoginNext());
+    const controller = await startCenteredLoginOverlay({
+      identityReveal: true,
+      loadingTitle: t("正在准备你的账号…"),
+      primaryColor: "#c65f72",
+    });
+    let destinationCommitted = false;
+    await controller.succeed({
+      avatarUrl: session.user?.avatarUrl || "",
+      continuationAfterHold: true,
+      continuationTitle: t("正在准备个人中心…"),
+      durationMs: LOGIN_RESULT_ANIMATION_MS,
+      onVisualComplete: async() => {
+        destinationCommitted = await handoff?.complete() ?? false;
+      },
+      postAnimationDelayMs: LOGIN_SUCCESS_HOLD_MS,
+      title: t("已成功登录"),
+      username: session.user?.displayName || session.user?.username || fallbackIdentity,
+    });
+    if (destinationCommitted) {
+      showNotice(t("注册成功"));
+    } else {
+      releaseLoginSubmitStage();
+    }
   };
 
   const chooseAuthAccount = async(
@@ -373,15 +395,23 @@ export function App() {
         || account.username
         || account.email;
       let destinationPrepared = false;
-      const prepareDestination = () => {
+      let destinationCommitted = false;
+      const standaloneHandoff = result.kind === "manage"
+        ? accountRouteHandoff.beginForSession(result.session, readLoginNext())
+        : null;
+      const prepareDestination = async() => {
         if (destinationPrepared || result.kind !== "manage") return;
         destinationPrepared = true;
-        showNotice(t("正在进入 Priestess 个人中心"));
-        navigateTo(readLoginNext(), { replace: true });
+        destinationCommitted = await standaloneHandoff?.complete() ?? false;
+        if (destinationCommitted) {
+          showNotice(t("正在进入 Priestess 个人中心"));
+        }
       };
 
       await controller.succeed({
         avatarUrl: sessionUser?.avatarUrl || account.avatarUrl,
+        continuationAfterHold: result.kind === "manage",
+        continuationTitle: result.kind === "manage" ? t("正在准备个人中心…") : "",
         durationMs: LOGIN_RESULT_ANIMATION_MS,
         onVisualComplete: prepareDestination,
         postAnimationDelayMs: LOGIN_SUCCESS_HOLD_MS,
@@ -395,6 +425,9 @@ export function App() {
         return;
       }
       prepareDestination();
+      if (!destinationCommitted) {
+        releaseLoginSubmitStage();
+      }
     } catch (error) {
       const message = getAuthAccountChoiceErrorMessage(
         error,
@@ -444,8 +477,12 @@ export function App() {
     }
   };
 
-  const openAuthAccountAction = async(account: AuthAccountChoice, action: AccountPickerAction) => {
-    if (directAuthorizeBusy || removingAccountId || accountActionBusyId) {
+  const openAuthAccountAction = async(
+    account: AuthAccountChoice,
+    action: AccountPickerAction,
+    identitySource: LoginIdentityMotionSource | null,
+  ) => {
+    if (directAuthorizeBusy || removingAccountId || accountActionBusyId || loginTransitionOverlayRef.current !== null) {
       return;
     }
     if (!isAccountEditableInBrowser(account)) {
@@ -458,25 +495,57 @@ export function App() {
     const accountKey = getAccountKey(account);
     setAccountAuthorizeError("");
     setAccountActionBusyId(accountKey);
+    const controllerPromise = startCenteredLoginOverlay({
+      avatarUrl: account.avatarUrl,
+      identityMotionSource: identitySource,
+      identityReveal: true,
+      loadingTitle: t("正在准备你的账号…"),
+      primaryColor: "#c65f72",
+    });
+    const activationPromise = settleAsync(activateLocalAccountChoice(account.userId, {
+      choiceId: account.authorizeChoiceId ?? undefined,
+    }));
 
     try {
-      const session = await activateLocalAccountChoice(account.userId, {
-        choiceId: account.authorizeChoiceId ?? undefined,
-      });
+      const controller = await controllerPromise;
+      const activation = await activationPromise;
+      if (!activation.ok) throw activation.error;
+      const session = activation.value;
       const target = resolveAccountManagementActionTarget(account, action, session);
       if (target.status !== "ready") {
-        const message = t("当前账号状态已变化，请重新选择账号");
-        setAccountAuthorizeError(message);
-        showNotice(message);
-        accountChoices.refresh();
-        return;
+        throw new Error(t("当前账号状态已变化，请重新选择账号"));
       }
 
-      // 编辑动作统一交给个人中心处理，避免登录授权页维护另一套资料/密码弹窗状态。
-      navigateTo(target.path);
+      const handoff = accountRouteHandoff.beginForSession(session, target.path);
+      let destinationCommitted = false;
+      await controller.succeed({
+        avatarUrl: session.user?.avatarUrl || account.avatarUrl,
+        continuationAfterHold: true,
+        continuationTitle: t("正在准备个人中心…"),
+        durationMs: LOGIN_RESULT_ANIMATION_MS,
+        onVisualComplete: async() => {
+          destinationCommitted = await handoff?.complete() ?? false;
+        },
+        postAnimationDelayMs: LOGIN_SUCCESS_HOLD_MS,
+        title: t("已成功登录"),
+        username: session.user?.displayName || session.user?.username || account.displayName || account.username,
+      });
+      if (!destinationCommitted) {
+        releaseLoginSubmitStage();
+      }
     } catch (error) {
-      const message = getAuthAccountActivationErrorMessage(error, t);
+      const message = error instanceof Error && error.message === t("当前账号状态已变化，请重新选择账号")
+        ? error.message
+        : getAuthAccountActivationErrorMessage(error, t);
       setAccountAuthorizeError(message);
+      const controller = await controllerPromise;
+      await controller.fail({
+        description: message,
+        durationMs: LOGIN_RESULT_ANIMATION_MS,
+        onVisualComplete: releaseLoginSubmitStage,
+        postAnimationDelayMs: LOGIN_FAILURE_HOLD_MS,
+      });
+      releaseLoginSubmitStage();
       showNotice(message);
       accountChoices.refresh();
     } finally {
@@ -766,7 +835,13 @@ export function App() {
   });
 
   useEffect(() => {
-    const syncRoute = () => setRoute(getCurrentRoute());
+    const syncRoute = () => {
+      const nextRoute = getCurrentRoute();
+      if (nextRoute !== "account") {
+        accountRouteHandoff.reset();
+      }
+      setRoute(nextRoute);
+    };
     window.addEventListener("popstate", syncRoute);
 
     return () => {
@@ -776,7 +851,7 @@ export function App() {
       loginAbortControllerRef.current?.abort();
       loginTransitionOverlayRef.current?.dismiss();
     };
-  }, []);
+  }, [accountRouteHandoff.reset]);
 
   useEffect(() => {
     if (route !== "login") {
@@ -792,87 +867,12 @@ export function App() {
   }, [authMode, route]);
 
   useEffect(() => {
-    if (localLoginCooldownUntil <= Date.now()) {
-      if (localLoginCooldownUntil > 0) {
-        resetLocalLoginFailureState();
-      }
-      return;
-    }
-
-    const cooldownTimer = window.setTimeout(() => {
-      resetLocalLoginFailureState();
-      showNotice(t("登录入口已恢复"));
-    }, Math.max(localLoginCooldownUntil - Date.now(), 0));
-    return () => window.clearTimeout(cooldownTimer);
-  }, [localLoginCooldownUntil, t]);
-
-  useEffect(() => {
-    if (route !== "login" || authMode !== "login" || shouldReduceMotion) {
-      setIsLoginIntroStage(false);
-      return;
-    }
-    if (!isLoginIntroStage) return;
-
-    // 首屏保留“卡片先到中间”的入场手感：先让登录卡片稳定出现，再放开右侧二维码抽屉。
-    const introTimer = window.setTimeout(() => setIsLoginIntroStage(false), LOGIN_INTRO_QR_DELAY_MS);
-    return () => window.clearTimeout(introTimer);
-  }, [authMode, isLoginIntroStage, route, shouldReduceMotion]);
-
-  useEffect(() => {
-    if (route !== "login") return;
-
-    const { hash, pathname, search } = window.location;
-    const isLegacyLoginPath = matchesRoutePath(pathname, LEGACY_LOGIN_ROUTE_PATH);
-    if (!isLegacyLoginPath && matchesRoutePath(pathname, LOGIN_ROUTE_PATH)) return;
-
-    // 登录页的公开地址统一为 /login，旧 /auth-ui/login 和根路径只作为兼容入口。
-    window.history.replaceState(null, "", `${LOGIN_ROUTE_PATH}${search}${hash}`);
-  }, [route]);
-
-  useEffect(() => {
-    if (route !== "account") return;
-
-    const canonicalPath = getCurrentAccountNextPath();
-    const currentPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
-    if (canonicalPath !== currentPath) {
-      // 个人中心的规范公开入口是 /manage；旧路径只做无损兼容，避免不同入口产生不同登录回跳。
-      window.history.replaceState(null, "", canonicalPath);
-    }
-  }, [route]);
-
-  useEffect(() => {
     setAccountActionBusyId("");
     setAccountAuthorizeError("");
     setAuthorizingAccountId("");
     setRemovingAccountId("");
     setShowLoginFormForAccountPicker(false);
   }, [authRequestKey, route]);
-
-  useEffect(() => {
-    if (route === "qr-login") {
-      document.title = t("Priestess 扫码确认");
-      return;
-    }
-    if (route === "account") {
-      document.title = t("Priestess 个人中心");
-      return;
-    }
-    if (route === "not-found") {
-      document.title = t("Priestess 404");
-      return;
-    }
-
-    if (authMode === "register") {
-      document.title = t("Priestess 注册");
-      return;
-    }
-    if (authMode === "forgot-password") {
-      document.title = t("Priestess 找回密码");
-      return;
-    }
-
-    document.title = route === "reset-password" ? t("Priestess 重置密码") : t("Priestess 登录");
-  }, [authMode, route, t]);
 
   // 入场节奏以页面加载为基准：先让壁纸稳定显示，再弹出表单和右侧二维码抽屉。
   // isLoginIntroStage 是特意保留的首屏状态，会让卡片短暂停在中间，后续维护不要把它当成抖动修掉。
@@ -946,31 +946,50 @@ export function App() {
 
   return (
     <>
-      <Suspense fallback={(
-        <main className="route-loading" aria-busy="true">
-          <span className="route-loading__indicator" role="status">{t("正在加载...")}</span>
-        </main>
-      )}>
-        {route === "account" ? (
-          <AccountPage
-            onNavigateToLogin={() => navigateTo(LOGIN_ROUTE_PATH)}
-            onRequireLogin={() => navigateTo(buildLoginPathWithNext(getCurrentAccountNextPath()), { replace: true })}
-            onNotice={showNotice}
-          />
-        ) : route === "qr-login" ? (
-          <QrLoginConfirmPage
-            onNavigateToLogin={() => navigateTo(LOGIN_ROUTE_PATH)}
-            onNotice={showNotice}
-          />
-        ) : route === "reset-password" ? (
-          <ResetPasswordPage
-            onNavigateToLogin={() => navigateTo(LOGIN_ROUTE_PATH, { replace: true })}
-            onNotice={showNotice}
-          />
-        ) : route === "not-found" ? (
-          <NotFoundPage />
-        ) : loginExperience}
-      </Suspense>
+      {route === "login" ? (
+        <div className="account-route-source-stage" data-account-route-source="login">
+          {loginExperience}
+        </div>
+      ) : null}
+
+      {route !== "login" && route !== "account" ? (
+        <Suspense fallback={(
+          <main className="route-loading" aria-busy="true">
+            <span className="route-loading__indicator" role="status">{t("正在加载...")}</span>
+          </main>
+        )}>
+          {route === "qr-login" ? (
+            <QrLoginConfirmPage
+              onNavigateToLogin={() => navigateTo(LOGIN_ROUTE_PATH)}
+              onNotice={showNotice}
+            />
+          ) : route === "reset-password" ? (
+            <ResetPasswordPage
+              onNavigateToLogin={() => navigateTo(LOGIN_ROUTE_PATH, { replace: true })}
+              onNotice={showNotice}
+            />
+          ) : route === "not-found" ? (
+            <NotFoundPage />
+          ) : null}
+        </Suspense>
+      ) : null}
+
+      <AccountRouteStage
+        handoffState={accountRouteHandoff.state}
+        onCancel={accountRouteHandoff.cancel}
+        onNavigateToLogin={() => {
+          accountRouteHandoff.reset();
+          navigateTo(LOGIN_ROUTE_PATH);
+        }}
+        onNotice={showNotice}
+        onRequireLogin={() => {
+          accountRouteHandoff.reset();
+          navigateTo(buildLoginPathWithNext(getCurrentAccountNextPath()), { replace: true });
+        }}
+        onRetry={accountRouteHandoff.retry}
+        onTargetReady={accountRouteHandoff.notifyTargetReady}
+        routeIsAccount={route === "account"}
+      />
       <Toast message={notice} />
     </>
   );

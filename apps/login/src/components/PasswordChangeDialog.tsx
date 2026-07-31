@@ -12,12 +12,13 @@ const PASSWORD_MIN_LENGTH = 12;
 
 type PasswordChangeDialogProps = {
   onChanged: (session: LocalSession) => void;
+  onAfterOpen?: () => void;
   onClose: () => void;
   onNotice: (message: string) => void;
   open: boolean;
 };
 
-export function PasswordChangeDialog({ onChanged, onClose, onNotice, open }: PasswordChangeDialogProps) {
+export function PasswordChangeDialog({ onAfterOpen, onChanged, onClose, onNotice, open }: PasswordChangeDialogProps) {
   const { t } = usePriestessTranslation("account");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
@@ -71,7 +72,7 @@ export function PasswordChangeDialog({ onChanged, onClose, onNotice, open }: Pas
   };
 
   return (
-    <AccountDialogShell labelledBy="account-password-title" open={open}>
+    <AccountDialogShell labelledBy="account-password-title" onAfterOpen={onAfterOpen} open={open}>
         <button aria-label={t("关闭密码弹窗")} className="account-dialog__close" disabled={isSubmitting} onClick={close} type="button">
           <X aria-hidden="true" size={17} strokeWidth={1.8} />
         </button>

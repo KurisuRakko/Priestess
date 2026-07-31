@@ -22,10 +22,68 @@
   gap: 16px;
 }
 
+.account-topbar__leading,
 .account-topbar__actions {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
+}
+
+.account-topbar__leading {
+  min-width: 0;
+  gap: clamp(18px, 3vw, 36px);
+}
+
+.account-topbar__identity {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 11px;
+}
+
+.account-topbar__avatar {
+  display: inline-flex;
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 92%);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.74);
+  box-shadow: 0 4px 14px rgb(31 23 29 / 10%);
+}
+
+.account-topbar__avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.account-topbar__identity-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.account-topbar__identity-copy strong,
+.account-topbar__identity-copy span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-topbar__identity-copy strong {
+  color: var(--color-heading);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.account-topbar__identity-copy span {
+  color: var(--color-muted);
+  font-size: 12px;
+}
+
+.account-topbar__actions {
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 10px;
 }

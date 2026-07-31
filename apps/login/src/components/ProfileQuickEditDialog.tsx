@@ -45,13 +45,14 @@ type AvatarCropDraft = {
 
 type ProfileQuickEditDialogProps = {
   mode: ProfileQuickEditMode | null;
+  onAfterOpen?: () => void;
   onChanged: (user: LocalSessionUser) => void;
   onClose: () => void;
   onNotice: (message: string) => void;
   user: LocalSession["user"];
 };
 
-export function ProfileQuickEditDialog({ mode, onChanged, onClose, onNotice, user }: ProfileQuickEditDialogProps) {
+export function ProfileQuickEditDialog({ mode, onAfterOpen, onChanged, onClose, onNotice, user }: ProfileQuickEditDialogProps) {
   const avatarCropDragRef = useRef<{ originX: number; originY: number; pointerId: number; startX: number; startY: number } | null>(null);
   const avatarCropFrameRef = useRef<HTMLDivElement | null>(null);
   const avatarFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -370,7 +371,7 @@ export function ProfileQuickEditDialog({ mode, onChanged, onClose, onNotice, use
 
   if (isAvatarMode) {
     return (
-      <AccountDialogShell className="account-dialog--avatar" labelledBy={titleId} open={open}>
+      <AccountDialogShell className="account-dialog--avatar" labelledBy={titleId} onAfterOpen={onAfterOpen} open={open}>
         <button aria-label={t("关闭头像弹窗")} className="account-dialog__close account-avatar-dialog__close" disabled={isSubmitting} onClick={close} type="button">
           <X aria-hidden="true" size={18} strokeWidth={1.8} />
         </button>
@@ -466,7 +467,7 @@ export function ProfileQuickEditDialog({ mode, onChanged, onClose, onNotice, use
             : t("显示名称会同步到 Priestess 账户资料。");
 
   return (
-    <AccountDialogShell labelledBy={titleId} open={open}>
+    <AccountDialogShell labelledBy={titleId} onAfterOpen={onAfterOpen} open={open}>
         <button aria-label={t("关闭资料弹窗")} className="account-dialog__close" disabled={isSubmitting} onClick={close} type="button">
           <X aria-hidden="true" size={17} strokeWidth={1.8} />
         </button>

@@ -5,6 +5,7 @@ import { dirname, resolve } from "node:path";
 import { delimiter } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createServer as createViteServer } from "vite";
+import { runAccountHandoffBrowserCases } from "./account-handoff-browser-cases.mjs";
 import { runInlineAccountActionsBrowserCases } from "./inline-account-actions-browser-cases.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -65,6 +66,13 @@ try {
   await testBareLoginRemainsUsable(browser, appUrl);
   await testLazyStandaloneRoutesRender(browser, appUrl);
   await testPasswordLoginRevealsIdentityAfterVerification(browser, appUrl);
+  await runAccountHandoffBrowserCases({
+    appUrl,
+    browserInstance: browser,
+    createScenario,
+    submitPassword,
+    withScenario,
+  });
   await testReducedMotionIdentityReveal(browser, appUrl);
   await testLoginFailureRemainsReadable(browser, appUrl);
   await testTotpReturnsToAccountPicker(browser, appUrl);
@@ -357,6 +365,7 @@ async function testPasswordLoginRevealsIdentityAfterVerification(browserInstance
     await page.goto(`${appUrl}/login`, { waitUntil: "domcontentloaded" });
     const usernameInput = page.locator("input[autocomplete='username']");
     await usernameInput.waitFor({ state: "visible" });
+    const sessionReadsBeforeLogin = scenario.records.sessionReads;
     await usernameInput.fill("identity-user");
     await page.locator("input[autocomplete='current-password']").fill(TEST_PASSWORD);
     const submitButton = page.locator(".login-form .primary-button[type='submit']");
@@ -422,6 +431,7 @@ async function testPasswordLoginRevealsIdentityAfterVerification(browserInstance
 
     const successOverlay = page.locator(".login-success-overlay.is-success");
     await successOverlay.waitFor({ state: "visible", timeout: 5000 });
+    const successObservedAt = Date.now();
     assert.ok(Date.now() - loadingObservedAt >= 340, "fast login must preserve the pending phase near the 420ms contract");
     assert.equal(await successOverlay.locator("[data-login-identity-name]").innerText(), `User ${scenario.appId}`);
     const successStatus = successOverlay.locator('[data-login-identity-status-phase="success"]');
@@ -463,19 +473,8 @@ async function testPasswordLoginRevealsIdentityAfterVerification(browserInstance
       page.locator(".account-shell").waitFor({ state: "attached", timeout: 2500 }),
       page.waitForTimeout(950),
     ]);
-    const entryFrames = await finishLoginTransitionFrameProbe(page, "identity-entry");
-    assert.ok(entryFrames);
-    assert.ok(entryFrames.frameCount >= 20, `login handoff should provide a measurable frame sequence: ${JSON.stringify(entryFrames)}`);
-    assert.ok(entryFrames.p95FrameGapMs <= 35, `login handoff should stay near a smooth frame cadence: ${JSON.stringify(entryFrames)}`);
-    assert.ok(entryFrames.longFrameCount <= 1, `login handoff should not repeatedly stall the main thread: ${JSON.stringify(entryFrames)}`);
-    assert.equal(entryFrames.blurredFrameCount, 0, "login handoff must not animate a large blurred form surface");
-    assert.equal(entryFrames.lowHandoffOpacityFrameCount, 0, "the form-to-loader crossfade must not expose an empty card");
-    assert.ok(entryFrames.minimumHandoffOpacity >= 0.45, `the form and loader must keep continuous visible feedback: ${JSON.stringify(entryFrames)}`);
-    assert.ok(entryFrames.identityHeightRange <= 0.1, `identity stage height must remain stable across loading and success: ${JSON.stringify(entryFrames)}`);
-    assert.ok(entryFrames.visualWidthRange <= 0.1, `identity visual must reserve its final width instead of resizing every frame: ${JSON.stringify(entryFrames)}`);
-    assert.equal(entryFrames.visualWidthChangeCount, 0, "identity reveal must not drive layout with per-frame width changes");
-    assert.ok(entryFrames.ringWidthRange >= 40, "the fixed identity stage must still show a clearly expanding compositor ring");
-    assert.equal(new URL(page.url()).pathname, "/manage", "the destination should load behind the success confirmation");
+    assert.equal(new URL(page.url()).pathname, "/login", "preloaded account UI must not commit the URL before the success hold");
+    assert.equal(await page.locator(".route-loading").count(), 0, "preloading the account target must not expose a route fallback");
     const settled = await successOverlay.evaluate((overlay) => {
       const avatar = overlay.querySelector("[data-login-identity-avatar]");
       const ring = overlay.querySelector(".login-identity-transition__ring-shell");
@@ -490,8 +489,9 @@ async function testPasswordLoginRevealsIdentityAfterVerification(browserInstance
     await successOverlay.evaluate((overlay) => {
       window.__priestessIdentityExitObserved = false;
       window.__priestessIdentityExitOpacitySamples = [];
+      const body = document.body;
       const observer = new MutationObserver(() => {
-        if (overlay.classList.contains("is-exiting")) {
+        if (overlay.classList.contains("is-exiting") || body.classList.contains("account-route-handoff-running")) {
           window.__priestessIdentityExitObserved = true;
           observer.disconnect();
           const sampleOpacity = () => {
@@ -508,9 +508,27 @@ async function testPasswordLoginRevealsIdentityAfterVerification(browserInstance
         }
       });
       observer.observe(overlay, { attributeFilter: ["class"] });
+      observer.observe(body, { attributeFilter: ["class"] });
     });
-    await page.waitForTimeout(900);
-    assert.equal(await successOverlay.count(), 1, "successful identity must remain visible during the 1.6s confirmation hold");
+    await page.waitForURL((url) => url.pathname === "/manage", { timeout: 5000 });
+    assert.equal(
+      scenario.records.sessionReads,
+      sessionReadsBeforeLogin,
+      "the account handoff must reuse the authenticated response instead of blocking on another session read",
+    );
+    assert.ok(Date.now() - successObservedAt >= 2400, "route commit must wait for identity resolve plus the complete 1.6s confirmation hold");
+    const entryFrames = await finishLoginTransitionFrameProbe(page, "identity-entry");
+    assert.ok(entryFrames);
+    assert.ok(entryFrames.frameCount >= 20, `login handoff should provide a measurable frame sequence: ${JSON.stringify(entryFrames)}`);
+    assert.ok(entryFrames.p95FrameGapMs <= 35, `login handoff should stay near a smooth frame cadence: ${JSON.stringify(entryFrames)}`);
+    assert.ok(entryFrames.longFrameCount <= 1, `login handoff should not repeatedly stall the main thread: ${JSON.stringify(entryFrames)}`);
+    assert.equal(entryFrames.blurredFrameCount, 0, "login handoff must not animate a large blurred form surface");
+    assert.equal(entryFrames.lowHandoffOpacityFrameCount, 0, "source, identity overlay, and account target must not expose an empty frame");
+    assert.ok(entryFrames.minimumHandoffOpacity >= 0.45, `handoff surfaces must keep continuous visible feedback: ${JSON.stringify(entryFrames)}`);
+    assert.ok(entryFrames.identityHeightRange <= 0.1, `identity stage height must remain stable across loading and success: ${JSON.stringify(entryFrames)}`);
+    assert.ok(entryFrames.visualWidthRange <= 0.1, `identity visual must reserve its final width instead of resizing every frame: ${JSON.stringify(entryFrames)}`);
+    assert.equal(entryFrames.visualWidthChangeCount, 0, "identity reveal must not drive layout with per-frame width changes");
+    assert.ok(entryFrames.ringWidthRange >= 40, "the fixed identity stage must still show a clearly expanding compositor ring");
     await successOverlay.waitFor({ state: "detached", timeout: 2500 });
     assert.equal(
       await page.evaluate(() => window.__priestessIdentityExitObserved),
@@ -1150,6 +1168,7 @@ function createScenario(appId, options = {}) {
       registrationVerificationChecks: [],
       registrationVerifications: [],
       removals: [],
+      sessionReads: 0,
       totpBodies: [],
     },
     removedUserIds: new Set(),
@@ -1203,20 +1222,26 @@ async function startLoginTransitionFrameProbe(page, key) {
 
       const submitSurface = document.querySelector(".login-card--submit-stage .auth-card-content");
       const overlayContent = document.querySelector(".login-success-overlay-content");
+      const accountTarget = document.querySelector(
+        '.account-route-stage[data-account-route-phase="transferring"], .account-route-stage[data-account-route-phase="active"]',
+      );
       if (submitSurface instanceof HTMLElement) {
         const filter = getComputedStyle(submitSurface).filter;
         if (filter !== "none" && filter !== "blur(0px)") {
           probe.blurredFrameCount += 1;
         }
       }
-      if (submitSurface instanceof HTMLElement || overlayContent instanceof HTMLElement) {
+      if (submitSurface instanceof HTMLElement || overlayContent instanceof HTMLElement || accountTarget instanceof HTMLElement) {
         const formOpacity = submitSurface instanceof HTMLElement
           ? Number.parseFloat(getComputedStyle(submitSurface).opacity)
           : 0;
         const overlayOpacity = overlayContent instanceof HTMLElement
           ? Number.parseFloat(getComputedStyle(overlayContent).opacity)
           : 0;
-        probe.handoffOpacityTotals.push(formOpacity + overlayOpacity);
+        const accountOpacity = accountTarget instanceof HTMLElement
+          ? Number.parseFloat(getComputedStyle(accountTarget).opacity)
+          : 0;
+        probe.handoffOpacityTotals.push(formOpacity + overlayOpacity + accountOpacity);
       }
 
       const identity = document.querySelector(".login-identity-transition");
@@ -1286,6 +1311,7 @@ async function startMockApiServer() {
     }
 
     if (req.method === "GET" && url.pathname === "/auth/priestess/session") {
+      scenario.records.sessionReads += 1;
       writeJson(res, 200, scenario.authenticated ? authenticatedSession(scenario) : { authenticated: false });
       return;
     }

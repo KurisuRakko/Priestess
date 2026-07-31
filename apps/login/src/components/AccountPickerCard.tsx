@@ -48,7 +48,11 @@ type AccountPickerCardProps = {
   error: string;
   mode: AccountPickerMode;
   removingAccountId: string;
-  onOpenAccountAction: (account: AuthAccountChoice, action: AccountPickerAction) => Promise<void> | void;
+  onOpenAccountAction: (
+    account: AuthAccountChoice,
+    action: AccountPickerAction,
+    identitySource: LoginIdentityMotionSource | null,
+  ) => Promise<void> | void;
   onRemoveAccount: (account: AuthAccountChoice) => Promise<void> | void;
   onRetry: () => void;
   onSelectAccount: (account: AuthAccountChoice, identitySource: LoginIdentityMotionSource | null) => void;
@@ -75,6 +79,7 @@ export function AccountPickerCard({
   const shouldReduceMotion = Boolean(useReducedMotion());
   const layoutGroupId = useId();
   const backButtonRef = useRef<HTMLButtonElement | null>(null);
+  const actionViewRef = useRef<HTMLElement | null>(null);
   const moreButtonRefs = useRef(new Map<string, HTMLButtonElement>());
   const returnFocusTimerRef = useRef<number | null>(null);
   const [actionAccount, setActionAccount] = useState<AuthAccountChoice | null>(null);
@@ -140,7 +145,10 @@ export function AccountPickerCard({
 
   const openAccountAction = (action: AccountPickerAction) => {
     if (!currentActionAccount || isActionViewBusy) return;
-    void onOpenAccountAction(currentActionAccount, action);
+    const identitySource = actionViewRef.current
+      ? captureAccountPickerIdentitySource(actionViewRef.current)
+      : null;
+    void onOpenAccountAction(currentActionAccount, action, identitySource);
   };
 
   const openRemoveDialog = () => {
@@ -178,6 +186,7 @@ export function AccountPickerCard({
                 onBack={closeActionView}
                 onOpenAccountAction={openAccountAction}
                 onSignOut={openRemoveDialog}
+                sectionRef={actionViewRef}
                 shouldReduceMotion={shouldReduceMotion}
                 signingOut={removingAccountId === actionAccountKey}
               />
@@ -341,7 +350,14 @@ const AccountPickerMotionView = forwardRef<HTMLDivElement, AccountPickerMotionVi
       className="account-picker-card-view"
       data-account-picker-presence={isPresent ? "present" : "exiting"}
       data-account-picker-view={view}
-      exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: travel }}
+      exit={shouldReduceMotion ? { opacity: 0 } : {
+        opacity: 0,
+        transition: {
+          opacity: ACCOUNT_VIEW_TRANSITION,
+          y: ACCOUNT_SHARED_LAYOUT_TRANSITION,
+        },
+        y: travel,
+      }}
       initial={shouldReduceMotion ? false : { opacity: 0, y: travel }}
       ref={ref}
       style={{ pointerEvents: isPresent ? "auto" : "none" }}
@@ -360,6 +376,7 @@ export function AccountPickerActionsView({
   onBack,
   onOpenAccountAction,
   onSignOut,
+  sectionRef,
   shouldReduceMotion,
   signingOut = false,
 }: {
@@ -370,6 +387,7 @@ export function AccountPickerActionsView({
   onBack: () => void;
   onOpenAccountAction: (action: AccountPickerAction) => void;
   onSignOut: () => void;
+  sectionRef?: RefObject<HTMLElement | null>;
   shouldReduceMotion?: boolean;
   signingOut?: boolean;
 }) {
@@ -378,7 +396,7 @@ export function AccountPickerActionsView({
   const reduceMotion = Boolean(shouldReduceMotion);
 
   return (
-    <section className="account-picker-actions" aria-labelledby="account-picker-actions-title">
+    <section className="account-picker-actions" aria-labelledby="account-picker-actions-title" ref={sectionRef}>
       {/* 返回导航独占顶部 leading 行，账号身份另起内容层，避免两种层级互相抢对齐基线。 */}
       <div className="account-picker-actions__navigation">
         <motion.button

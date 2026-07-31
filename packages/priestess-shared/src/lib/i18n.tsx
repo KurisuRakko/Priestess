@@ -5,6 +5,7 @@ import { I18nextProvider, initReactI18next, useTranslation } from "react-i18next
 export const PRIESTESS_DEFAULT_LOCALE = "zh-CN";
 export const PRIESTESS_EN_LOCALE = "en-US";
 export const PRIESTESS_SUPPORTED_LOCALES = [PRIESTESS_DEFAULT_LOCALE, PRIESTESS_EN_LOCALE] as const;
+export const PRIESTESS_UI_LOCALE_STORAGE_KEY = "priestess.ui-locale.v1";
 
 export type PriestessLocale = typeof PRIESTESS_SUPPORTED_LOCALES[number];
 export type PriestessI18nResources = Partial<Record<PriestessLocale, ResourceLanguage>>;
@@ -28,6 +29,9 @@ const sharedResources: Record<PriestessLocale, ResourceLanguage> = {
       "账户活动": "账户活动",
       "账号 {{count}}": "账号 {{count}}",
       "当前应用": "当前应用",
+      "切换界面语言": "切换界面语言",
+      "简体中文": "简体中文",
+      "英语": "英语",
       currentOrigin: "当前域名",
     },
     errors: {
@@ -86,6 +90,9 @@ const sharedResources: Record<PriestessLocale, ResourceLanguage> = {
       "账户活动": "Account activity",
       "账号 {{count}}": "Account {{count}}",
       "当前应用": "Current application",
+      "切换界面语言": "Change interface language",
+      "简体中文": "Simplified Chinese",
+      "英语": "English",
       currentOrigin: "Current origin",
     },
     errors: {
@@ -137,11 +144,44 @@ const PriestessI18nContext = createContext<i18n | null>(null);
 let activeI18n: i18n | null = null;
 let fallbackI18n: i18n | null = null;
 
-export function detectPriestessLanguage(languages = readBrowserLanguages()): PriestessLocale {
+export function detectPriestessLanguage(
+  languages = readBrowserLanguages(),
+  storedLocale = readStoredPriestessLocale(),
+): PriestessLocale {
+  if (storedLocale) {
+    return storedLocale;
+  }
+
   const normalizedLanguages = languages.map((language) => language.toLowerCase());
   return normalizedLanguages.some((language) => language === "en" || language.startsWith("en-"))
     ? PRIESTESS_EN_LOCALE
     : PRIESTESS_DEFAULT_LOCALE;
+}
+
+export function normalizePriestessLocale(language: unknown): PriestessLocale {
+  return typeof language === "string" && language.toLowerCase().startsWith("en")
+    ? PRIESTESS_EN_LOCALE
+    : PRIESTESS_DEFAULT_LOCALE;
+}
+
+export function readStoredPriestessLocale(): PriestessLocale | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    const storedLocale = window.localStorage.getItem(PRIESTESS_UI_LOCALE_STORAGE_KEY);
+    return isPriestessLocale(storedLocale) ? storedLocale : null;
+  } catch {
+    // 隐私模式或浏览器策略可能禁用 localStorage；界面仍可回退到浏览器语言。
+    return null;
+  }
+}
+
+export async function changePriestessLanguage(locale: PriestessLocale) {
+  writeStoredPriestessLocale(locale);
+  const instance = activeI18n ?? getFallbackI18n();
+  await instance.changeLanguage(locale);
 }
 
 export function PriestessI18nProvider({ children, resources = {} }: PriestessI18nProviderProps) {
@@ -164,12 +204,12 @@ export function PriestessI18nProvider({ children, resources = {} }: PriestessI18
   useEffect(() => {
     activeI18n = instance;
     if (typeof document !== "undefined") {
-      document.documentElement.lang = normalizePriestessLanguage(instance.language);
+      document.documentElement.lang = normalizePriestessLocale(instance.language);
     }
 
     const handleLanguageChanged = (language: string) => {
       if (typeof document !== "undefined") {
-        document.documentElement.lang = normalizePriestessLanguage(language);
+        document.documentElement.lang = normalizePriestessLocale(language);
       }
     };
 
@@ -252,16 +292,30 @@ function deepMergeResourceLanguage(base: ResourceLanguage, next: ResourceLanguag
   return merged;
 }
 
-function normalizePriestessLanguage(language: string) {
-  return language.toLowerCase().startsWith("en") ? PRIESTESS_EN_LOCALE : PRIESTESS_DEFAULT_LOCALE;
-}
-
 function readBrowserLanguages() {
   if (typeof navigator === "undefined") {
     return [PRIESTESS_DEFAULT_LOCALE];
   }
 
   return navigator.languages?.length ? Array.from(navigator.languages) : [navigator.language || PRIESTESS_DEFAULT_LOCALE];
+}
+
+function writeStoredPriestessLocale(locale: PriestessLocale) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    // 这里只保存两值枚举，不包含账号、身份或其它敏感信息。
+    window.localStorage.setItem(PRIESTESS_UI_LOCALE_STORAGE_KEY, locale);
+  } catch {
+    // 无法持久化时仍完成当前页面的语言切换。
+  }
+}
+
+function isPriestessLocale(value: unknown): value is PriestessLocale {
+  return typeof value === "string"
+    && PRIESTESS_SUPPORTED_LOCALES.includes(value as PriestessLocale);
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
