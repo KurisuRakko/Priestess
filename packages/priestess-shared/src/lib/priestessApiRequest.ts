@@ -4,6 +4,7 @@ import {
   resolveErrorMessage,
 } from "./priestessApiErrors";
 import { translatePriestess } from "./i18n";
+import { requestPriestessDemoJson } from "./priestessDemoApi";
 
 export type RequestOptions = {
   body?: unknown;
@@ -25,6 +26,11 @@ export function getPriestessApiBaseLabel() {
 }
 
 export async function requestJson(path: string, options: RequestOptions = {}) {
+  const demoResponse = await requestPriestessDemoJson(path, options);
+  if (demoResponse.handled) {
+    return demoResponse.payload;
+  }
+
   const isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
   const response = await fetch(buildApiUrl(path, options.searchParams), {
     body: options.body === undefined ? undefined : isFormData ? options.body as BodyInit : JSON.stringify(options.body),
