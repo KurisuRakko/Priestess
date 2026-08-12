@@ -40,6 +40,97 @@ export function getLoginCardOriginRect(node: HTMLElement | null) {
   };
 }
 
+export type LoginCardOriginRect = ReturnType<typeof getLoginCardOriginRect>;
+
+// 入场镜头是 500ms delay + 720ms 行程，是全站最长的一条「卡片仍会移动」链路；
+// 上限只是防御性兜底：等待期间表单仍可见、登录请求已并行发出、提交按钮已禁用，
+// 所以取值宽裕不会产生可感知代价，同时给慢布局回归用例留出拉长过渡的空间。
+export const LOGIN_CARD_SETTLE_TIMEOUT_MS = 2400;
+// 连续 3 次采样完全一致（约 3 帧 / 50ms 静止）即认定收敛。
+const LOGIN_CARD_SETTLE_STABLE_FRAMES = 3;
+
+export type LoginCardOriginWaitResult = { cancelled: boolean; rect: LoginCardOriginRect };
+export type LoginCardOriginWait = { cancel: () => void; promise: Promise<LoginCardOriginWaitResult> };
+
+// 静止 delay 窗口（入场镜头前 500ms）里逐帧比对会假收敛——卡片还没开始动，
+// 所以必须叠加 data-login-card-settled 声明信号，两个条件同时成立才算收敛。
+// 不设容差：布局量化到 1/64px，缓动尾部导数为 0，精确相等在最后几帧自然成立；
+// 设容差反而会提前收敛，把还没停稳的矩形钉成结果层原点。
+function isSameLoginCardOriginRect(a: LoginCardOriginRect, b: LoginCardOriginRect) {
+  // 两者皆 null 视为不相等，避免卡片尚未挂载时连续空转帧被误判为收敛。
+  if (!a || !b) {
+    return false;
+  }
+  return a.left === b.left
+    && a.top === b.top
+    && a.width === b.width
+    && a.height === b.height
+    && a.borderRadius === b.borderRadius;
+}
+
+function watchLoginCardOrigin(
+  node: HTMLElement | null,
+  options: { requireSettled: boolean; stableFramesRequired: number },
+): LoginCardOriginWait {
+  let cancelled = false;
+  let frameId = 0;
+  let stableFrames = 0;
+  let previous: LoginCardOriginRect = null;
+  const startedAt = performance.now();
+  let resolveWait: (result: LoginCardOriginWaitResult) => void = () => undefined;
+
+  const promise = new Promise<LoginCardOriginWaitResult>((resolve) => {
+    resolveWait = resolve;
+    const sample = () => {
+      if (cancelled) {
+        return;
+      }
+      const rect = getLoginCardOriginRect(node);
+      const settled = !options.requireSettled || node?.dataset.loginCardSettled === "true";
+      if (settled && isSameLoginCardOriginRect(rect, previous)) {
+        stableFrames += 1;
+      } else {
+        stableFrames = 0;
+      }
+      previous = rect;
+      if (
+        stableFrames >= options.stableFramesRequired
+        || performance.now() - startedAt >= LOGIN_CARD_SETTLE_TIMEOUT_MS
+      ) {
+        resolve({ cancelled: false, rect });
+        return;
+      }
+      frameId = requestAnimationFrame(sample);
+    };
+    frameId = requestAnimationFrame(sample);
+  });
+
+  return {
+    cancel: () => {
+      if (cancelled) {
+        return;
+      }
+      cancelled = true;
+      cancelAnimationFrame(frameId);
+      // 不 reject、不悬垂：取消路径必定立即落地。
+      resolveWait({ cancelled: true, rect: null });
+    },
+    promise,
+  };
+}
+
+export function waitForSettledLoginCardOrigin(node: HTMLElement | null) {
+  return watchLoginCardOrigin(node, {
+    requireSettled: true,
+    stableFramesRequired: LOGIN_CARD_SETTLE_STABLE_FRAMES,
+  });
+}
+
+export function waitForLoginCardFrame(node: HTMLElement | null) {
+  // requireSettled: false + 0 个稳定帧：下一帧即落地，只用于「状态翻转前先抓一帧矩形」。
+  return watchLoginCardOrigin(node, { requireSettled: false, stableFramesRequired: 0 });
+}
+
 export function readLocalLoginCooldownUntil() {
   if (typeof window === "undefined") {
     return 0;

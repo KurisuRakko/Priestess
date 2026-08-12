@@ -333,16 +333,14 @@ input:focus-visible {
 
 .login-card--submit-stage .auth-card-content {
   /* 提交阶段保留表单占位，避免卡片高度跳动；只把可见内容让位给状态层。 */
-  opacity: 0 !important;
   pointer-events: none;
   transition: opacity 180ms var(--ease-out);
   will-change: opacity;
 }
 
-.login-card--submit-stage-hold .auth-card-content {
-  /* 只有桌面二维码抽屉需要归位镜头，结果层要等镜头走完才挂载；
-     这段时间必须留住表单，否则卡片会空着。 */
-  transition-delay: var(--auth-drawer-duration);
+.login-card--submit-stage-fade .auth-card-content {
+  /* 结果层实际挂载的那一帧才让位；等待时长由卡片何时静止决定，不能再用固定延迟猜。 */
+  opacity: 0 !important;
 }
 
 .qr-drawer-slot {
@@ -1241,10 +1239,6 @@ input:focus-visible {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .login-card--submit-stage-hold .auth-card-content {
-    transition-delay: 0ms;
-  }
-
   *,
   *::before,
   *::after {

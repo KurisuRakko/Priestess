@@ -66,6 +66,8 @@ try {
   await testBareLoginRemainsUsable(browser, appUrl);
   await testLazyStandaloneRoutesRender(browser, appUrl);
   await testPasswordLoginRevealsIdentityAfterVerification(browser, appUrl);
+  await testSubmitDuringCardEntryPinsSettledCard(browser, appUrl);
+  await testSlowLayoutSubmitPinsSettledCard(browser, appUrl);
   await testSessionReferenceFallback(browser, appUrl);
   await runAccountHandoffBrowserCases({
     appUrl,
@@ -376,6 +378,9 @@ async function testPasswordLoginRevealsIdentityAfterVerification(browserInstance
     await page.locator("input[autocomplete='current-password']").fill(TEST_PASSWORD);
     const submitButton = page.locator(".login-form .primary-button[type='submit']");
     await startLoginTransitionFrameProbe(page, "identity-entry");
+    // loading 窗口最短 420ms、减动效成功窗口约 410ms，都短于 waitFor 的 500ms
+    // 退避轮询间距，直接 waitFor 会偶发漏掉整段；预挂 observer 记录窗口内快照。
+    await startLoginResultPhaseProbe(page, "password-reveal");
     await submitButton.evaluate((element) => {
       element.addEventListener("click", () => {
         window.__priestessSmokeSubmitDispatchedAt = Date.now();
@@ -401,44 +406,28 @@ async function testPasswordLoginRevealsIdentityAfterVerification(browserInstance
     assert.equal(submitSurfaceStyle.filter, "none", "the large login form must not animate a rasterizing blur during handoff");
     assert.equal(submitSurfaceStyle.transitionProperty, "opacity");
 
-    const loadingOverlay = page.locator(".login-success-overlay.is-loading");
-    const loadingIdentity = loadingOverlay.locator('[data-login-identity-phase="loading"]');
-    await loadingIdentity.waitFor({ state: "visible", timeout: 5000 });
-    const loadingObservedAt = Date.now();
-    await page.waitForTimeout(180);
-    assert.equal(await loadingIdentity.locator("[data-login-identity-avatar]").count(), 0);
-    assert.equal(await loadingIdentity.locator("[data-login-identity-name]").count(), 0);
-    assert.equal(await loadingIdentity.locator(".login-identity-transition__status").innerText(), "Trying to sign you in…");
-    await loadingIdentity.locator(".login-identity-transition__status").evaluate((element) => {
-      window.__priestessIdentityStatusExitObserved = false;
-      const observer = new MutationObserver(() => {
-        if (element.getAttribute("data-login-identity-status-presence") === "exiting") {
-          window.__priestessIdentityStatusExitObserved = true;
-          observer.disconnect();
-        }
-      });
-      observer.observe(element, { attributeFilter: ["data-login-identity-status-presence"] });
-    });
-
-    const loadingMotion = await loadingIdentity.evaluate((element) => {
-      const ringMotion = element.querySelector(".login-identity-transition__ring-motion");
-      const ringArc = element.querySelector(".login-identity-transition__ring-arc");
-      window.__priestessIdentityRingElement = ringMotion;
-      window.__priestessIdentityRingAnimation = ringMotion?.getAnimations()[0] || null;
-      return {
-        arcAnimationName: ringArc ? getComputedStyle(ringArc).animationName : "",
-        motionAnimationName: ringMotion ? getComputedStyle(ringMotion).animationName : "",
-        motionTiming: ringMotion ? getComputedStyle(ringMotion).animationTimingFunction : "",
-      };
-    });
-    assert.match(loadingMotion.arcAnimationName, /lso-identity-ring-sweep/);
-    assert.match(loadingMotion.motionAnimationName, /lso-identity-ring-rotate/);
-    assert.notEqual(loadingMotion.motionTiming, "linear", "identity ring must use a non-linear rotation rhythm");
-
+    // loading 段的观测在提交前预挂的 observer 里完成，这里只等成功窗口（足够长，
+    // 轮询不会漏）出现后事后断言；语义与原来的 waitFor + 180ms 采样等价或更强。
     const successOverlay = page.locator(".login-success-overlay.is-success");
     await successOverlay.waitFor({ state: "visible", timeout: 5000 });
     const successObservedAt = Date.now();
-    assert.ok(Date.now() - loadingObservedAt >= 340, "fast login must preserve the pending phase near the 420ms contract");
+    const identityProbe = await finishLoginResultPhaseProbe(page, "password-reveal");
+    assert.ok(identityProbe, "identity phase probe must be recorded");
+    assert.ok(identityProbe.loading.firstAt !== null, "loading window must be observed");
+    assert.ok(
+      identityProbe.success.firstAt - identityProbe.loading.firstAt >= 340,
+      "fast login must preserve the pending phase near the 420ms contract",
+    );
+    assert.ok(identityProbe.loading.samples.length > 0, "loading phase must yield observable samples");
+    for (const sample of identityProbe.loading.samples) {
+      assert.equal(sample.avatarCount, 0, "loading phase must never show an identity avatar");
+      assert.equal(sample.nameCount, 0, "loading phase must never show an identity name");
+      assert.equal(sample.statusText, "Trying to sign you in…", "loading phase must keep the pending status text");
+    }
+    const loadingMotion = identityProbe.loading.ring;
+    assert.match(loadingMotion.arcAnimationName, /lso-identity-ring-sweep/);
+    assert.match(loadingMotion.motionAnimationName, /lso-identity-ring-rotate/);
+    assert.notEqual(loadingMotion.motionTiming, "linear", "identity ring must use a non-linear rotation rhythm");
     assert.equal(await successOverlay.locator("[data-login-identity-name]").innerText(), `User ${scenario.appId}`);
     const successStatus = successOverlay.locator('[data-login-identity-status-phase="success"]');
     await successStatus.waitFor({ state: "visible", timeout: 1000 });
@@ -453,9 +442,8 @@ async function testPasswordLoginRevealsIdentityAfterVerification(browserInstance
       1,
       "identity status must never retain two text layers",
     );
-    assert.equal(
-      await page.evaluate(() => window.__priestessIdentityStatusExitObserved),
-      true,
+    assert.ok(
+      identityProbe.statusExitAt !== null,
       "the pending status must run its exit state before the success text takes over",
     );
     assert.equal(
@@ -582,6 +570,59 @@ async function testPasswordLoginRevealsIdentityAfterVerification(browserInstance
   }, { locale: "en-US", reducedMotion: "no-preference", viewport: { height: 900, width: 1440 } });
 }
 
+async function testSubmitDuringCardEntryPinsSettledCard(browserInstance, appUrl) {
+  const scenario = createScenario("entry-window-submit");
+
+  await withScenario(browserInstance, scenario, async(page) => {
+    await page.goto(`${appUrl}/login`, { waitUntil: "domcontentloaded" });
+    // 冷路径：点击必须落在 .login-card-shell 入场镜头（500ms 静止 delay + 720ms 行程）内，
+    // 修复前 1 帧等待会读到 x=360 起始矩形，--lso-origin-* 钉错位置。
+    await page.waitForSelector('[data-login-card-entry="entering"]');
+    await startLoginOriginAlignmentProbe(page, "entry-window");
+    const usernameInput = page.locator("input[autocomplete='username']");
+    await usernameInput.waitFor({ state: "visible" });
+    await usernameInput.fill("entry-window-user");
+    await page.locator("input[autocomplete='current-password']").fill(TEST_PASSWORD);
+    // 入场窗口内卡片 shell 是 pointer-events: none，普通点击会被 Playwright 拒绝，强制派发。
+    await page.locator(".login-form .primary-button[type='submit']").click({ force: true });
+    await page.waitForSelector(".login-success-overlay.is-success", { timeout: 8000 });
+    const probe = await finishLoginOriginAlignmentProbe(page, "entry-window");
+    assertLoginOriginAligned(probe);
+
+    const sessionReferenceGeometry = await page.evaluate(() => {
+      const card = document.querySelector(".login-card")?.getBoundingClientRect();
+      const label = document.querySelector("[data-login-session-reference='true']")?.getBoundingClientRect();
+      if (!card || !label) return null;
+      return {
+        bottomInset: card.bottom - label.bottom,
+        leftInset: label.left - card.left,
+      };
+    });
+    assert.ok(sessionReferenceGeometry && sessionReferenceGeometry.leftInset >= 30 && sessionReferenceGeometry.leftInset <= 36, `session reference should align to the card's lower-left inset: ${JSON.stringify(sessionReferenceGeometry)}`);
+    assert.ok(sessionReferenceGeometry && sessionReferenceGeometry.bottomInset >= 20 && sessionReferenceGeometry.bottomInset <= 30, `session reference should sit above the card bottom edge: ${JSON.stringify(sessionReferenceGeometry)}`);
+  }, { locale: "en-US", reducedMotion: "no-preference", viewport: { height: 900, width: 1440 } });
+}
+
+async function testSlowLayoutSubmitPinsSettledCard(browserInstance, appUrl) {
+  const scenario = createScenario("slow-layout-submit", { browserAccountMode: "single" });
+
+  await withScenario(browserInstance, scenario, async(page) => {
+    await page.goto(`${appUrl}/login`, { waitUntil: "domcontentloaded" });
+    await page.waitForSelector('[data-login-card-entry="ready"]');
+    // 拉长卡片宽度过渡，模拟慢布局：提交落在镜头中途时，结果层原点必须等矩形收敛。
+    await page.addStyleTag({ content: ":root { --auth-layout-duration: 1800ms; }" });
+    await page.locator(".account-picker__other").click();
+    await page.locator("input[autocomplete='username']").waitFor({ state: "visible", timeout: 5000 });
+    await startLoginOriginAlignmentProbe(page, "slow-layout");
+    await page.locator("input[autocomplete='username']").fill("slow-layout-user");
+    await page.locator("input[autocomplete='current-password']").fill(TEST_PASSWORD);
+    await page.locator(".login-form .primary-button[type='submit']").click();
+    await page.waitForSelector(".login-success-overlay.is-success", { timeout: 8000 });
+    const probe = await finishLoginOriginAlignmentProbe(page, "slow-layout");
+    assertLoginOriginAligned(probe);
+  }, { locale: "en-US", reducedMotion: "no-preference", viewport: { height: 900, width: 1440 } });
+}
+
 async function testReducedMotionIdentityReveal(browserInstance, appUrl) {
   const scenario = createScenario("identity-reveal-reduced");
 
@@ -616,15 +657,22 @@ async function testSessionReferenceFallback(browserInstance, appUrl) {
   await withScenario(browserInstance, scenario, async(page) => {
     await page.goto(`${appUrl}/login`, { waitUntil: "domcontentloaded" });
     await page.locator("input[autocomplete='username']").waitFor({ state: "visible" });
+    // 减动效成功窗口（180ms 序列 + 200ms 停留 + 退场帧，约 410ms）短于 waitFor
+    // 的 500ms 退避轮询间距，直接 waitFor is-success 会确定性漏掉整段；预挂
+    // observer 记录成功窗口快照，事后断言（观测机制替换，语义不变）。
+    await startLoginResultPhaseProbe(page, "session-reference-fallback");
     await submitPassword(page, "session-reference-fallback-user");
 
-    const successOverlay = page.locator(".login-success-overlay.is-success");
-    await successOverlay.waitFor({ state: "visible", timeout: 5000 });
-    const sessionReference = successOverlay.locator("[data-login-session-reference='true']");
-    await sessionReference.waitFor({ state: "visible", timeout: 1500 });
-    assert.equal(await sessionReference.textContent(), "Session · Signed in");
+    // 成功窗口只出现一次，无法用 waitFor 对齐；改为先等 overlay 挂载（attached
+    // 状态持续到退场，轮询不会漏），再等它退场（detached 状态持久）。窗口数据
+    // 已由 observer 全量记录，事后断言（观测机制替换，语义不变）。
+    await page.locator(".login-success-overlay").waitFor({ state: "attached", timeout: 5000 });
+    await page.locator(".login-success-overlay").waitFor({ state: "detached", timeout: 5000 });
+    const identityProbe = await finishLoginResultPhaseProbe(page, "session-reference-fallback");
+    assert.ok(identityProbe, "identity phase probe must be recorded");
+    assert.ok(identityProbe.success.firstAt !== null, "identity success window must be observed");
+    assert.equal(identityProbe.success.sessionReferenceText, "Session · Signed in");
     assert.equal(scenario.records.deviceSessions, 1);
-    await successOverlay.waitFor({ state: "detached", timeout: 5000 });
   }, { locale: "en-US", reducedMotion: "reduce", viewport: { height: 900, width: 1440 } });
 }
 
@@ -1433,6 +1481,173 @@ async function finishLoginTransitionFrameProbe(page, key) {
       visualWidthRange: visualWidths.length > 0 ? Math.max(...visualWidths) - Math.min(...visualWidths) : 0,
     };
   }, `__priestessLoginFrameProbe_${key}`);
+}
+
+async function startLoginOriginAlignmentProbe(page, key) {
+  await page.evaluate((probeKey) => {
+    const probe = {
+      frames: [],
+      mountFrame: null,
+      originStyle: null,
+      running: true,
+    };
+    window[probeKey] = probe;
+
+    const sample = () => {
+      if (!probe.running) return;
+      const card = document.querySelector(".login-card");
+      if (card instanceof HTMLElement) {
+        const rect = card.getBoundingClientRect();
+        probe.frames.push({
+          bottom: rect.bottom,
+          left: rect.left,
+          top: rect.top,
+          width: rect.width,
+        });
+      }
+      const overlay = document.querySelector(".login-success-overlay");
+      if (overlay instanceof HTMLElement && probe.mountFrame === null) {
+        probe.mountFrame = probe.frames.length;
+        const style = getComputedStyle(overlay);
+        probe.originStyle = {
+          bottom: Number.parseFloat(style.getPropertyValue("--lso-origin-card-bottom")),
+          left: Number.parseFloat(style.getPropertyValue("--lso-origin-card-left")),
+          width: Number.parseFloat(style.getPropertyValue("--lso-origin-content-width")),
+        };
+      }
+      if (document.querySelector(".login-success-overlay.is-success")) {
+        probe.running = false;
+        return;
+      }
+      requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  }, `__priestessOriginAlignmentProbe_${key}`);
+}
+
+async function finishLoginOriginAlignmentProbe(page, key) {
+  return page.evaluate((probeKey) => {
+    const probe = window[probeKey];
+    if (!probe) return null;
+    probe.running = false;
+    delete window[probeKey];
+    const lastFrame = probe.frames.length > 0 ? probe.frames[probe.frames.length - 1] : null;
+    return {
+      frames: probe.frames,
+      innerHeight: window.innerHeight,
+      lastFrame,
+      mountFrame: probe.mountFrame,
+      originStyle: probe.originStyle,
+    };
+  }, `__priestessOriginAlignmentProbe_${key}`);
+}
+
+function assertLoginOriginAligned(probe, options = {}) {
+  const compareFrame = options.mountFrame && probe.mountFrame !== null
+    ? probe.frames[probe.mountFrame - 1] || probe.lastFrame
+    : probe.lastFrame;
+  assert.ok(compareFrame, `origin alignment probe needs a card frame: ${JSON.stringify(probe)}`);
+  assert.ok(probe.originStyle, `origin alignment probe needs overlay origin style: ${JSON.stringify(probe)}`);
+  assert.ok(
+    Math.abs(probe.originStyle.left - compareFrame.left) <= 0.5,
+    `origin left must match the settled card left: ${JSON.stringify({ probe, compareFrame })}`,
+  );
+  assert.ok(
+    Math.abs(probe.originStyle.width - compareFrame.width) <= 0.5,
+    `origin width must match the settled card width: ${JSON.stringify({ probe, compareFrame })}`,
+  );
+  assert.ok(
+    Math.abs(probe.originStyle.bottom - (probe.innerHeight - compareFrame.bottom)) <= 0.5,
+    `origin bottom must match the settled card bottom: ${JSON.stringify({ probe, compareFrame })}`,
+  );
+}
+
+// 提交前预挂的 MutationObserver：逐次 mutation 采样记录 loading 窗口与成功窗口
+// 的 DOM 快照，事后断言。loading/success 窗口（最短约 410-420ms）短于 waitFor 的
+// 500ms 退避轮询间距时会整体落在两次轮询之间，locator.waitFor 必然漏掉整个窗口；
+// observer 直接响应 DOM 变更，不依赖轮询对齐。ring 数据在每个 loading 采样上
+// 刷新，取最后一个采样（动画必然已启动），并同步留出与成功态对比的元素/动画对象。
+async function startLoginResultPhaseProbe(page, key) {
+  await page.evaluate((probeKey) => {
+    const probe = {
+      loading: { firstAt: null, ring: null, samples: [] },
+      overlayMountedAt: null,
+      statusExitAt: null,
+      success: { firstAt: null, sessionReferenceText: null },
+    };
+    window[probeKey] = probe;
+
+    const observer = new MutationObserver(() => {
+      // 回调会在全部 DOM 变更落地后的同一个微任务里执行，这里读到的都是最终状态；
+      // 每个 mutation 批次采样一次，覆盖窗口内的所有中间形态。
+      const overlay = document.querySelector(".login-success-overlay");
+      if (!(overlay instanceof HTMLElement)) {
+        return;
+      }
+      if (probe.overlayMountedAt === null) {
+        probe.overlayMountedAt = performance.now();
+      }
+      if (overlay.classList.contains("is-success")) {
+        if (probe.success.firstAt === null) {
+          probe.success.firstAt = performance.now();
+        }
+        // 成功窗口在减动效下同样短于轮询间距，session reference 文本只能在这里取快照。
+        const reference = overlay.querySelector("[data-login-session-reference='true']");
+        if (reference && probe.success.sessionReferenceText === null) {
+          probe.success.sessionReferenceText = reference.textContent;
+        }
+      }
+      if (overlay.classList.contains("is-loading")) {
+        const identity = overlay.querySelector('[data-login-identity-phase="loading"]');
+        if (!(identity instanceof HTMLElement)) {
+          return;
+        }
+        if (probe.loading.firstAt === null) {
+          probe.loading.firstAt = performance.now();
+        }
+        const status = identity.querySelector(".login-identity-transition__status");
+        probe.loading.samples.push({
+          avatarCount: identity.querySelectorAll("[data-login-identity-avatar]").length,
+          nameCount: identity.querySelectorAll("[data-login-identity-name]").length,
+          statusText: status?.textContent ?? null,
+        });
+        const ringMotion = identity.querySelector(".login-identity-transition__ring-motion");
+        const ringArc = identity.querySelector(".login-identity-transition__ring-arc");
+        window.__priestessIdentityRingElement = ringMotion;
+        window.__priestessIdentityRingAnimation = ringMotion?.getAnimations()[0] || null;
+        probe.loading.ring = {
+          arcAnimationName: ringArc ? getComputedStyle(ringArc).animationName : "",
+          motionAnimationName: ringMotion ? getComputedStyle(ringMotion).animationName : "",
+          motionTiming: ringMotion ? getComputedStyle(ringMotion).animationTimingFunction : "",
+        };
+      }
+      const status = overlay.querySelector(".login-identity-transition__status");
+      if (probe.statusExitAt === null
+        && status?.getAttribute("data-login-identity-status-presence") === "exiting") {
+        probe.statusExitAt = performance.now();
+      }
+    });
+    observer.observe(document.documentElement, {
+      attributeFilter: ["class", "data-login-identity-status-presence", "data-login-identity-motion"],
+      attributes: true,
+      characterData: true,
+      childList: true,
+      subtree: true,
+    });
+    probe.observer = observer;
+  }, `__priestessLoginResultPhaseProbe_${key}`);
+}
+
+async function finishLoginResultPhaseProbe(page, key) {
+  return page.evaluate((probeKey) => {
+    const probe = window[probeKey];
+    if (!probe) {
+      return null;
+    }
+    probe.observer.disconnect();
+    delete window[probeKey];
+    return probe;
+  }, `__priestessLoginResultPhaseProbe_${key}`);
 }
 
 async function startMockApiServer() {

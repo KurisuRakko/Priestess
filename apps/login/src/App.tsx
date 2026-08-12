@@ -103,17 +103,16 @@ export function App() {
   const [showLoginFormForAccountPicker, setShowLoginFormForAccountPicker] = useState(false);
   const [totpChallenge, setTotpChallenge] = useState<TotpChallenge | null>(null);
   const {
-    clearSubmitStageTimeout: clearLoginSubmitStageTimeout,
+    cancelSubmitStageWait: cancelLoginSubmitStageWait,
     isAccountSelectionStage,
+    isSubmitContentHidden,
     isSubmitStage: isLoginSubmitStage,
     releaseSubmitStage: releaseLoginSubmitStage,
     startAccountSelectionOverlay,
     startCenteredOverlay: startCenteredLoginOverlay,
-    submitStageHoldsCamera,
   } = useLoginOverlayStage({
     loginCardRef,
     loginTransitionOverlayRef,
-    prefersReducedMotion: Boolean(shouldReduceMotion),
     setLoginIntroStage: setIsLoginIntroStage,
   });
   const authRequest = route === "login" ? readAuthRequest() : null;
@@ -345,7 +344,7 @@ export function App() {
       identityReveal: true,
       loadingTitle: t("正在准备你的账号…"),
       primaryColor: "#c65f72",
-    }, hasQrDrawerRetractCamera());
+    });
     attachDesktopSessionReference(controller);
     let destinationCommitted = false;
     await controller.succeed({
@@ -530,7 +529,7 @@ export function App() {
       identityReveal: true,
       loadingTitle: t("正在准备你的账号…"),
       primaryColor: "#c65f72",
-    }, hasQrDrawerRetractCamera());
+    });
     const activationPromise = settleAsync(activateLocalAccountChoice(account.userId, {
       choiceId: account.authorizeChoiceId ?? undefined,
     }));
@@ -655,12 +654,6 @@ export function App() {
     releaseLoginSubmitStage();
   };
 
-  // 提交态会立刻把布局切成居中，抽屉状态必须在切换前读；这是箭头函数、只在调用时求值，
-  // 所以能读到后面才声明的 isQrDrawerOpen（App.tsx:201/601 已是同一形态）。
-  // 移动端抽屉是 display:none，加居中类属于布局空操作，没有镜头要等。
-  const hasQrDrawerRetractCamera = () => isQrDrawerOpen
-    && window.matchMedia(`(min-width: ${DESKTOP_LOGIN_VIEWPORT_MIN_WIDTH}px)`).matches;
-
   const startBackendLoginTransition = async(credentials: LoginCredentials) => {
     if (loginSubmitInFlightRef.current) {
       return;
@@ -676,7 +669,7 @@ export function App() {
       identityReveal: true,
       loadingTitle: t("正在尝试为你登录…"),
       primaryColor: "#c65f72",
-    }, hasQrDrawerRetractCamera());
+    });
     const runPasswordLogin = (nextCredentials: LocalLoginCredentials) => loginLocalSession(nextCredentials, { signal: abortController.signal });
     // 网络请求与卡片归位同时开始；若后端要求 Turnstile，再等待状态层准备好后切换挑战。
     const loginResultPromise = settleAsync(loginLocalSessionWithTurnstileRetry({
@@ -777,7 +770,7 @@ export function App() {
       identityReveal: true,
       loadingTitle: t("正在尝试为你登录…"),
       primaryColor: "#c65f72",
-    }, hasQrDrawerRetractCamera());
+    });
 
     const abortController = new AbortController();
     loginAbortControllerRef.current = abortController;
@@ -826,7 +819,7 @@ export function App() {
       identityReveal: true,
       loadingTitle: t("正在尝试为你登录…"),
       primaryColor: "#c65f72",
-    }, hasQrDrawerRetractCamera());
+    });
     // TOTP 校验同样与卡片归位并行，状态层仍负责保证用户能看清验证与成功两个阶段。
     const verificationResultPromise = settleAsync(
       verifyLocalTotpLogin({ challengeId: challenge.challengeId, code }, { signal: abortController.signal }),
@@ -864,7 +857,7 @@ export function App() {
   useQrLoginCompletion({
     active: route === "login",
     confirmedRedirectUrl: qrSession.confirmedRedirectUrl,
-    startOverlay: (params) => startCenteredLoginOverlay(params, hasQrDrawerRetractCamera()),
+    startOverlay: startCenteredLoginOverlay,
     t,
   });
 
@@ -881,7 +874,7 @@ export function App() {
     return () => {
       window.removeEventListener("popstate", syncRoute);
       clearAuthModeTransitionTimeout();
-      clearLoginSubmitStageTimeout();
+      cancelLoginSubmitStageWait();
       loginAbortControllerRef.current?.abort();
       loginTransitionOverlayRef.current?.dismiss();
     };
@@ -952,6 +945,7 @@ export function App() {
       isQrDrawerOpen={isQrDrawerOpen}
       isRegisterMode={isRegisterMode}
       isSoloAuthMode={isSoloAuthMode}
+      isSubmitContentHidden={isSubmitContentHidden}
       loginCardRef={loginCardRef}
       mobileLoginReveal={mobileLoginReveal}
       onBackToLogin={() => switchAuthMode("login")}
@@ -977,7 +971,6 @@ export function App() {
       shouldShowAccountPicker={shouldShowAccountPicker}
       shouldUseCenteredWallpaper={shouldUseCenteredWallpaper}
       showLoginFormForAccountPicker={showLoginFormForAccountPicker}
-      submitStageHoldsCamera={submitStageHoldsCamera}
       t={t}
       totpChallenge={totpChallenge}
     />

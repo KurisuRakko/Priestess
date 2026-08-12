@@ -729,7 +729,7 @@ function LoginTransitionOverlayInner(props: RenderState & { onFinish: () => void
   );
 }
 
-function createNoopController(): LoginTransitionOverlayController {
+export function createNoopLoginTransitionOverlayController(): LoginTransitionOverlayController {
   return {
     challenge: () => Promise.resolve(""),
     handoff: () => Promise.resolve(),
@@ -975,7 +975,7 @@ function createOverlayController(params: LoginTransitionOverlayParams = {}): Log
 
 export function startLoginTransitionOverlay(params: LoginTransitionOverlayParams = {}) {
   if (typeof document === "undefined") {
-    return createNoopController();
+    return createNoopLoginTransitionOverlayController();
   }
 
   if (currentOverlayController !== null) {

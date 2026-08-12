@@ -195,6 +195,7 @@ type LoginExperienceProps = {
   isQrDrawerOpen: boolean;
   isRegisterMode: boolean;
   isSoloAuthMode: boolean;
+  isSubmitContentHidden: boolean;
   loginCardRef: RefObject<HTMLDivElement | null>;
   mobileLoginReveal: MobileLoginRevealState;
   onBackToLogin: () => void;
@@ -224,7 +225,6 @@ type LoginExperienceProps = {
   shouldShowAccountPicker: boolean;
   shouldUseCenteredWallpaper: boolean;
   showLoginFormForAccountPicker: boolean;
-  submitStageHoldsCamera: boolean;
   t: TranslationFn;
   totpChallenge: LoginTotpChallenge | null;
 };
@@ -247,6 +247,7 @@ export function LoginExperience({
   isQrDrawerOpen,
   isRegisterMode,
   isSoloAuthMode,
+  isSubmitContentHidden,
   loginCardRef,
   mobileLoginReveal,
   onBackToLogin,
@@ -272,7 +273,6 @@ export function LoginExperience({
   shouldShowAccountPicker,
   shouldUseCenteredWallpaper,
   showLoginFormForAccountPicker,
-  submitStageHoldsCamera,
   t,
   totpChallenge,
 }: LoginExperienceProps) {
@@ -392,6 +392,11 @@ export function LoginExperience({
     return () => window.clearTimeout(cardModeTimer);
   }, [isAccountPickerCardMode, mobileLoginReveal.isMobileViewport, shouldReduceMotion]);
 
+  // 卡片「已就位」= 入场镜头跑完，且两个延后镜像类名都已追平当前目标；
+  // 后者保证提交态的居中类真的落到 DOM 之后才允许收敛，避免过渡尚未启动时被判成静止。
+  const isLoginCardLayoutSettled = loginCardEntryComplete
+    && renderedAuthGridClassName === authGridClassName
+    && renderedAccountPickerCardMode === isAccountPickerCardMode;
   const loginEnter = shouldReduceMotion
     ? false
     : mobileLoginReveal.isMobileViewport
@@ -507,8 +512,9 @@ export function LoginExperience({
                     renderedAccountPickerCardMode ? "login-card--account-picker" : "",
                     isAccountSelectionStage ? "login-card--account-selection-stage" : "",
                     isLoginSubmitCardStage ? "login-card--submit-stage" : "",
-                    isLoginSubmitCardStage && submitStageHoldsCamera ? "login-card--submit-stage-hold" : "",
+                    isLoginSubmitCardStage && isSubmitContentHidden ? "login-card--submit-stage-fade" : "",
                   ].filter(Boolean).join(" ")}
+                  data-login-card-settled={isLoginCardLayoutSettled ? "true" : "false"}
                   style={{ width: "100%", display: "flex", flexDirection: "column" }}
                 >
                   {/* 方向语义：登录页在左、注册/找回在右。桌面端先让旧内容完整离场，
