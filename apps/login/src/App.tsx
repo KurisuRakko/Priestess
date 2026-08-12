@@ -40,6 +40,7 @@ import {
   LOGIN_FAILURE_HOLD_MS,
   LOGIN_RESULT_ANIMATION_MS,
   LOGIN_SUCCESS_HOLD_MS,
+  LOGIN_SUCCESS_HOLD_REDUCED_MS,
   readLocalLoginCooldownUntil,
   writeLocalLoginCooldownUntil,
 } from "./lib/loginAppState";
@@ -79,6 +80,9 @@ export function App() {
   const shouldReduceMotion = useReducedMotion();
   const loginCardRef = useRef<HTMLDivElement | null>(null);
   const loginTransitionOverlayRef = useRef<LoginTransitionOverlayController | null>(null);
+  // 同步重入锁：React state 在同一 tick 内两次调用读到旧值，overlay ref 又要等异步挂载才赋值，
+  // 两者之间存在的真空会让快速双击起两个 overlay，锁本身不受闭包状态影响。
+  const loginSubmitInFlightRef = useRef(false);
   const loginAbortControllerRef = useRef<AbortController | null>(null);
   const authModeLayoutTimeoutRef = useRef<number | null>(null);
   const authModeTransitionTimeoutRef = useRef<number | null>(null);
@@ -105,6 +109,7 @@ export function App() {
     releaseSubmitStage: releaseLoginSubmitStage,
     startAccountSelectionOverlay,
     startCenteredOverlay: startCenteredLoginOverlay,
+    submitStageHoldsCamera,
   } = useLoginOverlayStage({
     loginCardRef,
     loginTransitionOverlayRef,
@@ -290,15 +295,18 @@ export function App() {
       if (destinationCommitted) {
         showNotice(t("登录成功"));
       }
+      return destinationCommitted;
     };
 
     await params.controller.succeed({
       avatarUrl: params.session.user?.avatarUrl || "",
       continuationAfterHold: !request,
-      continuationTitle: request ? "" : t("正在准备个人中心…"),
+      // 不再在 continuation 时切换文案：hold 缩到 400ms 后，新文案淡入 260ms 就跟着整块内容淡出，
+      // 从未达到不透明就开始消失只剩抖动；空串会让文案回落成 titleText，保持同一句标题。
+      continuationTitle: "",
       durationMs: LOGIN_RESULT_ANIMATION_MS,
       onVisualComplete: prepareDestination,
-      postAnimationDelayMs: LOGIN_SUCCESS_HOLD_MS,
+      postAnimationDelayMs: shouldReduceMotion ? LOGIN_SUCCESS_HOLD_REDUCED_MS : LOGIN_SUCCESS_HOLD_MS,
       title: t("已成功登录"),
       username: displayName,
     });
@@ -337,18 +345,22 @@ export function App() {
       identityReveal: true,
       loadingTitle: t("正在准备你的账号…"),
       primaryColor: "#c65f72",
-    });
+    }, hasQrDrawerRetractCamera());
     attachDesktopSessionReference(controller);
     let destinationCommitted = false;
     await controller.succeed({
       avatarUrl: session.user?.avatarUrl || "",
       continuationAfterHold: true,
-      continuationTitle: t("正在准备个人中心…"),
+      // 与密码登录一致：hold 缩到 400ms 后，新文案淡入 260ms 就跟着整块内容淡出，
+      // 从未达到不透明就开始消失只会抖动；留空回落成 titleText，保持同一句标题。
+      continuationTitle: "",
       durationMs: LOGIN_RESULT_ANIMATION_MS,
       onVisualComplete: async() => {
         destinationCommitted = await handoff?.complete() ?? false;
+        // 交接已提交目标路由并由账号页接管退场，回传 true 让 overlay 跳过空转的 fadeOut。
+        return destinationCommitted;
       },
-      postAnimationDelayMs: LOGIN_SUCCESS_HOLD_MS,
+      postAnimationDelayMs: shouldReduceMotion ? LOGIN_SUCCESS_HOLD_REDUCED_MS : LOGIN_SUCCESS_HOLD_MS,
       title: t("已成功登录"),
       username: session.user?.displayName || session.user?.username || fallbackIdentity,
     });
@@ -417,15 +429,19 @@ export function App() {
         if (destinationCommitted) {
           showNotice(t("正在进入 Priestess 个人中心"));
         }
+        // 仅 manage 分支回传提交结果；redirect 分支没有交接，保持 undefined 让 overlay 正常淡出。
+        return destinationCommitted;
       };
 
       await controller.succeed({
         avatarUrl: sessionUser?.avatarUrl || account.avatarUrl,
         continuationAfterHold: result.kind === "manage",
-        continuationTitle: result.kind === "manage" ? t("正在准备个人中心…") : "",
+        // redirect 分支没有持有阶段；manage 分支的持有期也只够揭示姓名，
+        // 中途切文案只会闪一下，统一留空回落成标题。
+        continuationTitle: "",
         durationMs: LOGIN_RESULT_ANIMATION_MS,
         onVisualComplete: prepareDestination,
-        postAnimationDelayMs: LOGIN_SUCCESS_HOLD_MS,
+        postAnimationDelayMs: shouldReduceMotion ? LOGIN_SUCCESS_HOLD_REDUCED_MS : LOGIN_SUCCESS_HOLD_MS,
         title: t("已成功登录"),
         username: displayName,
       });
@@ -514,7 +530,7 @@ export function App() {
       identityReveal: true,
       loadingTitle: t("正在准备你的账号…"),
       primaryColor: "#c65f72",
-    });
+    }, hasQrDrawerRetractCamera());
     const activationPromise = settleAsync(activateLocalAccountChoice(account.userId, {
       choiceId: account.authorizeChoiceId ?? undefined,
     }));
@@ -535,12 +551,15 @@ export function App() {
       await controller.succeed({
         avatarUrl: session.user?.avatarUrl || account.avatarUrl,
         continuationAfterHold: true,
-        continuationTitle: t("正在准备个人中心…"),
+        // 账号资料/密码/头像动作的持有期同样只剩 400ms，切文案只会抖动，留空回落成标题。
+        continuationTitle: "",
         durationMs: LOGIN_RESULT_ANIMATION_MS,
         onVisualComplete: async() => {
           destinationCommitted = await handoff?.complete() ?? false;
+          // 目标页已接管退场，回传 true 让 overlay 跳过空转的 fadeOut。
+          return destinationCommitted;
         },
-        postAnimationDelayMs: LOGIN_SUCCESS_HOLD_MS,
+        postAnimationDelayMs: shouldReduceMotion ? LOGIN_SUCCESS_HOLD_REDUCED_MS : LOGIN_SUCCESS_HOLD_MS,
         title: t("已成功登录"),
         username: session.user?.displayName || session.user?.username || account.displayName || account.username,
       });
@@ -636,10 +655,20 @@ export function App() {
     releaseLoginSubmitStage();
   };
 
+  // 提交态会立刻把布局切成居中，抽屉状态必须在切换前读；这是箭头函数、只在调用时求值，
+  // 所以能读到后面才声明的 isQrDrawerOpen（App.tsx:201/601 已是同一形态）。
+  // 移动端抽屉是 display:none，加居中类属于布局空操作，没有镜头要等。
+  const hasQrDrawerRetractCamera = () => isQrDrawerOpen
+    && window.matchMedia(`(min-width: ${DESKTOP_LOGIN_VIEWPORT_MIN_WIDTH}px)`).matches;
+
   const startBackendLoginTransition = async(credentials: LoginCredentials) => {
+    if (loginSubmitInFlightRef.current) {
+      return;
+    }
     if (authMode !== "login" || isAuthModeTransitioning || isLoginSubmitStage || isLocalLoginCooldownActive || loginTransitionOverlayRef.current !== null) {
       return;
     }
+    loginSubmitInFlightRef.current = true;
 
     const abortController = new AbortController();
     loginAbortControllerRef.current = abortController;
@@ -647,7 +676,7 @@ export function App() {
       identityReveal: true,
       loadingTitle: t("正在尝试为你登录…"),
       primaryColor: "#c65f72",
-    });
+    }, hasQrDrawerRetractCamera());
     const runPasswordLogin = (nextCredentials: LocalLoginCredentials) => loginLocalSession(nextCredentials, { signal: abortController.signal });
     // 网络请求与卡片归位同时开始；若后端要求 Turnstile，再等待状态层准备好后切换挑战。
     const loginResultPromise = settleAsync(loginLocalSessionWithTurnstileRetry({
@@ -665,7 +694,11 @@ export function App() {
       signal: abortController.signal,
       t,
     }));
-    const controller = await controllerPromise;
+    // 结果层挂载失败会绕过下方 finally，必须在此释放重入锁，否则登录入口会永久失效。
+    const controller = await controllerPromise.catch((error: unknown) => {
+      loginSubmitInFlightRef.current = false;
+      throw error;
+    });
 
     const finishPasswordLoginSession = async(session: LocalSession) => {
       resetLocalLoginFailureState();
@@ -728,6 +761,7 @@ export function App() {
         showNotice(message);
       }
     } finally {
+      loginSubmitInFlightRef.current = false;
       if (loginAbortControllerRef.current === abortController) {
         loginAbortControllerRef.current = null;
       }
@@ -743,7 +777,7 @@ export function App() {
       identityReveal: true,
       loadingTitle: t("正在尝试为你登录…"),
       primaryColor: "#c65f72",
-    });
+    }, hasQrDrawerRetractCamera());
 
     const abortController = new AbortController();
     loginAbortControllerRef.current = abortController;
@@ -792,7 +826,7 @@ export function App() {
       identityReveal: true,
       loadingTitle: t("正在尝试为你登录…"),
       primaryColor: "#c65f72",
-    });
+    }, hasQrDrawerRetractCamera());
     // TOTP 校验同样与卡片归位并行，状态层仍负责保证用户能看清验证与成功两个阶段。
     const verificationResultPromise = settleAsync(
       verifyLocalTotpLogin({ challengeId: challenge.challengeId, code }, { signal: abortController.signal }),
@@ -830,7 +864,7 @@ export function App() {
   useQrLoginCompletion({
     active: route === "login",
     confirmedRedirectUrl: qrSession.confirmedRedirectUrl,
-    startOverlay: startCenteredLoginOverlay,
+    startOverlay: (params) => startCenteredLoginOverlay(params, hasQrDrawerRetractCamera()),
     t,
   });
 
@@ -855,6 +889,9 @@ export function App() {
 
   useEffect(() => {
     if (route !== "login") {
+      // 离开登录路由会取消挂起的提交态等待，被 await 的 Promise 不再落地、finally 也不会执行，
+      // 重入锁必须在这里一并释放，否则返回登录页后入口永久失效。
+      loginSubmitInFlightRef.current = false;
       releaseLoginSubmitStage();
     }
 
@@ -940,6 +977,7 @@ export function App() {
       shouldShowAccountPicker={shouldShowAccountPicker}
       shouldUseCenteredWallpaper={shouldUseCenteredWallpaper}
       showLoginFormForAccountPicker={showLoginFormForAccountPicker}
+      submitStageHoldsCamera={submitStageHoldsCamera}
       t={t}
       totpChallenge={totpChallenge}
     />

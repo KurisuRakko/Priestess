@@ -336,9 +336,13 @@ input:focus-visible {
   opacity: 0 !important;
   pointer-events: none;
   transition: opacity 180ms var(--ease-out);
-  /* 卡片与二维码完成 760ms 归位后再和状态层交叉淡变，期间保留完整可见反馈。 */
-  transition-delay: var(--auth-drawer-duration);
   will-change: opacity;
+}
+
+.login-card--submit-stage-hold .auth-card-content {
+  /* 只有桌面二维码抽屉需要归位镜头，结果层要等镜头走完才挂载；
+     这段时间必须留住表单，否则卡片会空着。 */
+  transition-delay: var(--auth-drawer-duration);
 }
 
 .qr-drawer-slot {
@@ -1237,7 +1241,7 @@ input:focus-visible {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .login-card--submit-stage .auth-card-content {
+  .login-card--submit-stage-hold .auth-card-content {
     transition-delay: 0ms;
   }
 

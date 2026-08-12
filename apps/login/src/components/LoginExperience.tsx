@@ -224,6 +224,7 @@ type LoginExperienceProps = {
   shouldShowAccountPicker: boolean;
   shouldUseCenteredWallpaper: boolean;
   showLoginFormForAccountPicker: boolean;
+  submitStageHoldsCamera: boolean;
   t: TranslationFn;
   totpChallenge: LoginTotpChallenge | null;
 };
@@ -271,6 +272,7 @@ export function LoginExperience({
   shouldShowAccountPicker,
   shouldUseCenteredWallpaper,
   showLoginFormForAccountPicker,
+  submitStageHoldsCamera,
   t,
   totpChallenge,
 }: LoginExperienceProps) {
@@ -505,6 +507,7 @@ export function LoginExperience({
                     renderedAccountPickerCardMode ? "login-card--account-picker" : "",
                     isAccountSelectionStage ? "login-card--account-selection-stage" : "",
                     isLoginSubmitCardStage ? "login-card--submit-stage" : "",
+                    isLoginSubmitCardStage && submitStageHoldsCamera ? "login-card--submit-stage-hold" : "",
                   ].filter(Boolean).join(" ")}
                   style={{ width: "100%", display: "flex", flexDirection: "column" }}
                 >

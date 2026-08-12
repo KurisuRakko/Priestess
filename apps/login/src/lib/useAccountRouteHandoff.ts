@@ -6,7 +6,9 @@ import { createAccountHandoffRequest, type AccountHandoffRequest } from "./accou
 import { loadAccountPageModule, resetAccountPageModuleLoader } from "./accountPageLoader";
 import { runAccountRouteTransfer } from "./accountRouteTransfer";
 
-const ACCOUNT_DESTINATION_READY_TIMEOUT_MS = 10_000;
+// 账号页分包与目标实例就绪的等待上限。超时不是兜底放行，而是直接进入可重试的错误面板，
+// 所以取值要盖住慢网（Fast 3G 实测 ~1.4s）又不能让用户干等十几秒。
+const ACCOUNT_DESTINATION_READY_TIMEOUT_MS = 4_000;
 
 export type AccountRouteHandoffPhase = "preparing" | "error" | "transferring" | "active";
 

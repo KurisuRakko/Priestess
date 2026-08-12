@@ -24,6 +24,7 @@ export function useLoginOverlayStage({
   const submitStageTimeoutRef = useRef<number | null>(null);
   const [isAccountSelectionStage, setIsAccountSelectionStage] = useState(false);
   const [isSubmitStage, setIsSubmitStage] = useState(false);
+  const [submitStageHoldsCamera, setSubmitStageHoldsCamera] = useState(false);
 
   const clearSubmitStageTimeout = useCallback(() => {
     if (submitStageTimeoutRef.current !== null) {
@@ -36,6 +37,7 @@ export function useLoginOverlayStage({
     clearSubmitStageTimeout();
     setIsAccountSelectionStage(false);
     setIsSubmitStage(false);
+    setSubmitStageHoldsCamera(false);
   }, [clearSubmitStageTimeout]);
 
   const openOverlay = useCallback((params: OverlayParams, originRect: LoginTransitionOverlayParams["originRect"]) => {
@@ -50,19 +52,25 @@ export function useLoginOverlayStage({
     return controller;
   }, [loginTransitionOverlayRef]);
 
-  const startCenteredOverlay = useCallback(async(params: OverlayParams) => {
+  const startCenteredOverlay = useCallback(async(params: OverlayParams, hasRetractCamera: boolean) => {
     clearSubmitStageTimeout();
     setIsAccountSelectionStage(false);
     setLoginIntroStage(false);
-    // 普通登录继续沿用原有的桌面二维码归位时序。
+    setSubmitStageHoldsCamera(hasRetractCamera);
     setIsSubmitStage(true);
-    const delay = prefersReducedMotion ? 40 : AUTH_MODE_DRAWER_IN_MS;
-    await new Promise<void>((resolve) => {
-      submitStageTimeoutRef.current = window.setTimeout(() => {
-        submitStageTimeoutRef.current = null;
-        window.requestAnimationFrame(() => resolve());
-      }, delay);
-    });
+    // 桌面二维码抽屉要走归位镜头，卡片矩形只有等布局稳定后才准确；
+    // 没有镜头时只等一帧让提交态样式提交，结果层随即挂载，避免空卡片窗口。
+    if (hasRetractCamera) {
+      const delay = prefersReducedMotion ? 40 : AUTH_MODE_DRAWER_IN_MS;
+      await new Promise<void>((resolve) => {
+        submitStageTimeoutRef.current = window.setTimeout(() => {
+          submitStageTimeoutRef.current = null;
+          window.requestAnimationFrame(() => resolve());
+        }, delay);
+      });
+    } else {
+      await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+    }
     return openOverlay(params, getLoginCardOriginRect(loginCardRef.current));
   }, [clearSubmitStageTimeout, loginCardRef, openOverlay, prefersReducedMotion, setLoginIntroStage]);
 
@@ -74,6 +82,7 @@ export function useLoginOverlayStage({
     setIsAccountSelectionStage(true);
     setLoginIntroStage(false);
     setIsSubmitStage(true);
+    setSubmitStageHoldsCamera(false);
     await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
     return openOverlay(params, originRect);
   }, [clearSubmitStageTimeout, loginCardRef, openOverlay, setLoginIntroStage]);
@@ -85,5 +94,6 @@ export function useLoginOverlayStage({
     releaseSubmitStage,
     startAccountSelectionOverlay,
     startCenteredOverlay,
+    submitStageHoldsCamera,
   };
 }

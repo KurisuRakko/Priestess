@@ -555,7 +555,7 @@ async function testPasswordLoginRevealsIdentityAfterVerification(browserInstance
       sessionReadsBeforeLogin,
       "the account handoff must reuse the authenticated response instead of blocking on another session read",
     );
-    assert.ok(Date.now() - successObservedAt >= 2400, "route commit must wait for identity resolve plus the complete 1.6s confirmation hold");
+    assert.ok(Date.now() - successObservedAt >= 1200, "route commit must wait for identity resolve plus the complete 400ms confirmation hold");
     const entryFrames = await finishLoginTransitionFrameProbe(page, "identity-entry");
     assert.ok(entryFrames);
     assert.ok(entryFrames.frameCount >= 20, `login handoff should provide a measurable frame sequence: ${JSON.stringify(entryFrames)}`);

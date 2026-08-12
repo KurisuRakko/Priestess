@@ -1,5 +1,7 @@
-/* 账号选择的共享头像已接管反馈，旧卡立即退出且不能继续拦截点击。 */
-.login-card--account-selection-stage .auth-card-content {
+/* 账号选择的共享头像已接管反馈，旧卡立即退出且不能继续拦截点击。
+   选择器特异度必须高于 styles.css 的 .login-card--submit-stage .auth-card-content，
+   否则其 760ms 延迟会赢、旧内容会滞留。 */
+.login-card.login-card--account-selection-stage .auth-card-content {
   opacity: 0 !important;
   pointer-events: none !important;
   transition-delay: 0ms;

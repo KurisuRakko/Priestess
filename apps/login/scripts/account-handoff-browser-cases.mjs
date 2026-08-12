@@ -204,7 +204,7 @@ async function testAccountHandoffTimeoutCanRetry({
     await page.route("**/src/components/AccountPage.tsx*", async(route) => {
       accountModuleRequests += 1;
       if (accountModuleRequests === 1) {
-        await new Promise((resolve) => setTimeout(resolve, 11_000));
+        await new Promise((resolve) => setTimeout(resolve, 5_000));
       }
       await route.continue();
     });

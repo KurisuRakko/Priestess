@@ -12,6 +12,7 @@
 
 .login-success-overlay.is-exiting {
   animation: lso-overlay-fade-out var(--lso-overlay-fade-out-ms, 220ms) cubic-bezier(0.2, 0, 0, 1) forwards;
+  pointer-events: none;
 }
 
 /* 有 origin 的登录提交态不再铺满白底，只把状态内容放回居中的登录卡片上。 */

@@ -537,12 +537,18 @@ function LoginTransitionOverlayInner(props: RenderState & { onFinish: () => void
       }
 
       let continuationSettled = false;
+      let destinationTookOverExit = false;
       const runContinuation = () => (hasTriggeredVisualCompleteRef.current
-        ? Promise.resolve()
+        ? Promise.resolve(undefined as unknown)
         : Promise.resolve()
           .then(() => {
             hasTriggeredVisualCompleteRef.current = true;
             return typeof onVisualComplete === "function" ? onVisualComplete() : undefined;
+          })
+          .then((result) => {
+            // 账号路由已在共享头像的最终帧提交并接管退场，overlay 内容此刻早被目标层淡到 0，
+            // 再等一次 fadeOut 纯属空转，还会用全屏遮罩挡住已可见的账号页。
+            destinationTookOverExit = result === true;
           })
           .catch(() => undefined))
         .finally(() => {
@@ -567,7 +573,13 @@ function LoginTransitionOverlayInner(props: RenderState & { onFinish: () => void
 
       setIsWaitingForContinuation(false);
       setIsExiting(true);
-      await waitFor(timeline.fadeOutMs);
+      if (!destinationTookOverExit) {
+        await waitFor(timeline.fadeOutMs);
+      } else {
+        // 退场已被账号页接管，淡出动画不必再等；但共享头像的显式退出姿态是
+        // React 渲染的产物，卸载前等两帧让 exiting 状态提交到 DOM。
+        await new Promise<void>((resolve) => window.requestAnimationFrame(() => window.requestAnimationFrame(() => resolve())));
+      }
 
       if (isCancelled) {
         return;
