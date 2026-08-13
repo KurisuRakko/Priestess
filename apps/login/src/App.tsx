@@ -108,6 +108,7 @@ export function App() {
     isSubmitContentHidden,
     isSubmitStage: isLoginSubmitStage,
     releaseSubmitStage: releaseLoginSubmitStage,
+    revealSubmitContent: revealLoginSubmitContent,
     startAccountSelectionOverlay,
     startCenteredOverlay: startCenteredLoginOverlay,
   } = useLoginOverlayStage({
@@ -370,6 +371,22 @@ export function App() {
     }
   };
 
+  const runLoginFailureTransition = async(controller: LoginTransitionOverlayController, message: string) => {
+    await controller.fail({
+      // 结果层与登录卡片共用同一块矩形且没有自己的背景，停留期间表单必须继续让位；
+      // continuationAfterHold 把 onVisualComplete 推迟到停留结束、退场开始的同一帧，
+      // 与停留期并行提前释放正是本缺陷的根因。
+      continuationAfterHold: true,
+      description: message,
+      durationMs: LOGIN_RESULT_ANIMATION_MS,
+      // 只解除内容隐藏：提交态类名仍在，表单沿 180ms 过渡淡回，与结果层退场交叉。
+      onVisualComplete: revealLoginSubmitContent,
+      postAnimationDelayMs: LOGIN_FAILURE_HOLD_MS,
+    });
+    // fail() 在结果层卸载后才落地，此刻才解除居中布局与交互锁。
+    releaseLoginSubmitStage();
+  };
+
   const chooseAuthAccount = async(
     account: AuthAccountChoice,
     identitySource: LoginIdentityMotionSource | null,
@@ -571,13 +588,7 @@ export function App() {
         : getAuthAccountActivationErrorMessage(error, t);
       setAccountAuthorizeError(message);
       const controller = await controllerPromise;
-      await controller.fail({
-        description: message,
-        durationMs: LOGIN_RESULT_ANIMATION_MS,
-        onVisualComplete: releaseLoginSubmitStage,
-        postAnimationDelayMs: LOGIN_FAILURE_HOLD_MS,
-      });
-      releaseLoginSubmitStage();
+      await runLoginFailureTransition(controller, message);
       showNotice(message);
       accountChoices.refresh();
     } finally {
@@ -641,17 +652,6 @@ export function App() {
       displayName: session.user?.displayName || username,
       username,
     };
-  };
-
-  const runLoginFailureTransition = async(controller: LoginTransitionOverlayController, message: string) => {
-    await controller.fail({
-      description: message,
-      durationMs: LOGIN_RESULT_ANIMATION_MS,
-      // 失败说明停留期间先把可操作表单准备在遮罩后，淡出时不会再闪一次空卡片。
-      onVisualComplete: releaseLoginSubmitStage,
-      postAnimationDelayMs: LOGIN_FAILURE_HOLD_MS,
-    });
-    releaseLoginSubmitStage();
   };
 
   const startBackendLoginTransition = async(credentials: LoginCredentials) => {

@@ -7,6 +7,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { createServer as createViteServer } from "vite";
 import { runAccountHandoffBrowserCases } from "./account-handoff-browser-cases.mjs";
 import { runInlineAccountActionsBrowserCases } from "./inline-account-actions-browser-cases.mjs";
+import { runLoginFailureResultBrowserCases } from "./login-failure-result-browser-cases.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const appRoot = resolve(__dirname, "..");
@@ -77,7 +78,15 @@ try {
     withScenario,
   });
   await testReducedMotionIdentityReveal(browser, appUrl);
-  await testLoginFailureRemainsReadable(browser, appUrl);
+  await runLoginFailureResultBrowserCases({
+    appUrl,
+    assertControlCanReceivePointer,
+    browserInstance: browser,
+    buildAuthUrl,
+    createScenario,
+    submitPassword,
+    withScenario,
+  });
   await testTotpReturnsToAccountPicker(browser, appUrl);
   await testPasskeyReturnsToAccountPicker(browser, appUrl);
   await testPhoneRegistrationProgress(browser, appUrl);
@@ -342,27 +351,6 @@ async function testQrConfirmationCompletesThroughOverlay(browserInstance, appUrl
     assert.equal(new URL(page.url()).pathname, "/login", "QR redirect must wait for the completion transition");
 
     await page.waitForURL((url) => url.searchParams.get("qr_authorized") === "1", { timeout: 5000 });
-  });
-}
-
-async function testLoginFailureRemainsReadable(browserInstance, appUrl) {
-  const scenario = createScenario("login-failure-hold", { loginError: true });
-
-  await withScenario(browserInstance, scenario, async(page) => {
-    await page.goto(`${appUrl}/login`, { waitUntil: "domcontentloaded" });
-    await page.locator("input[autocomplete='username']").waitFor({ state: "visible" });
-    await submitPassword(page, "failure-user");
-
-    const failureOverlay = page.locator(".login-success-overlay.is-failure");
-    await failureOverlay.waitFor({ state: "visible", timeout: 5000 });
-    assert.equal(await failureOverlay.locator("[data-login-identity-avatar]").count(), 0, "failed credentials must not reveal an avatar");
-    assert.equal(await failureOverlay.locator("[data-login-identity-name]").count(), 0, "failed credentials must not reveal a name");
-    await page.waitForTimeout(2000);
-    assert.equal(await failureOverlay.count(), 1, "failure result should remain visible long enough to read");
-    assert.equal(await page.locator(".login-card--submit-stage").count(), 0, "the retry form should be prepared behind the readable failure result");
-    assert.match(await failureOverlay.innerText(), /登录失败/);
-    assert.match(await failureOverlay.innerText(), /用户名或密码错误/);
-    await failureOverlay.waitFor({ state: "detached", timeout: 3000 });
   });
 }
 

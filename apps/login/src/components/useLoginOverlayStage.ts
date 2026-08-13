@@ -42,6 +42,12 @@ export function useLoginOverlayStage({
     setIsSubmitContentHidden(false);
   }, [cancelSubmitStageWait]);
 
+  // 只解除内容隐藏，保留提交态类名：结果层退场时表单沿 180ms 过渡淡回，
+  // 与结果层淡出交叉；完整释放（解除居中布局与交互锁）由 releaseSubmitStage 负责。
+  const revealSubmitContent = useCallback(() => {
+    setIsSubmitContentHidden(false);
+  }, []);
+
   const openOverlay = useCallback((params: OverlayParams, originRect: LoginTransitionOverlayParams["originRect"]) => {
     const controller = startLoginTransitionOverlay({
       ...params,
@@ -103,6 +109,7 @@ export function useLoginOverlayStage({
     isSubmitContentHidden,
     isSubmitStage,
     releaseSubmitStage,
+    revealSubmitContent,
     startAccountSelectionOverlay,
     startCenteredOverlay,
   };
