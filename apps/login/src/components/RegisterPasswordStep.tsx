@@ -34,10 +34,14 @@ export function RegisterPasswordStep({
           <input
             aria-describedby={passwordError ? "register-password-error" : undefined}
             aria-invalid={Boolean(passwordError)}
+            autoCapitalize="none"
             autoComplete="new-password"
+            autoCorrect="off"
             disabled={disabled}
+            lang="en"
             onChange={(event) => onPasswordChange(event.target.value)}
             placeholder={t("设置密码")}
+            spellCheck={false}
             type="password"
             value={password}
           />
@@ -52,10 +56,14 @@ export function RegisterPasswordStep({
           <input
             aria-describedby={confirmationError ? "register-password-confirm-error" : undefined}
             aria-invalid={Boolean(confirmationError)}
+            autoCapitalize="none"
             autoComplete="new-password"
+            autoCorrect="off"
             disabled={disabled}
+            lang="en"
             onChange={(event) => onConfirmationChange(event.target.value)}
             placeholder={t("再输入一次")}
+            spellCheck={false}
             type="password"
             value={confirmation}
           />

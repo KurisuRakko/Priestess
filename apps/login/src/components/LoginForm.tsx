@@ -1,7 +1,7 @@
 import { FormEvent, useState, type ReactNode } from "react";
 import { ArrowLeft, ArrowRight, Eye, EyeOff, KeyRound, Lock, ShieldCheck, UserRound } from "lucide-react";
 import { AnimatePresence, motion, useIsPresent, useReducedMotion } from "motion/react";
-import { usePriestessTranslation } from "@priestess/shared";
+import { usePriestessTranslation, toHalfWidth } from "@priestess/shared";
 
 export type LoginCredentials = {
   password: string;
@@ -241,13 +241,17 @@ export function LoginForm({
                   <input
                     aria-invalid={Boolean(errors.username)}
                     aria-describedby={errors.username ? "username-error" : undefined}
+                    autoCapitalize="none"
                     autoComplete="username"
+                    autoCorrect="off"
                     disabled={isFormLocked}
                     onChange={(event) => {
-                      setUsername(event.target.value);
+                      // IME 全角输入先转半角，再统一小写，与后端登录用户名小写化保持一致。
+                      setUsername(toHalfWidth(event.target.value).toLowerCase());
                       if (errors.username) setErrors((current) => ({ ...current, username: undefined }));
                     }}
                     placeholder="mikael@example.com"
+                    spellCheck={false}
                     type="text"
                     value={username}
                   />
@@ -262,13 +266,18 @@ export function LoginForm({
                   <input
                     aria-invalid={Boolean(errors.password)}
                     aria-describedby={errors.password ? "password-error" : undefined}
+                    autoCapitalize="none"
                     autoComplete="current-password"
+                    autoCorrect="off"
                     disabled={isFormLocked}
+                    lang="en"
                     onChange={(event) => {
-                      setPassword(event.target.value);
+                      // IME 全角误输入兜底为半角，避免与已保存的密码不一致。
+                      setPassword(toHalfWidth(event.target.value));
                       if (errors.password) setErrors((current) => ({ ...current, password: undefined }));
                     }}
                     placeholder={t("输入密码")}
+                    spellCheck={false}
                     type={passwordType}
                     value={password}
                   />

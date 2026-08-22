@@ -3,6 +3,7 @@ import { LockKeyhole, X } from "lucide-react";
 import {
   changeLocalPassword,
   getPriestessApiErrorMessage,
+  toHalfWidth,
   usePriestessTranslation,
   type LocalSession,
 } from "@priestess/shared";
@@ -87,15 +88,45 @@ export function PasswordChangeDialog({ onAfterOpen, onChanged, onClose, onNotice
         <form className="account-dialog-form" onSubmit={submit}>
           <label>
             <span>{t("当前密码")}</span>
-            <input autoComplete="current-password" disabled={isSubmitting} onChange={(event) => setCurrentPassword(event.target.value)} type="password" value={currentPassword} />
+            <input
+              autoCapitalize="none"
+              autoComplete="current-password"
+              autoCorrect="off"
+              disabled={isSubmitting}
+              lang="en"
+              onChange={(event) => setCurrentPassword(toHalfWidth(event.target.value))}
+              spellCheck={false}
+              type="password"
+              value={currentPassword}
+            />
           </label>
           <label>
             <span>{t("新密码")}</span>
-            <input autoComplete="new-password" disabled={isSubmitting} onChange={(event) => setPassword(event.target.value)} type="password" value={password} />
+            <input
+              autoCapitalize="none"
+              autoComplete="new-password"
+              autoCorrect="off"
+              disabled={isSubmitting}
+              lang="en"
+              onChange={(event) => setPassword(toHalfWidth(event.target.value))}
+              spellCheck={false}
+              type="password"
+              value={password}
+            />
           </label>
           <label>
             <span>{t("确认新密码")}</span>
-            <input autoComplete="new-password" disabled={isSubmitting} onChange={(event) => setConfirmPassword(event.target.value)} type="password" value={confirmPassword} />
+            <input
+              autoCapitalize="none"
+              autoComplete="new-password"
+              autoCorrect="off"
+              disabled={isSubmitting}
+              lang="en"
+              onChange={(event) => setConfirmPassword(toHalfWidth(event.target.value))}
+              spellCheck={false}
+              type="password"
+              value={confirmPassword}
+            />
           </label>
           {error ? <div className="account-dialog-form__error" role="status">{error}</div> : null}
           <div className="account-dialog__actions">

@@ -25,6 +25,7 @@ try {
   const authRequestModule = await server.ssrLoadModule("/src/lib/authRequest.ts");
   const authAccountChoicesModule = await server.ssrLoadModule("/src/lib/useAuthAccountChoices.ts");
   const loginFormModule = await server.ssrLoadModule("/src/components/LoginForm.tsx");
+  const registerFirstStepModule = await server.ssrLoadModule("/src/components/RegisterFirstStepForm.tsx");
   const loginI18nModule = await server.ssrLoadModule("/src/i18n/index.ts");
   const loginNextModule = await server.ssrLoadModule("/src/lib/loginNext.ts");
   const loginLayoutStateModule = await server.ssrLoadModule("/src/lib/loginLayoutState.ts");
@@ -34,12 +35,15 @@ try {
   const sharedLibDir = new URL("../../../packages/priestess-shared/src/lib/", import.meta.url).pathname;
   const sharedI18nModule = await server.ssrLoadModule(`/@fs${sharedLibDir}i18n.tsx`);
   const sharedApiModule = await server.ssrLoadModule(`/@fs${sharedLibDir}priestessApi.ts`);
+  const textNormalizeModule = await server.ssrLoadModule(`/@fs${sharedLibDir}textNormalize.ts`);
   const { AccountPickerActionsView, AccountPickerCard, getAccountKey, getAccountMoreActionsLabel, getAccountRemoveDescription, getAccountRemoveLabel, getAccountSelectLabel, getSafeAvatarUrl } = accountPickerModule;
   const { buildAccountManagementActionPath, getAccountManagementActionSection, readAccountManagementAction, removeAccountManagementActionFromSearch, resolveAccountManagementActionTarget } = accountManagementActionModule;
   const { buildAuthAccountAuthorizeParams, getAuthAccountAuthorizeBlocker, shouldShowAuthAccountPicker } = accountAuthorizationModule;
   const { getAuthRequestAppLabel, getAuthRequestReturnToOrigin, readAuthRequest } = authRequestModule;
   const { getAuthAccountChoiceErrorMessage, readAuthAccountChoicesForRequest, readStandaloneBrowserAccounts, redactSensitiveAuthText, resolveAccountChoicesFreshUntil } = authAccountChoicesModule;
   const { LoginForm } = loginFormModule;
+  const { normalizeUsernameInput } = registerFirstStepModule;
+  const { toHalfWidth } = textNormalizeModule;
   const { buildLoginPathWithNext, getCurrentAccountNextPath, normalizePriestessNextPath, readLoginNext } = loginNextModule;
   const { loginLocalSessionWithTurnstileRetry } = localLoginTurnstileRetryModule;
   const { MOBILE_LOGIN_BREAKPOINT_PX, MOBILE_LOGIN_REVEAL_TIMEOUT_MS, isMobileLoginDataReady, resolveMobileLoginRevealStep, shouldAnimateMobileLoginReveal } = mobileLoginRevealStateModule;
@@ -61,6 +65,7 @@ try {
   await testLocalLoginTurnstileRetry({ loginLocalSessionWithTurnstileRetry, PriestessApiError });
   testAccountChoiceErrorRedaction({ getAuthAccountChoiceErrorMessage, getPriestessApiErrorMessage, redactSensitiveAuthText });
   await testAccountChoiceFallback({ readAuthAccountChoicesForRequest, readStandaloneBrowserAccounts });
+  await testRegistrationInputNormalization({ confirmLocalRegistration, normalizeUsernameInput, toHalfWidth });
 
   console.log("account-picker smoke passed");
 } finally {
@@ -1055,6 +1060,46 @@ function testAccountChoiceErrorRedaction({ getAuthAccountChoiceErrorMessage, get
     getPriestessApiErrorMessage(new Error("access_token=abc123 refresh_token=def456")),
     "access_token=[已隐藏] refresh_token=[已隐藏]",
   );
+}
+
+async function testRegistrationInputNormalization({ confirmLocalRegistration, normalizeUsernameInput, toHalfWidth }) {
+  // 密码输入：U+FF01–U+FF5E 按码点偏移转半角，U+3000 全角空格转普通空格。
+  assert.equal(toHalfWidth("ｐａｓｓｗｏｒｄ１２３４５６"), "password123456");
+  assert.equal(toHalfWidth("Ｐａｓｓｗｏｒｄ"), "Password");
+  assert.equal(toHalfWidth("！＃＄％"), "!#$%");
+  assert.equal(toHalfWidth("ｘｙｚ\u3000ａｂｃ"), "xyz abc");
+  // 不做其它变换：不 trim、不改大小写。
+  assert.equal(toHalfWidth("\u3000abc\u3000"), " abc ");
+  assert.equal(toHalfWidth("AbC"), "AbC");
+
+  // 用户名输入：统一小写，NFKD 与非法字符过滤逻辑保持不变。
+  assert.equal(normalizeUsernameInput("KurisuTest"), "kurisutest");
+  assert.equal(normalizeUsernameInput("Ｋｕｒｉｓｕ"), "kurisu");
+  assert.equal(normalizeUsernameInput("Kürísu"), "kurisu");
+  assert.equal(normalizeUsernameInput("Kurisu-Test!"), "kurisutest");
+
+  // 注册流：全角密码与大写用户名经归一化后提交，mock 后端收到的 confirm 请求体必须是半角小写。
+  await withMockFetch([
+    jsonResponse({
+      authenticated: true,
+      expires_at: "2026-05-24T13:00:00.000Z",
+      user: { user_id: "user-register", username: "kurisutest" },
+    }),
+  ], async(calls) => {
+    const registration = await confirmLocalRegistration({
+      displayName: "Kurisu Test",
+      identity: "register@example.com",
+      identityType: "email",
+      inviteChallenge: "invite.challenge",
+      inviteCode: "INVITE-2026",
+      password: toHalfWidth("ｐａｓｓｗｏｒｄ１２３４５６"),
+      username: normalizeUsernameInput("KurisuTest"),
+      verificationChallenge: "verification.challenge",
+    });
+    assert.equal(registration.authenticated, true);
+    assert.equal(calls[0].body.password, "password123456");
+    assert.equal(calls[0].body.username, "kurisutest");
+  });
 }
 
 function renderPicker(AccountPickerCard, props) {

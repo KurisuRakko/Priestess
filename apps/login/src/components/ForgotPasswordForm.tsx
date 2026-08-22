@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, KeyRound, UserRound } from "lucide-react";
-import { getPriestessApiErrorMessage, requestPasswordReset, usePriestessTranslation } from "@priestess/shared";
+import { getPriestessApiErrorMessage, requestPasswordReset, toHalfWidth, usePriestessTranslation } from "@priestess/shared";
 import { startLoginTransitionOverlay } from "./LoginTransitionOverlay";
 import { readTurnstileSiteKey } from "./TurnstileWidget";
 
@@ -96,15 +96,19 @@ export function ForgotPasswordForm({ defaultIdentity, disabled, onBackToLogin, o
             <input
               aria-invalid={Boolean(error)}
               aria-describedby={error ? "forgot-password-error" : undefined}
+              autoCapitalize="none"
               autoComplete="username"
+              autoCorrect="off"
               disabled={isFormLocked}
               name="identity"
               onChange={(event) => {
-                setIdentity(event.target.value);
+                // IME 全角输入先转半角，再统一小写，与登录用户名归一化保持一致。
+                setIdentity(toHalfWidth(event.target.value).toLowerCase());
                 if (error) setError("");
               }}
               placeholder="mikael@example.com"
               ref={identityRef}
+              spellCheck={false}
               type="text"
               value={identity}
             />

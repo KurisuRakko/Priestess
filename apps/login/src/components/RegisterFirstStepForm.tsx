@@ -9,6 +9,7 @@ import {
   getPriestessApiErrorCode,
   getPriestessApiErrorMessage,
   requestRegisterVerification,
+  toHalfWidth,
   translatePriestess,
   usePriestessTranslation,
   type LocalSession,
@@ -61,8 +62,9 @@ type FieldErrors = {
   username?: string;
 };
 
-function normalizeUsernameInput(rawValue: string) {
-  return rawValue.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9_]/g, "").slice(0, USERNAME_MAX_LENGTH);
+// 用户名统一小写，与后端注册存库的小写化保持一致，避免用户看到与提交不一致。
+export function normalizeUsernameInput(rawValue: string) {
+  return rawValue.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9_]/g, "").slice(0, USERNAME_MAX_LENGTH).toLowerCase();
 }
 
 function normalizeGeneratedUsername(rawValue: string) {
@@ -741,11 +743,13 @@ export function RegisterFirstStepForm({
                 <input
                   aria-invalid={Boolean(errors.identity)}
                   aria-describedby={errors.identity ? "register-identity-error" : undefined}
+                  autoCapitalize="none"
                   autoComplete="email"
                   disabled={isFormLocked}
                   inputMode="email"
                   onChange={(event) => {
-                    setEmailIdentity(event.target.value);
+                    // IME 全角 @ 是真实误输入场景，先转半角再统一小写。
+                    setEmailIdentity(toHalfWidth(event.target.value).toLowerCase());
                     if (errors.identity) clearError("identity");
                   }}
                   placeholder="mikael@example.com"
@@ -838,11 +842,13 @@ export function RegisterFirstStepForm({
               confirmationError={errors.passwordConfirm}
               disabled={isFormLocked}
               onConfirmationChange={(value) => {
-                setPasswordConfirm(value);
+                // IME 全角误输入兜底为半角，与密码框保持一致。
+                setPasswordConfirm(toHalfWidth(value));
                 if (errors.passwordConfirm) clearError("passwordConfirm");
               }}
               onPasswordChange={(value) => {
-                setPassword(value);
+                // IME 全角误输入兜底为半角，避免存库密码与用户看到的不一致。
+                setPassword(toHalfWidth(value));
                 if (errors.password) clearError("password");
               }}
               onSubmit={submitPassword}
@@ -957,7 +963,7 @@ export function RegisterFirstStepForm({
                   setUsername(normalizeUsernameInput(event.target.value));
                   if (errors.username) clearError("username");
                 }}
-                placeholder="KurisuRakko"
+                placeholder="kurisurakko"
                 type="text"
                 value={username}
               />

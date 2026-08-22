@@ -8,3 +8,4 @@ export * from "./lib/i18n";
 export * from "./lib/priestessApi";
 export { redactSensitiveAuthText } from "./lib/priestessApiErrors";
 export * from "./lib/priestessUserApi";
+export * from "./lib/textNormalize";

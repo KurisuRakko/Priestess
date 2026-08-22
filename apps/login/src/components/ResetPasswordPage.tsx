@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight, KeyRound } from "lucide-react";
-import { BrandMark, FloatingBackdrop, confirmPasswordReset, getPriestessApiErrorMessage, usePriestessTranslation, visitPasswordResetLink } from "@priestess/shared";
+import { BrandMark, FloatingBackdrop, confirmPasswordReset, getPriestessApiErrorMessage, toHalfWidth, usePriestessTranslation, visitPasswordResetLink } from "@priestess/shared";
 import "./PasswordRecovery.css";
 
 type ResetPasswordPageProps = {
@@ -92,11 +92,41 @@ export function ResetPasswordPage({ onNavigateToLogin, onNotice }: ResetPassword
         <form className="recovery-form" onSubmit={submit}>
           <label>
             <span>{t("新密码")}</span>
-            <input autoComplete="new-password" disabled={!isLinkAccepted || isLinkChecking} ref={passwordRef} type="password" />
+            <input
+              autoCapitalize="none"
+              autoComplete="new-password"
+              autoCorrect="off"
+              disabled={!isLinkAccepted || isLinkChecking}
+              lang="en"
+              onInput={(event) => {
+                // 非受控输入：仅在值变化时回写归一化结果，避免光标跳动。
+                const input = event.currentTarget;
+                const normalized = toHalfWidth(input.value);
+                if (normalized !== input.value) input.value = normalized;
+              }}
+              ref={passwordRef}
+              spellCheck={false}
+              type="password"
+            />
           </label>
           <label>
             <span>{t("确认新密码")}</span>
-            <input autoComplete="new-password" disabled={!isLinkAccepted || isLinkChecking} ref={confirmRef} type="password" />
+            <input
+              autoCapitalize="none"
+              autoComplete="new-password"
+              autoCorrect="off"
+              disabled={!isLinkAccepted || isLinkChecking}
+              lang="en"
+              onInput={(event) => {
+                // 非受控输入：仅在值变化时回写归一化结果，避免光标跳动。
+                const input = event.currentTarget;
+                const normalized = toHalfWidth(input.value);
+                if (normalized !== input.value) input.value = normalized;
+              }}
+              ref={confirmRef}
+              spellCheck={false}
+              type="password"
+            />
           </label>
           {error || !hasLink || isLinkChecking ? <div className="recovery-error" role="status">{error || (isLinkChecking ? t("正在校验重置链接") : t("重置链接无效或缺少参数"))}</div> : null}
           <button className="primary-button" disabled={isSubmitting || isLinkChecking || !isLinkAccepted} type="submit">
