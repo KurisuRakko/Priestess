@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence } from "motion/react";
 import {
   Activity,
-  AlertTriangle,
   Clock3,
   Database,
   RefreshCw,
@@ -16,7 +15,17 @@ import {
   type LocalPrivacyActivity,
 } from "@priestess/shared";
 import { dateTimeFormatter, formatDateTime } from "./accountPageFormat";
-import { AccountMotionCard, AccountMotionPresenceItem, AccountMotionSection, AccountSectionView, InfoCard, StatusPill } from "./AccountPagePrimitives";
+import {
+  AccountEmptyState,
+  AccountInlineAlert,
+  AccountMotionCard,
+  AccountMotionSection,
+  AccountRefreshIndicator,
+  AccountSectionView,
+  AccountSkeletonList,
+  InfoCard,
+  StatusPill,
+} from "./AccountPagePrimitives";
 import "./AccountPrivacy.css";
 
 const ACTIVITY_PAGE_SIZE = 10;
@@ -28,6 +37,7 @@ export function AccountPrivacySection() {
   const [hasMore, setHasMore] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [lastLoadedAt, setLastLoadedAt] = useState<Date | null>(null);
   const [canAutoLoadMore, setCanAutoLoadMore] = useState(() => typeof IntersectionObserver !== "undefined");
   const isFetchingRef = useRef(false);
@@ -66,6 +76,7 @@ export function AccountPrivacySection() {
         setLastLoadedAt(new Date());
         setIsLoading(false);
         setIsLoadingMore(false);
+        setHasLoaded(true);
       }
     }
   }, [t]);
@@ -92,6 +103,10 @@ export function AccountPrivacySection() {
     return () => observer.disconnect();
   }, [canAutoLoadMore, hasMore, isLoading, isLoadingMore, loadActivities]);
 
+  // 首次加载才铺骨架；已经有过一次结果之后的整表重载属于后台刷新，列表必须留在 DOM 里。
+  const isInitialLoading = isLoading && !hasLoaded;
+  const isRefreshing = isLoading && hasLoaded;
+
   const latestActivity = activities[0] ?? null;
 
   return (
@@ -103,16 +118,22 @@ export function AccountPrivacySection() {
         <InfoCard icon={<RefreshCw size={19} strokeWidth={1.8} />} label={t("刷新时间")} value={lastLoadedAt ? dateTimeFormatter.format(lastLoadedAt) : t("未刷新")} />
       </div>
 
-      <AccountMotionSection className="account-privacy-panel account-motion-surface" aria-labelledby="account-privacy-title" delay={0.04}>
+      <AccountMotionSection className="account-privacy-panel" delay={0.04}>
         <div className="account-privacy-panel__header">
           <div>
-            <h3 id="account-privacy-title">{t("最近隐私活动")}</h3>
+            <h3>{t("最近隐私活动")}</h3>
             <p>{t("这里只显示与你当前本地账号直接相关的 Priestess 审计记录。")}</p>
           </div>
           <div className="account-privacy-panel__actions">
             <StatusPill tone="neutral">{t("只读")}</StatusPill>
-            <button className="account-button account-button--quiet" disabled={isLoading || isLoadingMore} onClick={() => void loadActivities({ reset: true })} type="button">
-              <RefreshCw aria-hidden="true" size={17} strokeWidth={1.8} />
+            <button
+              aria-busy={isRefreshing}
+              className="account-button account-button--quiet"
+              disabled={isLoading || isLoadingMore}
+              onClick={() => void loadActivities({ reset: true })}
+              type="button"
+            >
+              <AccountRefreshIndicator active={isRefreshing}/>
               <span>{t("刷新")}</span>
             </button>
           </div>
@@ -120,26 +141,30 @@ export function AccountPrivacySection() {
 
         <AnimatePresence initial={false} mode="popLayout">
           {error ? (
-            <AccountMotionPresenceItem className="account-inline-alert" key="privacy-error" role="status">
-              <AlertTriangle aria-hidden="true" size={17} strokeWidth={1.8} />
-              <span>{error}</span>
-            </AccountMotionPresenceItem>
+            <AccountInlineAlert
+              action={
+                <button className="account-button account-button--quiet" onClick={() => void loadActivities({ reset: true })} type="button">
+                  {t("重试")}
+                </button>
+              }
+              key="privacy-error"
+            >
+              {error}
+            </AccountInlineAlert>
           ) : null}
-          {isLoading ? (
-            <AccountMotionPresenceItem className="account-inline-loading" key="privacy-loading" role="status">
-              <RefreshCw aria-hidden="true" size={17} strokeWidth={1.8} />
-              <span>{t("正在读取隐私活动")}</span>
-            </AccountMotionPresenceItem>
+          {isInitialLoading ? (
+            <AccountSkeletonList key="privacy-skeleton" label={t("正在读取隐私活动")} rows={3} variant="activity"/>
           ) : null}
-          {!isLoading && activities.length === 0 ? (
-            <AccountMotionPresenceItem className="account-privacy-empty" key="privacy-empty">
-              <ShieldCheck aria-hidden="true" size={18} strokeWidth={1.8} />
-              <span>{t("当前没有可显示的隐私活动。")}</span>
-            </AccountMotionPresenceItem>
+          {!isInitialLoading && !error && activities.length === 0 ? (
+            <AccountEmptyState
+              icon={<ShieldCheck size={18} strokeWidth={1.8}/>}
+              key="privacy-empty"
+              title={t("当前没有可显示的隐私活动。")}
+            />
           ) : null}
         </AnimatePresence>
 
-        {!isLoading && activities.length > 0 ? (
+        {activities.length > 0 ? (
           <div className="account-privacy-list">
             <AnimatePresence mode="popLayout">
               {activities.map((activity, index) => (
@@ -192,7 +217,7 @@ function PrivacyActivityCard({ activity, delay }: { activity: LocalPrivacyActivi
   const { t } = usePriestessTranslation("account");
   const metadata = Object.entries(activity.metadata).slice(0, 4);
   return (
-    <AccountMotionCard className="account-privacy-card account-motion-surface" delay={delay}>
+    <AccountMotionCard className="account-privacy-card" delay={delay}>
       <div className="account-privacy-card__top">
         <span className="account-privacy-card__icon" aria-hidden="true">
           <Activity size={20} strokeWidth={1.8} />
