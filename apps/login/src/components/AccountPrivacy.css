@@ -46,19 +46,6 @@
   gap: 8px;
 }
 
-.account-privacy-empty {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  border: 1px solid rgba(36, 35, 31, 0.1);
-  border-radius: var(--radius-control);
-  padding: 10px 12px;
-  color: var(--color-muted);
-  background: rgba(240, 239, 235, 0.54);
-  font-size: 13px;
-  line-height: 1.5;
-}
-
 .account-privacy-list {
   display: grid;
   gap: 12px;
