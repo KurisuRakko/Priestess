@@ -114,18 +114,6 @@ type LocalDeviceSessionsRequestOptions = Pick<RequestOptions, "signal"> & {
   forceRefresh?: boolean;
 };
 
-export type LocalRakkoServiceSession = {
-  appId: string;
-  createdAt: string;
-  enabled: boolean | null;
-  expiresAt: string;
-  lastAuthorizedAt: string;
-  lastUsedAt: string;
-  name: string;
-  raw: unknown;
-  sessionCount: number;
-};
-
 export type LocalPrivacyActivity = {
   action: string;
   createdAt: string;
@@ -246,14 +234,6 @@ export async function revokeOtherLocalDeviceSessions(options: Pick<RequestOption
     raw: payload,
     revoked: readNumber(record, ["revoked"]) ?? 0,
   };
-}
-
-export async function listLocalRakkoServices(options: Pick<RequestOptions, "signal"> = {}) {
-  const payload = await requestJson(`${PRIESTESS_AUTH_BASE}/services/sessions`, { signal: options.signal });
-  const record = isRecord(payload) ? payload : {};
-  const services = readUnknown(record, ["services"]);
-  if (!Array.isArray(services)) return [];
-  return services.map(normalizeLocalRakkoServiceSession);
 }
 
 export type LocalServiceAvailability = {
@@ -557,23 +537,6 @@ function normalizeLocalServiceAvailability(payload: unknown): LocalServiceAvaila
     lastUsedAt: readDateTimeString(record, ["last_used_at", "lastUsedAt"]),
     name: readString(record, ["name"]) || readString(app, ["name"]) || appId || translatePriestess("common:Rakko 服务"),
     raw: payload,
-  };
-}
-
-function normalizeLocalRakkoServiceSession(payload: unknown): LocalRakkoServiceSession {
-  const record = isRecord(payload) ? payload : {};
-  const app = pickRecord(record, ["app"]) ?? {};
-  const appId = readString(record, ["app_id", "appId"]) || readString(app, ["app_id", "appId", "id"]);
-  return {
-    appId,
-    createdAt: readDateTimeString(record, ["created_at", "createdAt"]),
-    enabled: readBoolean(record, ["enabled"]) ?? readBoolean(app, ["enabled"]),
-    expiresAt: readDateTimeString(record, ["expires_at", "expiresAt"]),
-    lastAuthorizedAt: readDateTimeString(record, ["last_authorized_at", "lastAuthorizedAt"]),
-    lastUsedAt: readDateTimeString(record, ["last_used_at", "lastUsedAt"]),
-    name: readString(record, ["name"]) || readString(app, ["name"]) || appId || translatePriestess("common:Rakko 服务"),
-    raw: payload,
-    sessionCount: readNumber(record, ["session_count", "sessionCount"]) ?? 0,
   };
 }
 
