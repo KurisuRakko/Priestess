@@ -15,12 +15,25 @@ import {
 } from "./AccountPagePrimitives";
 import "./AccountServices.css";
 
-/** 可用组在前、未开放组在后，组内按服务名升序；后端顺序不作为唯一依据。 */
+/**
+ * 可用组在前、未开放组在后；后端顺序不作为唯一依据。
+ * 可用组内已登录的排在未登录之前——那些条目才有「解除授权」入口，用户来这一页多半是为了处理它们。
+ */
 export function groupServicesByAccess(services: LocalServiceAvailability[]) {
   return {
-    available: sortServicesByName(services.filter((service) => service.access === "available")),
+    available: sortAvailableServices(services.filter((service) => service.access === "available")),
     unavailable: sortServicesByName(services.filter((service) => service.access !== "available")),
   };
+}
+
+/** 先按有无活跃会话分段，段内按服务名升序。 */
+function sortAvailableServices(services: LocalServiceAvailability[]) {
+  return services.slice().sort((left, right) => {
+    if (left.activeSession !== right.activeSession) {
+      return left.activeSession ? -1 : 1;
+    }
+    return left.name.localeCompare(right.name);
+  });
 }
 
 function sortServicesByName(services: LocalServiceAvailability[]) {

@@ -39,6 +39,7 @@ try {
   testLoadingAndRefresh();
   testErrorAndNotice();
   testLegacyStructureRemoved();
+  testAvailableSessionOrdering();
 
   console.log("account-services smoke passed");
 } finally {
@@ -71,6 +72,34 @@ function testGroupServicesByAccess({ groupServicesByAccess }) {
   groupServicesByAccess(input);
   assert.deepEqual(input.map((service) => `${service.appId}:${service.access}`), before, "4. 不改动传入数组");
   assert.equal(input.length, 2, "4. 传入数组长度不变");
+
+  const bySession = groupServicesByAccess([
+    buildAvailableService("Alpha"),
+    buildAvailableService("Zeta", { activeSession: true }),
+  ]);
+  assert.deepEqual(bySession.available.map((service) => service.name), ["Zeta", "Alpha"], "33. 可用组内已登录排在未登录之前");
+
+  const twoTier = groupServicesByAccess([
+    buildAvailableService("Zeta", { activeSession: true }),
+    buildAvailableService("Yankee"),
+    buildAvailableService("Bravo"),
+    buildAvailableService("Alpha", { activeSession: true }),
+  ]);
+  assert.deepEqual(
+    twoTier.available.map((service) => service.name),
+    ["Alpha", "Zeta", "Bravo", "Yankee"],
+    "34. 已登录段与未登录段内部各自按名字升序",
+  );
+
+  const unavailableOrder = groupServicesByAccess([
+    buildUnavailableService("Zeta", { activeSession: true }),
+    buildUnavailableService("Alpha"),
+  ]);
+  assert.deepEqual(
+    unavailableOrder.unavailable.map((service) => service.name),
+    ["Alpha", "Zeta"],
+    "35. 未开放组不受 activeSession 影响，只按名字升序",
+  );
 }
 
 // B. 分组顺序与结构
@@ -232,6 +261,22 @@ function testLegacyStructureRemoved() {
   assert.doesNotMatch(markup, /account-motion-surface/, "30. 无定义的动效噪音类名已消失");
   assert.doesNotMatch(markup, /服务已停用|正在登录|最长有效到|最近授权|活跃会话/, "31. 旧的四项等权事实栏已消失");
   assert.doesNotMatch(markup, /account-service-session-title/, "32. 内层不再重复 aria-labelledby");
+}
+
+// J. 渲染层顺序与解除授权入口位置
+function testAvailableSessionOrdering() {
+  const markup = renderView({
+    services: [
+      buildAvailableService("Alpha"),
+      buildAvailableService("Zeta", { activeSession: true }),
+    ],
+  });
+  const zetaIndex = markup.indexOf("Zeta");
+  const alphaIndex = markup.indexOf("Alpha");
+  const revokeIndex = markup.indexOf("解除授权");
+  assert.ok(zetaIndex >= 0 && alphaIndex >= 0, "36. 两张卡片都渲染");
+  assert.ok(zetaIndex < alphaIndex, "36. 已登录卡片在 DOM 里排在未登录卡片之前");
+  assert.ok(revokeIndex > zetaIndex && revokeIndex < alphaIndex, "36. 解除授权入口落在已登录卡片内");
 }
 
 function readCopyWithoutClassNames(markup) {
