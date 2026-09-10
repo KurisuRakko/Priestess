@@ -46,7 +46,9 @@ export async function getLocalSession(options: Pick<RequestOptions, "signal"> = 
     return normalizeLocalSession(payload);
   } catch (error) {
     if (error instanceof PriestessApiError && (error.status === 401 || error.status === 403)) {
-      return normalizeLocalSession(null);
+      // 401/403 的响应体可能带 signed_out_reason（被设备上限顶下线），归一化后强制回未认证态，
+      // 避免错误载荷里的残留字段被当成有效会话。
+      return { ...normalizeLocalSession(error.payload), authenticated: false, user: null };
     }
 
     throw error;
@@ -449,6 +451,7 @@ function normalizeLocalSession(payload: unknown): LocalSession {
       mfaRequired: false,
       mfaType: "",
       raw: payload,
+      signedOutReason: "",
       user: null,
     };
   }
@@ -466,6 +469,7 @@ function normalizeLocalSession(payload: unknown): LocalSession {
     mfaRequired: readBoolean(record, ["mfa_required", "mfaRequired"]) ?? false,
     mfaType: readString(record, ["mfa_type", "mfaType"]),
     raw: payload,
+    signedOutReason: readString(record, ["signed_out_reason", "signedOutReason"]),
     user,
   };
 }

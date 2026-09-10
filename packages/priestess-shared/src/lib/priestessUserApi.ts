@@ -84,6 +84,7 @@ export type LocalTotpSetup = {
 
 export type LocalDeviceSession = {
   browser: string;
+  browserId: string;
   createdAt: string;
   current: boolean;
   device: string;
@@ -93,8 +94,19 @@ export type LocalDeviceSession = {
   os: string;
   raw: unknown;
   revokedAt: string;
+  revokedReason: string;
   sessionId: string;
   userAgentSummary: string;
+};
+
+export type LocalDeviceSessionOverview = {
+  /** 活跃设备数（= 不同浏览器容器数）；后端没回时按 sessions 推算。 */
+  deviceCount: number;
+  /** 设备数量上限；后端没回时为 0，表示这一版界面不展示容量。 */
+  deviceLimit: number;
+  raw: unknown;
+  sessions: LocalDeviceSession[];
+  total: number;
 };
 
 type LocalDeviceSessionsRequestOptions = Pick<RequestOptions, "signal"> & {
@@ -175,13 +187,13 @@ export async function uploadLocalProfileAvatar(file: File, options: Pick<Request
 }
 
 const LOCAL_DEVICE_SESSIONS_CACHE_TTL_MS = 5_000;
-let localDeviceSessionsCache: { loadedAt: number; sessions: LocalDeviceSession[] } | null = null;
-let localDeviceSessionsInFlight: Promise<LocalDeviceSession[]> | null = null;
+let localDeviceSessionsCache: { loadedAt: number; overview: LocalDeviceSessionOverview } | null = null;
+let localDeviceSessionsInFlight: Promise<LocalDeviceSessionOverview> | null = null;
 
-export async function listLocalDeviceSessions(options: LocalDeviceSessionsRequestOptions = {}) {
+export async function getLocalDeviceSessionOverview(options: LocalDeviceSessionsRequestOptions = {}): Promise<LocalDeviceSessionOverview> {
   const now = Date.now();
   if (!options.forceRefresh && localDeviceSessionsCache && now - localDeviceSessionsCache.loadedAt < LOCAL_DEVICE_SESSIONS_CACHE_TTL_MS) {
-    return localDeviceSessionsCache.sessions;
+    return localDeviceSessionsCache.overview;
   }
   if (localDeviceSessionsInFlight) {
     return localDeviceSessionsInFlight;
@@ -189,11 +201,9 @@ export async function listLocalDeviceSessions(options: LocalDeviceSessionsReques
 
   const request = requestJson(`${PRIESTESS_AUTH_BASE}/devices/sessions`, { signal: options.signal })
     .then((payload) => {
-      const record = isRecord(payload) ? payload : {};
-      const sessions = readUnknown(record, ["sessions"]);
-      const normalized = Array.isArray(sessions) ? sessions.map(normalizeLocalDeviceSession) : [];
-      localDeviceSessionsCache = { loadedAt: Date.now(), sessions: normalized };
-      return normalized;
+      const overview = normalizeLocalDeviceSessionOverview(payload);
+      localDeviceSessionsCache = { loadedAt: Date.now(), overview };
+      return overview;
     })
     .finally(() => {
       if (localDeviceSessionsInFlight === request) {
@@ -202,6 +212,10 @@ export async function listLocalDeviceSessions(options: LocalDeviceSessionsReques
     });
   localDeviceSessionsInFlight = request;
   return request;
+}
+
+export async function listLocalDeviceSessions(options: LocalDeviceSessionsRequestOptions = {}) {
+  return (await getLocalDeviceSessionOverview(options)).sessions;
 }
 
 export async function revokeLocalDeviceSession(sessionId: string, options: Pick<RequestOptions, "signal"> = {}) {
@@ -220,12 +234,56 @@ export async function revokeLocalDeviceSession(sessionId: string, options: Pick<
   };
 }
 
+export async function revokeOtherLocalDeviceSessions(options: Pick<RequestOptions, "signal"> = {}) {
+  const payload = await requestJson(`${PRIESTESS_AUTH_BASE}/devices/sessions/revoke-others`, {
+    body: {},
+    method: "POST",
+    signal: options.signal,
+  });
+  const record = isRecord(payload) ? payload : {};
+  localDeviceSessionsCache = null;
+  return {
+    raw: payload,
+    revoked: readNumber(record, ["revoked"]) ?? 0,
+  };
+}
+
 export async function listLocalRakkoServices(options: Pick<RequestOptions, "signal"> = {}) {
   const payload = await requestJson(`${PRIESTESS_AUTH_BASE}/services/sessions`, { signal: options.signal });
   const record = isRecord(payload) ? payload : {};
   const services = readUnknown(record, ["services"]);
   if (!Array.isArray(services)) return [];
   return services.map(normalizeLocalRakkoServiceSession);
+}
+
+export type LocalServiceAvailability = {
+  access: "available" | "unavailable";
+  activeSession: boolean;
+  appId: string;
+  lastAuthorizedAt: string;
+  lastUsedAt: string;
+  name: string;
+  raw: unknown;
+};
+
+export async function listLocalServiceAvailability(options: Pick<RequestOptions, "signal"> = {}) {
+  const payload = await requestJson(`${PRIESTESS_AUTH_BASE}/services/availability`, { signal: options.signal });
+  const record = isRecord(payload) ? payload : {};
+  const services = readUnknown(record, ["services"]);
+  if (!Array.isArray(services)) return [];
+  return services.map(normalizeLocalServiceAvailability);
+}
+
+export async function revokeLocalRakkoService(appId: string, options: Pick<RequestOptions, "signal"> = {}) {
+  const payload = await requestJson(`${PRIESTESS_AUTH_BASE}/services/sessions/${encodeURIComponent(appId)}`, {
+    method: "DELETE",
+    signal: options.signal,
+  });
+  const record = isRecord(payload) ? payload : {};
+  return {
+    raw: payload,
+    revoked: readNumber(record, ["revoked"]) ?? 0,
+  };
 }
 
 export async function listLocalPrivacyActivityPage(params: { limit?: number; offset?: number } = {}, options: Pick<RequestOptions, "signal"> = {}): Promise<LocalPrivacyActivityPage> {
@@ -445,6 +503,7 @@ function normalizeLocalDeviceSession(payload: unknown): LocalDeviceSession {
   const os = readString(record, ["os"]) || translatePriestess("common:未知系统");
   return {
     browser,
+    browserId: readString(record, ["browser_id", "browserId"]),
     createdAt: readDateTimeString(record, ["created_at", "createdAt"]),
     current: readBoolean(record, ["current"]) ?? false,
     device: readString(record, ["device"]) || translatePriestess("common:浏览器"),
@@ -454,8 +513,50 @@ function normalizeLocalDeviceSession(payload: unknown): LocalDeviceSession {
     os,
     raw: payload,
     revokedAt: readDateTimeString(record, ["revoked_at", "revokedAt"]),
+    revokedReason: readString(record, ["revoked_reason", "revokedReason"]),
     sessionId: readString(record, ["session_id", "sessionId", "id"]),
     userAgentSummary: readString(record, ["user_agent_summary", "userAgentSummary"]) || `${browser} / ${os}`,
+  };
+}
+
+function normalizeLocalDeviceSessionOverview(payload: unknown): LocalDeviceSessionOverview {
+  const record = isRecord(payload) ? payload : {};
+  const rawSessions = readUnknown(record, ["sessions"]);
+  const sessions = Array.isArray(rawSessions) ? rawSessions.map(normalizeLocalDeviceSession) : [];
+  return {
+    deviceCount: readNumber(record, ["device_count", "deviceCount"]) ?? countLocalDeviceContainers(sessions),
+    deviceLimit: readNumber(record, ["device_limit", "deviceLimit"]) ?? 0,
+    raw: payload,
+    sessions,
+    total: readNumber(record, ["total"]) ?? sessions.length,
+  };
+}
+
+/** 后端未回 device_count 时按浏览器容器去重；没有 browser_id 的历史会话各算一台。 */
+function countLocalDeviceContainers(sessions: LocalDeviceSession[]) {
+  const containers = new Set<string>();
+  let unlabelled = 0;
+  for (const session of sessions) {
+    if (session.revokedAt) continue;
+    if (session.browserId) containers.add(session.browserId);
+    else unlabelled += 1;
+  }
+  return containers.size + unlabelled;
+}
+
+function normalizeLocalServiceAvailability(payload: unknown): LocalServiceAvailability {
+  const record = isRecord(payload) ? payload : {};
+  const app = pickRecord(record, ["app"]) ?? {};
+  const appId = readString(record, ["app_id", "appId"]) || readString(app, ["app_id", "appId", "id"]);
+  return {
+    // 只有后端明确说 available 才当作开放，任何未知取值一律按未开放处理。
+    access: readString(record, ["access"]) === "available" ? "available" : "unavailable",
+    activeSession: readBoolean(record, ["active_session", "activeSession"]) ?? false,
+    appId,
+    lastAuthorizedAt: readDateTimeString(record, ["last_authorized_at", "lastAuthorizedAt"]),
+    lastUsedAt: readDateTimeString(record, ["last_used_at", "lastUsedAt"]),
+    name: readString(record, ["name"]) || readString(app, ["name"]) || appId || translatePriestess("common:Rakko 服务"),
+    raw: payload,
   };
 }
 
@@ -504,6 +605,7 @@ function normalizeLocalSession(payload: unknown): LocalSession {
     mfaRequired: readBoolean(record, ["mfa_required", "mfaRequired"]) ?? false,
     mfaType: readString(record, ["mfa_type", "mfaType"]),
     raw: payload,
+    signedOutReason: readString(record, ["signed_out_reason", "signedOutReason"]),
     user,
   };
 }

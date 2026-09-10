@@ -33,6 +33,8 @@ export type LocalSession = {
   expiresAt: string;
   mfaRequired: boolean;
   mfaType: string;
+  /** 未认证时后端给出的下线原因；当前只暴露 'device_limit'，其余一律空串。 */
+  signedOutReason: string;
   user: LocalSessionUser | null;
   raw: unknown;
 };

@@ -86,13 +86,15 @@ Priestess v1 实现 OIDC 扫码登录、本地用户会话、账号资料、头�
 
 ### 本地用户登录
 
-- `GET /auth/priestess/session`：读取当前本地用户会话。
+- `GET /auth/priestess/session`：读取当前本地用户会话。未认证时若会话是被设备上限顶下线的，响应额外带 signed_out_reason: "device_limit"，其余撤销原因不对外暴露。
 - `POST /auth/priestess/session`：用户名或邮箱 + 密码登录，设置 HttpOnly cookie；请求体继续使用兼容字段 `{ "username": string, "password": string }`，其中 `username` 表示登录标识。
 - `DELETE /auth/priestess/session`：撤销当前本地用户会话。
-- `GET /auth/priestess/devices/sessions`：读取当前用户所有未过期、未撤销的本地浏览器会话，返回简化 UA、IP、创建时间、最近使用时间和过期时间。
+- `GET /auth/priestess/devices/sessions`：读取当前用户所有未过期、未撤销的本地浏览器会话，返回简化 UA、IP、创建时间、最近使用时间和过期时间。响应同时返回 device_limit 与 device_count（活跃浏览器容器数），前端据此展示容量，不在前端硬编码上限。
 - `DELETE /auth/priestess/devices/sessions/:sessionId`：撤销当前用户的指定本地浏览器会话；后端必须同时校验 `session_id` 和当前 `user_id`，若撤销当前浏览器则清除 HttpOnly cookie。
+- `POST /auth/priestess/devices/sessions/revoke-others`：撤销当前用户除本次请求所用 session 外的全部活跃浏览器会话，返回 `{ "revoked": n }`；后端同时关闭对应 Rakko connect 会话。
 - `GET /auth/priestess/services/sessions`：读取当前用户仍保持登录的 Rakko OIDC 服务，后端按 `subject` 聚合活跃 refresh session，只返回应用名称、`app_id`、会话数量和时间字段，不返回 refresh token hash 或完整 claims。
 - `DELETE /auth/priestess/services/sessions/:appId`：撤销当前用户在指定 Rakko 服务下仍活跃的 refresh session；后端必须同时约束 `app_id` 和当前 `user_id`，不能按 app 全局撤销其它用户会话。已签发的 access token 等 TTL 自然过期。
+- `GET /auth/priestess/services/availability`：列出全部已启用应用，逐个给出对当前用户的 `access: "available" | "unavailable"`、`active_session`、`last_used_at`、`last_authorized_at`；不返回任何判定原因，避免向用户暴露分组与访问规则。
 
 ### 应用授权账号选择
 

@@ -149,7 +149,10 @@ export async function requestPriestessDemoJson(path: string, options: DemoReques
     return {
       handled: true,
       payload: {
+        device_count: demoAuthenticated ? 1 : 0,
+        device_limit: 5,
         sessions: demoAuthenticated ? [buildDemoDeviceSession()] : [],
+        total: demoAuthenticated ? 1 : 0,
       },
     };
   }
@@ -170,6 +173,23 @@ export async function requestPriestessDemoJson(path: string, options: DemoReques
 
   if (normalizedPath === "/auth/priestess/services/sessions" && method === "GET") {
     return { handled: true, payload: { services: [] } };
+  }
+
+  if (normalizedPath === "/auth/priestess/devices/sessions/revoke-others" && method === "POST") {
+    return { handled: true, payload: { revoked: 0 } };
+  }
+
+  if (normalizedPath === "/auth/priestess/services/availability" && method === "GET") {
+    return {
+      handled: true,
+      payload: {
+        services: [
+          { access: "available", active_session: true, app_id: "demo-canvas", last_authorized_at: null, last_used_at: null, name: "Demo Canvas" },
+          { access: "unavailable", active_session: false, app_id: "demo-kreide", last_authorized_at: null, last_used_at: null, name: "Demo Kreide" },
+        ],
+        total: 2,
+      },
+    };
   }
 
   if (normalizedPath === "/auth/priestess/passkeys" && method === "GET") {
@@ -259,6 +279,7 @@ function buildDemoDeviceSession() {
   const now = new Date();
   return {
     browser: "Chrome",
+    browser_id: "demo-browser",
     created_at: new Date(now.getTime() - 36 * 60 * 60_000).toISOString(),
     current: true,
     device: "Local preview",
