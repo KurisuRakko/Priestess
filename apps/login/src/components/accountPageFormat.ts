@@ -1,12 +1,21 @@
 import { detectPriestessLanguage, translatePriestess, type LocalPasskey } from "@priestess/shared";
 
-export const dateTimeFormatter = new Intl.DateTimeFormat(detectPriestessLanguage(), {
-  day: "2-digit",
-  hour: "2-digit",
-  minute: "2-digit",
-  month: "2-digit",
-  year: "numeric",
-});
+/** 语言可在运行时切换（PriestessLanguageSwitcher + localStorage），因此每次格式化都重新解析当前语言。 */
+function buildDateTimeFormatter() {
+  return new Intl.DateTimeFormat(detectPriestessLanguage(), {
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+}
+
+export const dateTimeFormatter = {
+  format(value: Date | number) {
+    return buildDateTimeFormatter().format(value);
+  },
+};
 
 export function formatDateTime(value: string) {
   if (!value) {
@@ -18,35 +27,50 @@ export function formatDateTime(value: string) {
     return value;
   }
 
-  return dateTimeFormatter.format(date);
+  return buildDateTimeFormatter().format(date);
 }
 
-export function formatSessionRemaining(value: string) {
+const MINUTE_MS = 60_000;
+const HOUR_MS = 60 * MINUTE_MS;
+const DAY_MS = 24 * HOUR_MS;
+const WEEK_MS = 7 * DAY_MS;
+
+/**
+ * 设备与服务列表用的相对时间。
+ * 一周以内走 Intl.RelativeTimeFormat（自带中英复数与量词），超过一周直接给绝对时间。
+ */
+export function formatRelativeTime(value: string, now = Date.now()) {
   if (!value) {
-    return translatePriestess("account:未提供过期时间");
+    return translatePriestess("account:未提供");
   }
 
-  const expiresAt = new Date(value).getTime();
-  if (Number.isNaN(expiresAt)) {
-    return translatePriestess("account:过期时间格式异常");
+  const timestamp = new Date(value).getTime();
+  if (Number.isNaN(timestamp)) {
+    return value;
   }
 
-  const remainingMs = expiresAt - Date.now();
-  if (remainingMs <= 0) {
-    return translatePriestess("account:会话已过期");
+  const elapsedMs = now - timestamp;
+  // 时钟偏差导致的未来时间与一分钟内一样按「刚刚」处理，不单独铺特判。
+  if (elapsedMs < MINUTE_MS) {
+    return translatePriestess("account:刚刚");
+  }
+  if (elapsedMs < HOUR_MS) {
+    return formatElapsedUnit(elapsedMs / MINUTE_MS, "minute");
+  }
+  if (elapsedMs < DAY_MS) {
+    return formatElapsedUnit(elapsedMs / HOUR_MS, "hour");
+  }
+  if (elapsedMs < WEEK_MS) {
+    return formatElapsedUnit(elapsedMs / DAY_MS, "day");
   }
 
-  const minuteMs = 60 * 1000;
-  const hourMs = 60 * minuteMs;
-  const dayMs = 24 * hourMs;
-  if (remainingMs >= dayMs) {
-    return translatePriestess("account:约 {{count}} 天后过期", { count: Math.ceil(remainingMs / dayMs) });
-  }
-  if (remainingMs >= hourMs) {
-    return translatePriestess("account:约 {{count}} 小时后过期", { count: Math.ceil(remainingMs / hourMs) });
-  }
+  return formatDateTime(value);
+}
 
-  return translatePriestess("account:约 {{count}} 分钟后过期", { count: Math.max(1, Math.ceil(remainingMs / minuteMs)) });
+function formatElapsedUnit(amount: number, unit: Intl.RelativeTimeFormatUnit) {
+  // numeric: "always" 避免出现「昨天 / yesterday」这类跟阈值不对齐的措辞。
+  return new Intl.RelativeTimeFormat(detectPriestessLanguage(), { numeric: "always" })
+    .format(-Math.floor(amount), unit);
 }
 
 export function shortenCredentialId(value: string) {
@@ -105,13 +129,4 @@ export function formatPasskeyBackup(value: boolean | null) {
   }
 
   return translatePriestess("account:未返回");
-}
-
-export function getInitial(value: string) {
-  const cleanValue = value.trim();
-  if (!cleanValue) {
-    return "P";
-  }
-
-  return cleanValue.slice(0, 1).toUpperCase();
 }

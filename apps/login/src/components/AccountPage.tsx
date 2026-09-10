@@ -199,7 +199,7 @@ export function AccountPage({
     try {
       // 退出登录只调用现有 local session 删除接口，避免引入新的前后端契约。
       await logoutLocalSession();
-      setSession({ authenticated: false, challengeId: "", expiresAt: "", mfaRequired: false, mfaType: "", raw: null, user: null });
+      setSession({ authenticated: false, challengeId: "", expiresAt: "", mfaRequired: false, mfaType: "", raw: null, signedOutReason: "", user: null });
       onNotice(t("已退出登录"));
       onNavigateToLogin();
     } catch (requestError) {
@@ -213,8 +213,12 @@ export function AccountPage({
     if (!shouldRedirectToLogin) return;
 
     // 个人中心只允许已确认的登录会话进入；无会话或会话检查失败都回登录页，避免泄露受保护页面。
+    // 只有设备上限顶下线会告诉用户原因，管理员撤销等其它原因后端不下发，前端也不猜。
+    if (session?.signedOutReason === "device_limit") {
+      onNotice(t("你已在其他设备登录，此设备因超过设备数量上限被退出"));
+    }
     onRequireLogin();
-  }, [onRequireLogin, shouldRedirectToLogin]);
+  }, [onNotice, onRequireLogin, session?.signedOutReason, shouldRedirectToLogin, t]);
 
   useEffect(() => {
     if (!isAuthenticated || !handoffActive) return;

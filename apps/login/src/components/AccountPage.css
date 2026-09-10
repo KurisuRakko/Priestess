@@ -176,7 +176,6 @@
 }
 
 .account-alert,
-.account-empty,
 .account-loading-panel {
   display: flex;
   align-items: flex-start;
@@ -228,47 +227,6 @@
   border-radius: 50%;
   color: var(--color-accent);
   background: rgba(198, 95, 114, 0.08);
-}
-
-.account-empty {
-  align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-  border-color: var(--color-border);
-  color: var(--color-text);
-  background: rgba(252, 251, 248, 0.72);
-}
-
-.account-empty h2,
-.account-empty p {
-  margin: 0;
-}
-
-.account-empty h2 {
-  color: var(--color-heading);
-  font-size: 20px;
-  font-weight: 500;
-  line-height: 1.4;
-}
-
-.account-empty p {
-  margin-top: 4px;
-  color: var(--color-muted);
-  font-size: 14px;
-  line-height: 1.58;
-}
-
-.account-empty__icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 auto;
-  width: 44px;
-  height: 44px;
-  border: 1px solid rgba(198, 95, 114, 0.24);
-  border-radius: 50%;
-  color: var(--color-accent);
-  background: rgba(198, 95, 114, 0.09);
 }
 
 .account-layout {
@@ -588,27 +546,6 @@
   line-height: inherit;
 }
 
-.account-pending-list {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-card);
-  overflow: hidden;
-  background: rgba(252, 251, 248, 0.7);
-}
-
-.account-pending-row {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  min-height: 46px;
-  border-bottom: 1px solid rgba(36, 35, 31, 0.09);
-  padding: 13px 16px;
-}
-
-.account-pending-row:last-child {
-  border-bottom: 0;
-}
-
 .account-copy-button {
   display: inline-flex;
   align-items: center;
@@ -648,26 +585,6 @@
   background: rgba(185, 75, 75, 0.08);
 }
 
-.account-pending-row {
-  justify-content: flex-start;
-}
-
-.account-pending-row > span {
-  flex: 0 0 auto;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  margin-top: 7px;
-  background: var(--color-accent);
-}
-
-.account-pending-row p {
-  margin: 0;
-  color: var(--color-muted);
-  font-size: 14px;
-  line-height: 1.58;
-}
-
 .is-spinning {
   animation: account-spin 900ms linear infinite;
 }
@@ -687,11 +604,6 @@
 @media (max-width: 900px) {
   .account-shell {
     padding: 24px 18px 38px;
-  }
-
-  .account-empty {
-    align-items: flex-start;
-    flex-direction: column;
   }
 
   .account-topbar__leading {

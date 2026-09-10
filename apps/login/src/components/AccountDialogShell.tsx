@@ -1,10 +1,8 @@
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { DURATION_BASE, DURATION_FAST, EASE_LAYOUT, EASE_OUT } from "../lib/motionTokens";
 import "./AccountPageDialog.css";
-
-const DIALOG_BACKDROP_EASE = [0.2, 0.8, 0.2, 1] as const;
-const DIALOG_PANEL_EASE = [0.22, 1, 0.36, 1] as const;
 
 type AccountDialogShellProps = {
   children?: ReactNode;
@@ -51,7 +49,7 @@ export function AccountDialogShell({ children, className, labelledBy, onAfterOpe
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           role="presentation"
-          transition={{ duration: shouldReduceMotion ? 0.12 : 0.2, ease: DIALOG_BACKDROP_EASE }}
+          transition={{ duration: DURATION_FAST, ease: EASE_OUT }}
         >
           <motion.section
             aria-labelledby={labelledBy}
@@ -64,9 +62,9 @@ export function AccountDialogShell({ children, className, labelledBy, onAfterOpe
             ref={dialogRef}
             tabIndex={-1}
             transition={{
-              duration: shouldReduceMotion ? 0.12 : 0.24,
-              ease: DIALOG_PANEL_EASE,
-              opacity: { duration: shouldReduceMotion ? 0.12 : 0.18, ease: DIALOG_BACKDROP_EASE },
+              duration: shouldReduceMotion ? DURATION_FAST : DURATION_BASE,
+              ease: EASE_LAYOUT,
+              opacity: { duration: DURATION_FAST, ease: EASE_OUT },
             }}
           >
             {children}

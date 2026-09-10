@@ -1,9 +1,8 @@
+import { useId, type ReactNode } from "react";
 import { motion, useIsPresent, useReducedMotion, type HTMLMotionProps } from "motion/react";
-import type { ReactNode } from "react";
-import { usePriestessTranslation } from "@priestess/shared";
-
-const CARD_MOTION_EASE = [0.2, 0.8, 0.2, 1] as const;
-const CARD_LAYOUT_EASE = [0.22, 1, 0.36, 1] as const;
+import { Info, RefreshCw, TriangleAlert } from "lucide-react";
+import { DURATION_BASE, DURATION_SLOW, EASE_LAYOUT, EASE_OUT } from "../lib/motionTokens";
+import "./AccountPagePrimitives.css";
 
 type AccountMotionProps = {
   delay?: number;
@@ -18,10 +17,10 @@ function buildCardMotion(shouldReduceMotion: boolean, delay = 0) {
     initial: { opacity: 0, y: 10, scale: 0.992 },
     transition: {
       delay,
-      duration: 0.34,
-      ease: CARD_MOTION_EASE,
-      layout: { duration: 0.3, ease: CARD_LAYOUT_EASE },
-      opacity: { duration: 0.22, ease: CARD_MOTION_EASE },
+      duration: DURATION_SLOW,
+      ease: EASE_OUT,
+      layout: { duration: DURATION_BASE, ease: EASE_LAYOUT },
+      opacity: { duration: DURATION_BASE, ease: EASE_OUT },
     },
   };
 }
@@ -56,7 +55,7 @@ export function AccountMotionCard({
   children,
   className,
   delay,
-  interactive = true,
+  interactive = false,
   ...props
 }: HTMLMotionProps<"article"> & AccountMotionProps) {
   const shouldReduceMotion = useReducedMotion();
@@ -106,12 +105,14 @@ export function AccountSectionView({ children, description, icon, title }: {
   icon: ReactNode;
   title: string;
 }) {
+  // id 不能由翻译后的标题拼出，否则切语言时 aria-labelledby 会指向不存在的节点。
+  const headingId = useId();
   return (
-    <section className="account-section" aria-labelledby={`account-section-${title}`}>
+    <section className="account-section" aria-labelledby={headingId}>
       <div className="account-section__header">
         <span aria-hidden="true">{icon}</span>
         <div>
-          <h2 id={`account-section-${title}`}>{title}</h2>
+          <h2 id={headingId}>{title}</h2>
           <p>{description}</p>
         </div>
       </div>
@@ -137,20 +138,75 @@ export function InfoCard({ icon, label, tone = "neutral", value }: {
   );
 }
 
-export function PendingList({ items }: { items: string[] }) {
-  const { t } = usePriestessTranslation("account");
+export function StatusPill({ children, tone }: { children: ReactNode; tone: "good" | "neutral" | "warn" }) {
+  return <span className={`account-status-pill account-status-pill--${tone}`}>{children}</span>;
+}
+
+export function AccountSkeletonList({ label, rows = 3, variant }: {
+  /** 屏幕阅读器读的加载说明，由调用方给，保证 i18n key 落在调用方文件里 */
+  label: string;
+  rows?: number;
+  variant: "activity" | "device" | "service";
+}) {
   return (
-    <div className="account-pending-list" aria-label={t("待接入事项")}>
-      {items.map((item) => (
-        <div className="account-pending-row" key={item}>
-          <span aria-hidden="true" />
-          <p>{item}</p>
-        </div>
+    <AccountMotionPresenceItem
+      aria-busy="true"
+      aria-label={label}
+      className={`account-skeleton-list account-skeleton-list--${variant}`}
+      role="status"
+    >
+      {Array.from({ length: rows }, (_, index) => (
+        <span className="account-skeleton-row" key={index}>
+          <span className="account-skeleton account-skeleton__icon" />
+          <span className="account-skeleton-lines">
+            <span className="account-skeleton account-skeleton__title" />
+            <span className="account-skeleton account-skeleton__meta" />
+          </span>
+        </span>
       ))}
-    </div>
+    </AccountMotionPresenceItem>
   );
 }
 
-export function StatusPill({ children, tone }: { children: ReactNode; tone: "good" | "neutral" | "warn" }) {
-  return <span className={`account-status-pill account-status-pill--${tone}`}>{children}</span>;
+export function AccountInlineAlert({ action, children, tone = "error" }: {
+  action?: ReactNode;
+  children: ReactNode;
+  tone?: "error" | "info";
+}) {
+  return (
+    <AccountMotionPresenceItem className={`account-inline-alert account-inline-alert--${tone}`} role="status">
+      <span className="account-inline-alert__icon" aria-hidden="true">
+        {tone === "info"
+          ? <Info size={17} strokeWidth={1.8} />
+          : <TriangleAlert size={17} strokeWidth={1.8} />}
+      </span>
+      <span className="account-inline-alert__body">{children}</span>
+      {action ? <span className="account-inline-alert__action">{action}</span> : null}
+    </AccountMotionPresenceItem>
+  );
+}
+
+export function AccountEmptyState({ description, icon, title }: {
+  description?: string;
+  icon: ReactNode;
+  title: string;
+}) {
+  return (
+    <AccountMotionPresenceItem className="account-empty-state">
+      <span className="account-empty-state__icon" aria-hidden="true">{icon}</span>
+      <span className="account-empty-state__body">
+        <span className="account-empty-state__title">{title}</span>
+        {description ? <span className="account-empty-state__description">{description}</span> : null}
+      </span>
+    </AccountMotionPresenceItem>
+  );
+}
+
+/** 放进 section 头部刷新按钮内部，替换裸 RefreshCw；按钮本身负责 aria-busy 与可访问名。 */
+export function AccountRefreshIndicator({ active }: { active: boolean }) {
+  return (
+    <span aria-hidden="true" className="account-refresh-indicator" data-active={active ? "true" : "false"}>
+      <RefreshCw className={active ? "is-spinning" : undefined} size={17} strokeWidth={1.8} />
+    </span>
+  );
 }
