@@ -9,17 +9,17 @@ export async function runAccountHandoffBrowserCases({
 }) {
   await testAccountHandoffTimeoutCanRetry({ appUrl, browserInstance, createScenario, submitPassword, withScenario });
   await testLanguagePreferencePersistsThroughHandoff({ appUrl, browserInstance, createScenario, submitPassword, withScenario });
-  await testManageLoadingCopyRetires({ appUrl, browserInstance, createScenario, withScenario });
+  await testManageDeviceRefreshKeepsList({ appUrl, browserInstance, createScenario, withScenario });
   await testManageHeaderAndFlowSignOut({ appUrl, browserInstance, createScenario, withScenario });
 }
 
-async function testManageLoadingCopyRetires({
+async function testManageDeviceRefreshKeepsList({
   appUrl,
   browserInstance,
   createScenario,
   withScenario,
 }) {
-  const scenario = createScenario("manage-loading-copy");
+  const scenario = createScenario("manage-device-refresh");
   scenario.authenticated = true;
 
   await withScenario(browserInstance, scenario, async(page) => {
@@ -27,26 +27,29 @@ async function testManageLoadingCopyRetires({
     const devicesTab = page.locator(".account-nav").getByRole("button", { name: "设备" });
     await devicesTab.waitFor({ state: "visible", timeout: 5000 });
     await devicesTab.click();
+
     const deviceList = page.locator(".account-device-list");
     await page.locator(".account-device-list, .account-inline-alert").first().waitFor({ state: "visible", timeout: 5000 });
 
-    // 首次 effect 在开发态可能被 StrictMode 的校验重挂载取消；从用户主动刷新触发稳定的 loading → content 交接。
+    // 首次 effect 在开发态仍会被 StrictMode 的校验重挂载取消（共享 in-flight 请求随之 abort），
+    // 先由用户主动刷新一次进入稳定态，再验证刷新期间列表保持挂载。
+    await page.locator(".account-device-panel__header").getByRole("button", { name: "刷新" }).click();
+    await deviceList.waitFor({ state: "visible", timeout: 5000 });
+    const cardsBefore = await page.locator(".account-device-card").count();
+    assert.ok(cardsBefore > 0, "device list must render at least one card before refreshing");
+
+    // 后台刷新期间列表必须一直挂在 DOM 上，只有头部指示器进入 active。
     scenario.deviceSessionsDelayMs = 700;
     await page.locator(".account-device-panel__header").getByRole("button", { name: "刷新" }).click();
-    const loadingCopy = page.locator(".account-inline-loading");
-    await loadingCopy.waitFor({ state: "visible", timeout: 5000 });
-    await deviceList.waitFor({ state: "visible", timeout: 5000 });
 
-    const exitingLoadingCopy = page.locator('.account-inline-loading[data-account-motion-presence="exiting"]');
-    await exitingLoadingCopy.waitFor({ state: "attached", timeout: 1000 });
-    assert.equal(await exitingLoadingCopy.getAttribute("aria-hidden"), "true");
-    assert.equal(await exitingLoadingCopy.evaluate((element) => element.inert), true);
-    assert.equal(
-      await exitingLoadingCopy.evaluate((element) => getComputedStyle(element).visibility),
-      "hidden",
-      "resolved Manage data must not retain loading copy over the device list",
-    );
-    await loadingCopy.waitFor({ state: "detached", timeout: 1500 });
+    const indicator = page.locator('.account-refresh-indicator[data-active="true"]');
+    await indicator.waitFor({ state: "attached", timeout: 5000 });
+    assert.equal(await deviceList.isVisible(), true, "refreshing must not unmount the device list");
+    assert.equal(await page.locator(".account-device-card").count(), cardsBefore);
+    assert.equal(await page.locator(".account-skeleton-list").count(), 0, "skeleton is first-load only");
+
+    await page.locator('.account-refresh-indicator[data-active="false"]').waitFor({ state: "attached", timeout: 5000 });
+    assert.equal(await deviceList.isVisible(), true);
   }, { reducedMotion: "no-preference", viewport: { height: 900, width: 1440 } });
 }
 
