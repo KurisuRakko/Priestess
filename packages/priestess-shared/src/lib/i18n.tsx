@@ -36,8 +36,6 @@ const sharedResources: Record<PriestessLocale, ResourceLanguage> = {
     },
     errors: {
       accountServiceUnavailable: "账户服务暂时不可用，请稍后再试或联系管理员",
-      adminLoginRequired: "请先登录管理员会话",
-      adminPasswordInvalid: "管理员密码不正确",
       apiRequestFailed: "后端请求失败 ({{status}})",
       cancelled: "请求已取消",
       forbidden: "当前会话没有管理权限",
@@ -97,8 +95,6 @@ const sharedResources: Record<PriestessLocale, ResourceLanguage> = {
     },
     errors: {
       accountServiceUnavailable: "The account service is temporarily unavailable. Please try again later or contact an administrator.",
-      adminLoginRequired: "Please sign in to the admin session first.",
-      adminPasswordInvalid: "The admin password is incorrect.",
       apiRequestFailed: "Backend request failed ({{status}}).",
       cancelled: "The request was cancelled.",
       forbidden: "This session does not have admin permission.",

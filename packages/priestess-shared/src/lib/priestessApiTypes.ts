@@ -87,37 +87,6 @@ export type LocalAuthorizeResult = {
   redirectUrl: string;
 };
 
-export type AdminSession = {
-  authenticated: boolean;
-  expiresAt: string;
-  raw: unknown;
-};
-
-export type AdminSessionOptions = {
-  passkeyLoginEnabled: boolean;
-  passwordLoginEnabled: boolean;
-  raw: unknown;
-  turnstileRequired: boolean;
-  turnstileSiteKey: string;
-};
-
-export type AdminUser = {
-  address: string;
-  avatarUrl: string;
-  birthday: string;
-  userId: string;
-  username: string;
-  displayName: string;
-  email: string;
-  phone: string;
-  enabled: boolean | null;
-  preferredLanguages: string[];
-  role: PriestessUserRole;
-  createdAt: string;
-  updatedAt: string;
-  raw: unknown;
-};
-
 export type QrSessionStatus = "pending" | "scanned" | "pre_confirmed" | "confirmed" | "rejected" | "expired" | string;
 
 export type QrSession = {
@@ -142,32 +111,7 @@ export type QrSessionPollStatus = {
   status: QrSessionStatus;
 };
 
-export type AdminQrSession = {
-  sessionId: string;
-  appId: string;
-  returnTo: string;
-  status: QrSessionStatus;
-  securityLevel: number | null;
-  createdAt: string;
-  expiresAt: string;
-  updatedAt: string;
-  pcContext: unknown;
-  phoneContext: unknown;
-  raw: unknown;
-};
-
-export type LoginRiskBucket = {
-  bucketKey: string;
-  scope: string;
-  failureCount: number | null;
-  lockedUntil: string;
-  lastFailedAt: string;
-  lastReason: string;
-  context: unknown;
-  raw: unknown;
-};
-
-export type AdminPasskey = {
+export type LocalPasskey = {
   backedUp: boolean | null;
   counter: number | null;
   credentialId: string;
@@ -179,8 +123,6 @@ export type AdminPasskey = {
   disabledAt: string;
   raw: unknown;
 };
-
-export type LocalPasskey = AdminPasskey;
 
 export type PriestessStatus = {
   enabled: boolean | null;
@@ -228,19 +170,4 @@ export type RegisterVerificationCheckResult = {
   expiresAt: number;
   raw: unknown;
   verificationChallenge: string;
-};
-
-export type AdminPasswordResetRequest = {
-  context: unknown;
-  createdAt: string;
-  email: string;
-  emailSentAt: string;
-  expiresAt: string;
-  requestId: string;
-  status: string;
-  updatedAt: string;
-  usedAt: string;
-  userId: string;
-  username: string;
-  raw: unknown;
 };

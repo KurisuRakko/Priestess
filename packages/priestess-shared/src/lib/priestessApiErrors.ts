@@ -65,11 +65,6 @@ export function resolveErrorMessage(payload: unknown, status: number) {
   if (apiError && status >= 500 && ["internal_error", "invalid_config", "missing_config"].includes(apiError.code)) {
     return translatePriestess("errors:accountServiceUnavailable");
   }
-  if (apiError?.code === "invalid_admin_password") return translatePriestess("errors:adminPasswordInvalid");
-  if (apiError?.code === "admin_login_required") return translatePriestess("errors:adminLoginRequired");
-  if (apiError?.code === "admin_turnstile_required") return translatePriestess("errors:turnstileRequired");
-  if (apiError?.code === "admin_turnstile_not_configured") return translatePriestess("errors:registrationTurnstileMissing");
-  if (apiError?.code === "admin_turnstile_failed") return translatePriestess("errors:turnstileFailed");
   if (apiError?.code === "password_reset_invalid") return translatePriestess("errors:passwordResetInvalid");
   if (apiError?.code === "password_reset_turnstile_not_configured") return translatePriestess("errors:registrationTurnstileMissing");
   if (apiError?.code === "password_reset_turnstile_failed") return translatePriestess("errors:turnstileFailed");

@@ -4,8 +4,8 @@
 
 - 默认只修改 `/Users/rakko/Documents/GitHub/priestess` 内的文件。
 - 禁止修改 `/Users/rakko/Documents/GitHub/Phainon` 源码，除非用户明确说明“合并源码”或给出同等明确授权。
-- 本仓库是单 Git 项目的 npm workspaces monorepo：`apps/login` 是登录前端，`apps/admin` 是管理台前端，`packages/priestess-shared` 是共享 API、基础组件和基础样式。
-- 登录前端和管理台前端必须保持独立入口、独立路由和独立 dev 端口；不要把管理台业务面板重新 import 回登录前端，也不要把登录卡片、二维码抽屉或登录动效 import 进管理台前端。
+- 本仓库是单 Git 项目的 npm workspaces monorepo：`apps/login` 是登录与个人中心前端，`packages/priestess-shared` 是共享 API、基础组件和基础样式。
+- 管理面已统一到 Phainon 仓库的 `web/`；本仓库不再包含管理端前端，也不要在这里重建管理业务面板。
 - 跨前端复用逻辑应优先放入 `packages/priestess-shared`；只和单个前端相关的组件、样式和页面状态应留在对应 `apps/*` 子项目内。
 - 只修改完成任务必需的部分，优先复用成熟库和现有模式，避免重复造轮子。
 - 单个代码文件不超过 1000 行；接近上限时拆分为职责清晰的组件或模块。
@@ -18,7 +18,7 @@
 - 本项目内的后端相关代码应定位为 Phainon 兼容适配层、本地 mock 或迁移前验证代码；一旦需要真实生产能力，应明确说明需要接入 Phainon，而不是用前端临时逻辑掩盖后端缺口。
 - 修改 `packages/priestess-shared/src/lib/priestessApi.ts` 或新增 API 调用时，要同步检查 `docs/phainon-qr-login-design.md`，保证路径、请求体、响应 envelope、认证方式和错误处理仍能被 Phainon 后端稳定承接。
 - 本地联调默认通过 `VITE_PRIESTESS_API_BASE_URL` 指向 Phainon 兼容后端；不要把长期后端地址、管理员密码、pepper、token 或私钥写入仓库。
-- 当前共享 API client 位于 `packages/priestess-shared/src/lib/priestessApi.ts`；新增或修改后端调用时应在共享包内维护契约，再由登录或管理台前端按需引用。
+- 当前共享 API client 位于 `packages/priestess-shared/src/lib/priestessApi.ts`；新增或修改后端调用时应在共享包内维护契约，再由登录前端按需引用。
 
 ## 代码与注释
 

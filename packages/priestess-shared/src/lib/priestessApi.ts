@@ -2,22 +2,16 @@ import { PriestessApiError } from "./priestessApiErrors";
 import { requestJson, type RequestOptions } from "./priestessApiRequest";
 import { translatePriestess } from "./i18n";
 import type {
-  AdminPasskey,
-  AdminPasswordResetRequest,
-  AdminQrSession,
-  AdminSession,
-  AdminSessionOptions,
-  AdminUser,
   LocalAccountChoice,
   LocalAccountChoicesResult,
   LocalAccountChoiceRemovalResult,
   LocalBrowserAccountsResult,
   LocalAuthorizeResult,
   LocalLoginCredentials,
+  LocalPasskey,
   LocalPasswordManagerPreference,
   LocalSession,
   LocalSessionUser,
-  LoginRiskBucket,
   PasswordResetLinkVisitResult,
   PasswordResetRequestResult,
   PriestessStatus,
@@ -38,7 +32,6 @@ type JsonRecord = Record<string, unknown>;
 
 const PRIESTESS_AUTH_BASE = "/auth/priestess";
 const PRIESTESS_QR_BASE = `${PRIESTESS_AUTH_BASE}/qr`;
-const ADMIN_PASSWORD_CONFIRMATION_HEADER = "X-Phainon-Admin-Password";
 
 export async function getLocalSession(options: Pick<RequestOptions, "signal"> = {}) {
   try {
@@ -179,7 +172,7 @@ export async function changeLocalPassword(params: { currentPassword: string; pas
 
 export async function listLocalPasskeys(options: Pick<RequestOptions, "signal"> = {}) {
   const payload = await requestJson(`${PRIESTESS_AUTH_BASE}/passkeys`, { signal: options.signal });
-  return extractList(payload, ["passkeys", "credentials", "items", "data"]).map(normalizeAdminPasskey);
+  return extractList(payload, ["passkeys", "credentials", "items", "data"]).map(normalizeLocalPasskey);
 }
 
 export async function renameLocalPasskey(credentialId: string, name: string, options: Pick<RequestOptions, "signal"> = {}) {
@@ -310,136 +303,6 @@ export async function confirmPasswordReset(params: { password: string; requestId
     method: "POST",
     signal: options.signal,
   });
-}
-
-export async function getAdminSession(options: Pick<RequestOptions, "signal"> = {}) {
-  const payload = await requestJson("/admin/session", { signal: options.signal });
-  return normalizeAdminSession(payload);
-}
-
-export async function getAdminSessionOptions(options: Pick<RequestOptions, "signal"> = {}) {
-  const payload = await requestJson("/admin/session/options", { signal: options.signal });
-  return normalizeAdminSessionOptions(payload);
-}
-
-export async function loginAdminSession(params: { password: string; turnstileToken?: string }, options: Pick<RequestOptions, "signal"> = {}) {
-  const payload = await requestJson("/admin/session", {
-    body: {
-      password: params.password,
-      ...(params.turnstileToken ? { turnstile_token: params.turnstileToken } : {}),
-    },
-    method: "POST",
-    signal: options.signal,
-  });
-  return normalizeAdminSession(payload);
-}
-
-export async function logoutAdminSession(options: Pick<RequestOptions, "signal"> = {}) {
-  await requestJson("/admin/session", {
-    method: "DELETE",
-    signal: options.signal,
-  });
-}
-
-export async function listAdminUsers(options: Pick<RequestOptions, "signal"> = {}) {
-  const payload = await requestJson("/admin/priestess/users", { signal: options.signal });
-  return extractList(payload, ["users", "local_users", "items", "data"]).map(normalizeAdminUser);
-}
-
-export async function updateAdminUserRole(userId: string, role: PriestessUserRole, adminPassword: string, options: Pick<RequestOptions, "signal"> = {}) {
-  // 管理密码只作为本次高风险变更的确认 header 发送，不写入请求体或前端状态。
-  const payload = await requestJson(`/admin/priestess/users/${encodeURIComponent(userId)}`, {
-    body: { role },
-    headers: { [ADMIN_PASSWORD_CONFIRMATION_HEADER]: adminPassword },
-    method: "PUT",
-    signal: options.signal,
-  });
-  const userPayload = isRecord(payload) ? pickRecord(payload, ["user", "local_user", "localUser", "data"]) ?? payload : payload;
-  return normalizeAdminUser(userPayload, 0);
-}
-
-export async function listAdminQrSessions(params: { status?: string; limit?: number } = {}, options: Pick<RequestOptions, "signal"> = {}) {
-  const searchParams = new URLSearchParams();
-  if (params.status && params.status !== "all") {
-    searchParams.set("status", params.status);
-  }
-  if (typeof params.limit === "number") {
-    searchParams.set("limit", String(params.limit));
-  }
-
-  const payload = await requestJson("/admin/priestess/qr-sessions", {
-    searchParams,
-    signal: options.signal,
-  });
-  return extractList(payload, ["qr_sessions", "qrSessions", "sessions", "items", "data"]).map(normalizeAdminQrSession);
-}
-
-export async function listLoginRiskBuckets(params: { status?: string; limit?: number } = {}, options: Pick<RequestOptions, "signal"> = {}) {
-  const searchParams = new URLSearchParams();
-  if (params.status && params.status !== "all") {
-    searchParams.set("status", params.status);
-  }
-  if (typeof params.limit === "number") {
-    searchParams.set("limit", String(params.limit));
-  }
-
-  const payload = await requestJson("/admin/priestess/login-risk", {
-    searchParams,
-    signal: options.signal,
-  });
-  return extractList(payload, ["buckets", "login_risk", "loginRisk", "items", "data"]).map(normalizeLoginRiskBucket);
-}
-
-export async function listAdminUserPasskeys(userId: string, options: Pick<RequestOptions, "signal"> = {}) {
-  const payload = await requestJson(`/admin/priestess/users/${encodeURIComponent(userId)}/passkeys`, {
-    signal: options.signal,
-  });
-  return extractList(payload, ["passkeys", "credentials", "items", "data"]).map(normalizeAdminPasskey);
-}
-
-export async function listPasswordResetRequests(params: { limit?: number; status?: string } = {}, options: Pick<RequestOptions, "signal"> = {}) {
-  const searchParams = new URLSearchParams();
-  if (params.status) {
-    searchParams.set("status", params.status);
-  }
-  if (typeof params.limit === "number") {
-    searchParams.set("limit", String(params.limit));
-  }
-
-  const payload = await requestJson("/admin/priestess/password-reset-requests", {
-    searchParams,
-    signal: options.signal,
-  });
-  return extractList(payload, ["requests", "password_reset_requests", "items", "data"]).map(normalizeAdminPasswordResetRequest);
-}
-
-function normalizeAdminSession(payload: unknown): AdminSession {
-  if (!isRecord(payload)) {
-    return {
-      authenticated: false,
-      expiresAt: "",
-      raw: payload,
-    };
-  }
-
-  return {
-    authenticated: readBoolean(payload, ["authenticated", "active", "ok"]) ?? false,
-    expiresAt: readDateTimeString(payload, ["expires_at", "expiresAt"]),
-    raw: payload,
-  };
-}
-
-function normalizeAdminSessionOptions(payload: unknown): AdminSessionOptions {
-  const record = isRecord(payload) ? payload : {};
-  const passwordLoginEnabled = readBoolean(record, ["password_login_enabled", "passwordLoginEnabled"]);
-
-  return {
-    passkeyLoginEnabled: readBoolean(record, ["passkey_login_enabled", "passkeyLoginEnabled"]) ?? false,
-    passwordLoginEnabled: passwordLoginEnabled ?? true,
-    raw: payload,
-    turnstileRequired: readBoolean(record, ["turnstile_required", "turnstileRequired"]) ?? false,
-    turnstileSiteKey: readString(record, ["turnstile_site_key", "turnstileSiteKey"]),
-  };
 }
 
 function normalizeLocalSession(payload: unknown): LocalSession {
@@ -702,72 +565,11 @@ function normalizeRegisterVerificationCheckResult(payload: unknown): RegisterVer
   };
 }
 
-function normalizeAdminUser(payload: unknown, index: number): AdminUser {
-  const record = isRecord(payload) ? payload : {};
-  const userId = readString(record, ["user_id", "userId", "id", "sub"]) || `user-${index + 1}`;
-  const username = readString(record, ["username", "name", "login"]) || userId;
-  const address = readString(record, ["address"]);
-  const birthday = readString(record, ["birthday", "birth_date", "birthDate", "date_of_birth", "dateOfBirth"]);
-  const email = readString(record, ["email"]);
-  const phone = readString(record, ["phone", "phone_number", "phoneNumber"]);
-  const displayName = readString(record, ["display_name", "displayName", "nickname", "name"]) || username;
-
-  return {
-    address,
-    avatarUrl: readString(record, ["avatar_url", "avatarUrl", "picture"]),
-    birthday,
-    createdAt: readDateTimeString(record, ["created_at", "createdAt"]),
-    displayName,
-    email,
-    enabled: readBoolean(record, ["enabled"]),
-    phone,
-    preferredLanguages: readStringList(record, ["preferred_languages", "preferredLanguages"]),
-    raw: payload,
-    role: normalizePriestessUserRole(readString(record, ["role", "user_role", "userRole"])),
-    updatedAt: readDateTimeString(record, ["updated_at", "updatedAt"]),
-    userId,
-    username,
-  };
-}
-
 function normalizePriestessUserRole(value: string): PriestessUserRole {
   return value === "admin" ? "admin" : "user";
 }
 
-function normalizeAdminQrSession(payload: unknown, index: number): AdminQrSession {
-  const record = isRecord(payload) ? payload : {};
-
-  return {
-    appId: readString(record, ["app_id", "appId", "client_id", "clientId"]),
-    createdAt: readDateTimeString(record, ["created_at", "createdAt"]),
-    expiresAt: readDateTimeString(record, ["expires_at", "expiresAt"]),
-    pcContext: readUnknown(record, ["pc_context", "pcContext", "pc_context_json", "pcContextJson"]),
-    phoneContext: readUnknown(record, ["phone_context", "phoneContext", "phone_context_json", "phoneContextJson"]),
-    raw: payload,
-    returnTo: readString(record, ["return_to", "returnTo", "redirect_uri", "redirectUri"]),
-    securityLevel: readNumber(record, ["security_level", "securityLevel"]),
-    sessionId: readString(record, ["session_id", "sessionId", "id"]) || `qr-${index + 1}`,
-    status: readString(record, ["status"]) || "unknown",
-    updatedAt: readDateTimeString(record, ["updated_at", "updatedAt"]),
-  };
-}
-
-function normalizeLoginRiskBucket(payload: unknown, index: number): LoginRiskBucket {
-  const record = isRecord(payload) ? payload : {};
-
-  return {
-    bucketKey: readString(record, ["bucket_key", "bucketKey", "id", "key"]) || `bucket-${index + 1}`,
-    context: readUnknown(record, ["context", "context_json", "contextJson", "last_context", "lastContext"]),
-    failureCount: readNumber(record, ["failure_count", "failureCount", "count"]),
-    lastFailedAt: readDateTimeString(record, ["last_failed_at", "lastFailedAt"]),
-    lastReason: readString(record, ["last_reason", "lastReason", "reason"]),
-    lockedUntil: readDateTimeString(record, ["locked_until", "lockedUntil"]),
-    raw: payload,
-    scope: readString(record, ["scope"]) || "unknown",
-  };
-}
-
-function normalizeAdminPasskey(payload: unknown, index: number): AdminPasskey {
+function normalizeLocalPasskey(payload: unknown, index: number): LocalPasskey {
   const record = isRecord(payload) ? payload : {};
 
   return {
@@ -781,24 +583,6 @@ function normalizeAdminPasskey(payload: unknown, index: number): AdminPasskey {
     name: readString(record, ["name", "label"]) || "Passkey",
     raw: payload,
     transports: readStringList(record, ["transports", "transport"]),
-  };
-}
-
-function normalizeAdminPasswordResetRequest(payload: unknown, index: number): AdminPasswordResetRequest {
-  const record = isRecord(payload) ? payload : {};
-  return {
-    context: readUnknown(record, ["context"]),
-    createdAt: readDateTimeString(record, ["created_at", "createdAt"]),
-    email: readString(record, ["email"]),
-    emailSentAt: readDateTimeString(record, ["email_sent_at", "emailSentAt"]),
-    expiresAt: readDateTimeString(record, ["expires_at", "expiresAt"]),
-    raw: payload,
-    requestId: readString(record, ["request_id", "requestId", "id"]) || `reset-${index + 1}`,
-    status: readString(record, ["status"]) || "unknown",
-    updatedAt: readDateTimeString(record, ["updated_at", "updatedAt"]),
-    usedAt: readDateTimeString(record, ["used_at", "usedAt"]),
-    userId: readString(record, ["user_id", "userId"]),
-    username: readString(record, ["username"]),
   };
 }
 
