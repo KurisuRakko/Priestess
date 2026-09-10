@@ -133,7 +133,7 @@ export function AccountPrivacySection() {
               onClick={() => void loadActivities({ reset: true })}
               type="button"
             >
-              <AccountRefreshIndicator active={isRefreshing}/>
+              <AccountRefreshIndicator active={isRefreshing} />
               <span>{t("刷新")}</span>
             </button>
           </div>
@@ -153,11 +153,11 @@ export function AccountPrivacySection() {
             </AccountInlineAlert>
           ) : null}
           {isInitialLoading ? (
-            <AccountSkeletonList key="privacy-skeleton" label={t("正在读取隐私活动")} rows={3} variant="activity"/>
+            <AccountSkeletonList key="privacy-skeleton" label={t("正在读取隐私活动")} rows={3} variant="activity" />
           ) : null}
           {!isInitialLoading && !error && activities.length === 0 ? (
             <AccountEmptyState
-              icon={<ShieldCheck size={18} strokeWidth={1.8}/>}
+              icon={<ShieldCheck size={18} strokeWidth={1.8} />}
               key="privacy-empty"
               title={t("当前没有可显示的隐私活动。")}
             />

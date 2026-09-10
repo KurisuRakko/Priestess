@@ -269,6 +269,33 @@ async function testDeviceSessionOverview({ getLocalDeviceSessionOverview, listLo
     const sessions = await listLocalDeviceSessions({ forceRefresh: true });
     assert.equal(Array.isArray(sessions), true);
   });
+
+  // 41. 共享 in-flight 请求不随第一个调用方 abort：第二个调用方仍拿到数据，且只发了一次 fetch。
+  {
+    const originalFetch = globalThis.fetch;
+    let fetchCalls = 0;
+    let release = () => {};
+    globalThis.fetch = async() => {
+      fetchCalls += 1;
+      await new Promise((resolve) => { release = resolve; });
+      return jsonResponse({ device_count: 1, device_limit: 5, sessions: [buildDeviceSession({ browser_id: "b1" })], total: 1 });
+    };
+    try {
+      const first = new AbortController();
+      const firstCall = getLocalDeviceSessionOverview({ forceRefresh: true, signal: first.signal });
+      const secondCall = getLocalDeviceSessionOverview({ forceRefresh: true });
+      first.abort();
+      release();
+      const [firstResult, secondResult] = await Promise.allSettled([firstCall, secondCall]);
+      assert.equal(secondResult.status, "fulfilled", "second caller must still receive data after the first caller aborted");
+      assert.equal(secondResult.value.deviceCount, 1);
+      assert.equal(fetchCalls, 1, "both callers must share a single in-flight request");
+      // 第一个调用方拿到结果也可以（它自己决定是否消费），但绝不能把 AbortError 传染给别人。
+      assert.notEqual(firstResult.status === "rejected" && secondResult.status === "rejected", true);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  }
 }
 
 async function testServiceAvailability({ listLocalServiceAvailability }) {
