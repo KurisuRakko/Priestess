@@ -275,8 +275,11 @@ async function testDeviceSessionOverview({ getLocalDeviceSessionOverview, listLo
     const originalFetch = globalThis.fetch;
     let fetchCalls = 0;
     let release = () => {};
+    let reachedFetch = () => {};
+    const fetchEntered = new Promise((resolve) => { reachedFetch = resolve; });
     globalThis.fetch = async() => {
       fetchCalls += 1;
+      reachedFetch();
       await new Promise((resolve) => { release = resolve; });
       return jsonResponse({ device_count: 1, device_limit: 5, sessions: [buildDeviceSession({ browser_id: "b1" })], total: 1 });
     };
@@ -284,6 +287,7 @@ async function testDeviceSessionOverview({ getLocalDeviceSessionOverview, listLo
       const first = new AbortController();
       const firstCall = getLocalDeviceSessionOverview({ forceRefresh: true, signal: first.signal });
       const secondCall = getLocalDeviceSessionOverview({ forceRefresh: true });
+      await fetchEntered;
       first.abort();
       release();
       const [firstResult, secondResult] = await Promise.allSettled([firstCall, secondCall]);
