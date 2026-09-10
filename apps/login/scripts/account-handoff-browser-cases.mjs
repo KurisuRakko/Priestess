@@ -29,11 +29,7 @@ async function testManageDeviceRefreshKeepsList({
     await devicesTab.click();
 
     const deviceList = page.locator(".account-device-list");
-    await page.locator(".account-device-list, .account-inline-alert").first().waitFor({ state: "visible", timeout: 5000 });
-
-    // 首次 effect 在开发态仍会被 StrictMode 的校验重挂载取消（共享 in-flight 请求随之 abort），
-    // 先由用户主动刷新一次进入稳定态，再验证刷新期间列表保持挂载。
-    await page.locator(".account-device-panel__header").getByRole("button", { name: "刷新" }).click();
+    // 共享请求已不再绑定单个调用方的 signal，StrictMode 重挂载不会再让首屏落到错误态：首屏必须直接出列表。
     await deviceList.waitFor({ state: "visible", timeout: 5000 });
     const cardsBefore = await page.locator(".account-device-card").count();
     assert.ok(cardsBefore > 0, "device list must render at least one card before refreshing");

@@ -109,9 +109,11 @@ export type LocalDeviceSessionOverview = {
   total: number;
 };
 
-type LocalDeviceSessionsRequestOptions = Pick<RequestOptions, "signal"> & {
+type LocalDeviceSessionsRequestOptions = {
   /** 手动刷新设备页时跳过短暂缓存，避免显示刚撤销的旧会话。 */
   forceRefresh?: boolean;
+  /** 只影响调用方是否消费结果；共享的设备列表请求本身不会因单个调用方 abort 而取消。 */
+  signal?: RequestOptions["signal"];
 };
 
 export type LocalPrivacyActivity = {
@@ -187,7 +189,10 @@ export async function getLocalDeviceSessionOverview(options: LocalDeviceSessions
     return localDeviceSessionsInFlight;
   }
 
-  const request = requestJson(`${PRIESTESS_AUTH_BASE}/devices/sessions`, { signal: options.signal })
+  // 多个调用方（例如 StrictMode 重挂载、多个 section 同时读取）共享同一个 in-flight 请求，
+  // 所以这个请求不能绑定任何单个调用方的 AbortSignal，否则第一个调用方一 abort 其余全部拿到 AbortError。
+  // 调用方自己的 signal 只用于它 await 之后判断是否还要消费结果（现有容器都已这么做）。
+  const request = requestJson(`${PRIESTESS_AUTH_BASE}/devices/sessions`)
     .then((payload) => {
       const overview = normalizeLocalDeviceSessionOverview(payload);
       localDeviceSessionsCache = { loadedAt: Date.now(), overview };
