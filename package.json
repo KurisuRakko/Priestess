@@ -16,6 +16,9 @@
     "test:account-picker": "npm run test:account-picker -w @priestess/login",
     "test:mobile-login-browser": "npm run test:mobile-login-browser -w @priestess/login",
     "test:login-turnstile-browser": "npm run test:login-turnstile-browser -w @priestess/login",
-    "test:i18n": "npm run test:i18n -w @priestess/login"
+    "test:i18n": "npm run test:i18n -w @priestess/login",
+    "test:account-primitives": "npm run test:account-primitives -w @priestess/login",
+    "test:account-devices": "npm run test:account-devices -w @priestess/login",
+    "test:account-services": "npm run test:account-services -w @priestess/login"
   }
 }
