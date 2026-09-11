@@ -70,8 +70,6 @@ async function testManageHeaderAndFlowSignOut({
       const topbar = page.locator(".account-topbar");
       const leading = topbar.locator(".account-topbar__leading");
       const currentAccount = topbar.locator(".account-topbar__identity");
-      const footer = page.locator(".account-page__signout");
-      const signOutButton = footer.locator(".account-button--danger");
       await currentAccount.waitFor({ state: "visible", timeout: 5000 });
 
       assert.equal(await leading.locator(".brand-mark").count(), 1);
@@ -100,37 +98,62 @@ async function testManageHeaderAndFlowSignOut({
       assert.ok(headerGeometry.leftCenter < headerGeometry.rightCenter);
       assert.equal(headerGeometry.noHorizontalOverflow, true);
 
-      const flowMetrics = await footer.evaluate((element) => {
-        const rect = element.getBoundingClientRect();
+      // 页脚登出已经并入头像菜单：菜单没打开时，页面上不该还留着旧的页脚入口。
+      assert.equal(await page.locator(".account-page__signout").count(), 0);
+      assert.equal(await page.locator(".account-menu-dialog").count(), 0);
+
+      await currentAccount.click();
+      const menuBackdrop = page.locator(".account-dialog-backdrop");
+      await menuBackdrop.waitFor({ state: "visible", timeout: 5000 });
+      const accountMenu = page.locator(".account-menu-dialog");
+      const menuItems = accountMenu.locator(".account-menu-item");
+      const signOutButton = accountMenu.locator(".account-menu-item--danger");
+
+      assert.equal(await accountMenu.locator(".account-menu-dialog__avatar").count(), 1);
+      assert.equal(await menuItems.count(), 2);
+      assert.match(await menuItems.nth(0).innerText(), /切换账号|Switch account/);
+      assert.match(await menuItems.nth(1).innerText(), /退出|Sign out/);
+
+      const menuGeometry = await accountMenu.evaluate((element) => {
+        const card = element.getBoundingClientRect();
+        const avatar = element.querySelector(".account-menu-dialog__avatar-slot")?.getBoundingClientRect();
+        const name = element.querySelector(".account-menu-dialog__name")?.getBoundingClientRect();
         return {
-          documentGap: document.documentElement.scrollHeight - (rect.bottom + window.scrollY),
-          initialTop: rect.top,
-          position: getComputedStyle(element).position,
-          viewportHeight: window.innerHeight,
+          avatarAboveName: Boolean(avatar && name && avatar.bottom <= name.top + 1),
+          avatarCenter: avatar ? avatar.left + avatar.width / 2 : 0,
+          cardCenter: card.left + card.width / 2,
+          cardInsideViewport: card.left >= 0 && card.right <= window.innerWidth,
+          noHorizontalOverflow: document.documentElement.scrollWidth <= window.innerWidth,
         };
       });
-      assert.equal(flowMetrics.position, "static");
+      assert.equal(menuGeometry.cardInsideViewport, true);
+      assert.equal(menuGeometry.noHorizontalOverflow, true);
+      assert.equal(menuGeometry.avatarAboveName, true);
       assert.ok(
-        flowMetrics.initialTop >= flowMetrics.viewportHeight,
-        `sign-out must begin below the initial ${viewport.name} viewport: ${JSON.stringify(flowMetrics)}`,
+        Math.abs(menuGeometry.avatarCenter - menuGeometry.cardCenter) <= 2,
+        `avatar must sit centred at the top of the menu card: ${JSON.stringify(menuGeometry)}`,
       );
-      assert.ok(flowMetrics.documentGap >= 0 && flowMetrics.documentGap <= 64);
 
-      await signOutButton.scrollIntoViewIfNeeded();
-      await signOutButton.waitFor({ state: "visible" });
       if (viewport.width <= 390) {
-        const footerWidth = await footer.evaluate((element) => element.clientWidth);
-        const buttonWidth = await signOutButton.evaluate((element) => element.getBoundingClientRect().width);
-        assert.ok(Math.abs(footerWidth - buttonWidth) < 2, "mobile sign-out button should fill the available width");
+        const itemsWidth = await accountMenu.locator(".account-menu-dialog__items").evaluate((element) => element.clientWidth);
+        const itemWidth = await signOutButton.evaluate((element) => element.getBoundingClientRect().width);
+        assert.ok(Math.abs(itemsWidth - itemWidth) < 2, "mobile menu items should fill the available width");
       }
+
+      await page.keyboard.press("Escape");
+      await menuBackdrop.waitFor({ state: "detached", timeout: 5000 });
+      assert.equal(await accountMenu.count(), 0);
 
       if (index === viewports.length - 1) {
         scenario.logoutError = true;
+        await currentAccount.click();
+        await menuBackdrop.waitFor({ state: "visible", timeout: 5000 });
         await signOutButton.click();
         const failureNotice = page.locator(".toast");
         await failureNotice.waitFor({ state: "visible", timeout: 2500 });
         assert.match(await failureNotice.innerText(), /账户服务|退出/);
         assert.equal(new URL(page.url()).pathname, "/manage");
+        // 登出失败不关菜单，用户可以直接重试。
         assert.equal(await signOutButton.isEnabled(), true);
 
         scenario.logoutError = false;

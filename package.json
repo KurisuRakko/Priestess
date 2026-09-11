@@ -17,6 +17,7 @@
     "test:i18n": "npm run test:i18n -w @priestess/login",
     "test:account-primitives": "npm run test:account-primitives -w @priestess/login",
     "test:account-devices": "npm run test:account-devices -w @priestess/login",
-    "test:account-services": "npm run test:account-services -w @priestess/login"
+    "test:account-services": "npm run test:account-services -w @priestess/login",
+    "test:account-menu": "npm run test:account-menu -w @priestess/login"
   }
 }

@@ -337,6 +337,8 @@ export const accountTextResources: PriestessI18nResources = {
       "当前没有向你开放的服务": "No services are open to you right now",
       "无法读取服务列表": "Unable to read the service list",
       "正在读取服务": "Reading services",
+      "切换账号": "Switch account",
+      "关闭账号菜单": "Close the account menu",
     },
   },
 };

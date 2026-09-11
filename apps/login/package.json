@@ -13,7 +13,8 @@
     "test:i18n": "node scripts/i18n-completeness-smoke.mjs",
     "test:account-primitives": "node scripts/account-primitives-smoke.mjs",
     "test:account-devices": "node scripts/account-devices-smoke.mjs",
-    "test:account-services": "node scripts/account-services-smoke.mjs"
+    "test:account-services": "node scripts/account-services-smoke.mjs",
+    "test:account-menu": "node scripts/account-menu-smoke.mjs"
   },
   "dependencies": {
     "@priestess/shared": "0.1.0",

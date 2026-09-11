@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { motion, useReducedMotion } from "motion/react";
 import {
   AlertTriangle,
   CalendarDays,
@@ -7,7 +8,6 @@ import {
   CircleDashed,
   Laptop,
   Languages,
-  LogOut,
   Mail,
   MapPin,
   Phone,
@@ -31,6 +31,7 @@ import {
 } from "@priestess/shared";
 import { AccountSectionView, InfoCard } from "./AccountPagePrimitives";
 import { AccountDevicesSection } from "./AccountDevicesSection";
+import { AccountMenuDialog, ACCOUNT_MENU_AVATAR_LAYOUT_ID } from "./AccountMenuDialog";
 import { AccountPrivacySection } from "./AccountPrivacySection";
 import { AccountSecuritySection } from "./AccountSecuritySection";
 import { AccountServicesSection } from "./AccountServicesSection";
@@ -39,6 +40,7 @@ import { PasswordChangeDialog } from "./PasswordChangeDialog";
 import { PriestessLanguageSwitcher } from "./PriestessLanguageSwitcher";
 import { ProfileQuickEditDialog, type ProfileQuickEditMode } from "./ProfileQuickEditDialog";
 import type { AccountDestination, AccountPageSection } from "../lib/accountDestination";
+import { DURATION_BASE, EASE_LAYOUT } from "../lib/motionTokens";
 import {
   getAccountManagementActionSection,
   readAccountManagementAction,
@@ -80,11 +82,13 @@ export function AccountPage({
   onNotice,
 }: AccountPageProps) {
   const { t } = usePriestessTranslation("account");
+  const shouldReduceMotion = useReducedMotion();
   const accountShellRef = useRef<HTMLElement | null>(null);
   const handoffAvatarRef = useRef<HTMLSpanElement | null>(null);
   const handledAccountActionRef = useRef("");
   const [activeSection, setActiveSection] = useState<AccountSection>(() => bootstrapDestination?.section ?? readSectionFromHash());
   const [error, setError] = useState("");
+  const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(!bootstrapSession);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isPasswordChangeOpen, setIsPasswordChangeOpen] = useState(false);
@@ -264,12 +268,11 @@ export function AccountPage({
         </div>
         {isAuthenticated ? (
           <button
+            aria-expanded={isAccountMenuOpen}
+            aria-haspopup="dialog"
             aria-label={t("当前账号")}
             className="account-topbar__identity"
-            onClick={() => {
-              selectSection("overview");
-              window.scrollTo({ behavior: "auto", top: 0 });
-            }}
+            onClick={() => setIsAccountMenuOpen(true)}
             title={t("当前账号")}
             type="button"
           >
@@ -278,13 +281,20 @@ export function AccountPage({
               data-account-handoff-avatar-target="true"
               ref={handoffAvatarRef}
             >
-              <img
-                alt=""
-                onError={() => {
-                  if (topbarAvatarUrl !== PRIESTESS_DEFAULT_AVATAR_URL) setTopbarAvatarLoadFailed(true);
-                }}
-                src={topbarAvatarUrl}
-              />
+              {isAccountMenuOpen ? (
+                // 菜单打开时头像已经飞到卡片里，这里留一个同尺寸占位，避免顶栏塌陷。
+                <span className="account-topbar__avatar-placeholder" aria-hidden="true" />
+              ) : (
+                <motion.img
+                  alt=""
+                  layoutId={shouldReduceMotion ? undefined : ACCOUNT_MENU_AVATAR_LAYOUT_ID}
+                  onError={() => {
+                    if (topbarAvatarUrl !== PRIESTESS_DEFAULT_AVATAR_URL) setTopbarAvatarLoadFailed(true);
+                  }}
+                  src={topbarAvatarUrl}
+                  transition={{ duration: DURATION_BASE, ease: EASE_LAYOUT }}
+                />
+              )}
             </span>
           </button>
         ) : null}
@@ -358,13 +368,20 @@ export function AccountPage({
                 {activeSection === "privacy" ? <AccountPrivacySection /> : null}
               </div>
             </div>
-            {/* 退出保持在普通文档流末尾，长页面内容不会被固定操作遮挡。 */}
-            <footer className="account-page__signout">
-              <button className="account-button account-button--danger" disabled={isLoggingOut} onClick={logout} type="button">
-                <LogOut aria-hidden="true" size={17} strokeWidth={1.8} />
-                <span>{isLoggingOut ? t("退出中") : t("退出")}</span>
-              </button>
-            </footer>
+            <AccountMenuDialog
+              avatarUrl={topbarAvatarUrl}
+              displayName={user?.displayName || user?.username || ""}
+              isLoggingOut={isLoggingOut}
+              onAvatarError={() => { if (topbarAvatarUrl !== PRIESTESS_DEFAULT_AVATAR_URL) setTopbarAvatarLoadFailed(true); }}
+              onClose={() => setIsAccountMenuOpen(false)}
+              onSignOut={logout}
+              onSwitchAccount={() => {
+                // 切换账号不登出：保留当前会话，登录页的账号选择卡才认得出这个账号。
+                setIsAccountMenuOpen(false);
+                onNavigateToLogin();
+              }}
+              open={isAccountMenuOpen}
+            />
           </>
         ) : null}
 
