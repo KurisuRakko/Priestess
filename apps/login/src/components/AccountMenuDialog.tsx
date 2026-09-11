@@ -6,8 +6,9 @@ import { DURATION_BASE, EASE_LAYOUT } from "../lib/motionTokens";
 import "./AccountMenu.css";
 
 /**
- * 顶栏头像与菜单头像共用同一个 layoutId，由 motion 负责把头像从左上角飞到卡片顶部。
- * 同一时刻全页只能有一个元素带这个 layoutId，所以顶栏与菜单必须互斥渲染。
+ * 顶栏头像与菜单头像共用同一个 layoutId，由 motion 负责把头像在两者之间飞行。
+ * 开菜单时两侧互斥渲染，同一时刻只有一个元素带这个 layoutId；关菜单时弹窗还在退场而顶栏图已经挂载，
+ * 实测会并存约 16 帧，motion 对这两张图做交叉淡入（一张渐隐、另一张渐显），这是预期形态。
  */
 export const ACCOUNT_MENU_AVATAR_LAYOUT_ID = "account-topbar-avatar";
 
@@ -42,6 +43,7 @@ export function AccountMenuDialog({
       labelledBy="account-menu-title"
       onDismiss={isLoggingOut ? undefined : onClose}
       open={open}
+      surfaceMotion="fade"
     >
       <button
         aria-label={t("关闭账号菜单")}

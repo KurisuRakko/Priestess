@@ -8,13 +8,14 @@
   text-align: center;
 }
 
+/* 飞行中的头像会被 transform 移到这个容器之外，容器一旦裁剪，大半段飞行就看不见了。
+   圆形的观感改由容器的圆角和 img 自身的 border-radius 一起保证。 */
 .account-menu-dialog__avatar-slot {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 72px;
   height: 72px;
-  overflow: hidden;
   border-radius: 50%;
   background: var(--color-surface-muted);
 }
@@ -22,6 +23,7 @@
 .account-menu-dialog__avatar {
   width: 100%;
   height: 100%;
+  border-radius: 50%;
   object-fit: cover;
 }
 

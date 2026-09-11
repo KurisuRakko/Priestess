@@ -58,12 +58,12 @@
   outline-offset: 2px;
 }
 
+/* 菜单关闭时头像是从这个容器飞回卡片里的，容器不能裁剪，否则返程大半段看不见。 */
 .account-topbar__avatar {
   display: inline-flex;
   flex: 0 0 auto;
   width: 44px;
   height: 44px;
-  overflow: hidden;
   border: 1px solid rgb(255 255 255 / 92%);
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.74);
@@ -73,6 +73,7 @@
 .account-topbar__avatar img {
   width: 100%;
   height: 100%;
+  border-radius: 50%;
   object-fit: cover;
 }
 
