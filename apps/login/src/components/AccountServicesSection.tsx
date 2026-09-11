@@ -8,9 +8,6 @@ import {
 } from "@priestess/shared";
 import { AccountServicesView } from "./AccountServicesView";
 
-/** 危险按钮不能长期停在「确认」态，3 秒不点自动回到初始形态。 */
-const CONFIRM_RESET_MS = 3_000;
-
 /** 服务节容器：只负责取数与解除授权，界面全部交给 AccountServicesView。props 必须保持为空。 */
 export function AccountServicesSection() {
   const { t } = usePriestessTranslation("account");
@@ -49,18 +46,11 @@ export function AccountServicesSection() {
   const isInitialLoading = isLoading && !hasLoaded;
   const isRefreshing = isLoading && hasLoaded;
 
-  useEffect(() => {
-    if (!confirmingAppId) return undefined;
-    const timer = window.setTimeout(() => setConfirmingAppId(""), CONFIRM_RESET_MS);
-    return () => window.clearTimeout(timer);
-  }, [confirmingAppId]);
-
   const revokeService = useCallback(async(appId: string) => {
     const target = services.find((service) => service.appId === appId);
     if (!target) return;
 
     const snapshot = services;
-    setConfirmingAppId("");
     setRevokingAppId(appId);
     setError("");
     setNotice("");
@@ -76,6 +66,8 @@ export function AccountServicesSection() {
       setServices(snapshot);
       setError(getPriestessApiErrorMessage(requestError, t("解除授权失败")));
     } finally {
+      // 弹窗在提交期间留在屏上显示「正在解除」，请求结束（无论成败）才收起。
+      setConfirmingAppId("");
       setRevokingAppId("");
     }
   }, [loadServices, services, t]);

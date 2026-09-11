@@ -128,25 +128,17 @@
   justify-content: flex-end;
 }
 
-.account-service-card__confirm {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
 @media (max-width: 720px) {
   .account-service-panel__header {
     align-items: flex-start;
     flex-direction: column;
   }
 
-  .account-service-card__actions,
-  .account-service-card__confirm {
+  .account-service-card__actions {
     width: 100%;
   }
 
-  .account-service-card__actions .account-button,
-  .account-service-card__confirm .account-button {
+  .account-service-card__actions .account-button {
     flex: 1 1 0;
   }
 }

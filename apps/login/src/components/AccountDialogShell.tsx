@@ -9,10 +9,12 @@ type AccountDialogShellProps = {
   className?: string;
   labelledBy: string;
   onAfterOpen?: () => void;
+  /** 传了才启用「按 Esc 关闭」与「点遮罩关闭」；不传则沿用旧行为（只能靠弹窗内按钮关闭）。 */
+  onDismiss?: () => void;
   open: boolean;
 };
 
-export function AccountDialogShell({ children, className, labelledBy, onAfterOpen, open }: AccountDialogShellProps) {
+export function AccountDialogShell({ children, className, labelledBy, onAfterOpen, onDismiss, open }: AccountDialogShellProps) {
   const shouldReduceMotion = useReducedMotion();
   const dialogRef = useRef<HTMLElement | null>(null);
   const hasReportedOpenRef = useRef(false);
@@ -39,6 +41,15 @@ export function AccountDialogShell({ children, className, labelledBy, onAfterOpe
     return () => window.cancelAnimationFrame(frameId);
   }, [onAfterOpen, open]);
 
+  useEffect(() => {
+    if (!open || !onDismiss) return undefined;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onDismiss();
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [onDismiss, open]);
+
   // 关闭时由 AnimatePresence 接管卸载时机，保证个人中心弹窗都有完整退场动画。
   const dialog = (
     <AnimatePresence>
@@ -48,6 +59,7 @@ export function AccountDialogShell({ children, className, labelledBy, onAfterOpe
           exit={{ opacity: 0 }}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
+          onClick={onDismiss ? (event) => { if (event.target === event.currentTarget) onDismiss(); } : undefined}
           role="presentation"
           transition={{ duration: DURATION_FAST, ease: EASE_OUT }}
         >

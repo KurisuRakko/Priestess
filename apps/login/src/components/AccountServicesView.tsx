@@ -1,8 +1,9 @@
 import { useMemo } from "react";
 import { AnimatePresence } from "motion/react";
-import { AppWindow, LockKeyhole, ShieldCheck, Unplug, WalletCards } from "lucide-react";
+import { AppWindow, LockKeyhole, ShieldCheck, Unplug, WalletCards, X } from "lucide-react";
 import { usePriestessTranslation, type LocalServiceAvailability } from "@priestess/shared";
 import { formatRelativeTime } from "./accountPageFormat";
+import { AccountDialogShell } from "./AccountDialogShell";
 import {
   AccountEmptyState,
   AccountInlineAlert,
@@ -75,6 +76,7 @@ export function AccountServicesView({
 }: AccountServicesViewProps) {
   const { t } = usePriestessTranslation("account");
   const { available, unavailable } = useMemo(() => groupServicesByAccess(services), [services]);
+  const confirmingService = confirmingAppId ? services.find((service) => service.appId === confirmingAppId) : undefined;
 
   return (
     <AccountSectionView
@@ -128,11 +130,8 @@ export function AccountServicesView({
                   <AnimatePresence mode="popLayout">
                     {available.map((service, index) => (
                       <ServiceCard
-                        confirming={confirmingAppId === service.appId}
                         delay={Math.min(0.05 + index * 0.025, 0.18)}
                         key={service.appId}
-                        onCancel={onCancelRevoke}
-                        onConfirm={() => onConfirmRevoke(service.appId)}
                         onRequest={() => onRequestRevoke(service.appId)}
                         revoking={revokingAppId === service.appId}
                         service={service}
@@ -152,11 +151,8 @@ export function AccountServicesView({
                   <AnimatePresence mode="popLayout">
                     {unavailable.map((service, index) => (
                       <ServiceCard
-                        confirming={false}
                         delay={Math.min(0.05 + index * 0.025, 0.18)}
                         key={service.appId}
-                        onCancel={onCancelRevoke}
-                        onConfirm={() => {}}
                         onRequest={() => {}}
                         revoking={false}
                         service={service}
@@ -169,15 +165,20 @@ export function AccountServicesView({
           </div>
         ) : null}
       </AccountMotionSection>
+
+      <RevokeServiceDialog
+        onClose={onCancelRevoke}
+        onConfirm={() => { if (confirmingService) onConfirmRevoke(confirmingService.appId); }}
+        open={Boolean(confirmingService)}
+        revoking={Boolean(confirmingService) && revokingAppId === confirmingService?.appId}
+        serviceName={confirmingService?.name ?? ""}
+      />
     </AccountSectionView>
   );
 }
 
-function ServiceCard({ confirming, delay, onCancel, onConfirm, onRequest, revoking, service }: {
-  confirming: boolean;
+function ServiceCard({ delay, onRequest, revoking, service }: {
   delay: number;
-  onCancel: () => void;
-  onConfirm: () => void;
   onRequest: () => void;
   revoking: boolean;
   service: LocalServiceAvailability;
@@ -211,11 +212,6 @@ function ServiceCard({ confirming, delay, onCancel, onConfirm, onRequest, revoki
             <button className="account-button account-button--danger" disabled type="button">
               <Unplug aria-hidden="true" size={17} strokeWidth={1.8} /><span>{t("正在解除")}</span>
             </button>
-          ) : confirming ? (
-            <span className="account-service-card__confirm">
-              <button className="account-button account-button--danger" onClick={onConfirm} type="button">{t("确认解除")}</button>
-              <button className="account-button account-button--quiet" onClick={onCancel} type="button">{t("取消")}</button>
-            </span>
           ) : (
             <button className="account-button account-button--quiet" onClick={onRequest} type="button">
               <Unplug aria-hidden="true" size={17} strokeWidth={1.8} /><span>{t("解除授权")}</span>
@@ -224,5 +220,38 @@ function ServiceCard({ confirming, delay, onCancel, onConfirm, onRequest, revoki
         </div>
       ) : null}
     </AccountMotionCard>
+  );
+}
+
+function RevokeServiceDialog({ onClose, onConfirm, open, revoking, serviceName }: {
+  onClose: () => void;
+  onConfirm: () => void;
+  open: boolean;
+  revoking: boolean;
+  serviceName: string;
+}) {
+  const { t } = usePriestessTranslation("account");
+  return (
+    <AccountDialogShell labelledBy="account-service-revoke-title" onDismiss={revoking ? undefined : onClose} open={open}>
+      <button aria-label={t("关闭解除授权弹窗")} className="account-dialog__close" disabled={revoking} onClick={onClose} type="button">
+        <X aria-hidden="true" size={17} strokeWidth={1.8} />
+      </button>
+      <span aria-hidden="true" className="account-dialog__icon">
+        <Unplug size={22} strokeWidth={1.8} />
+      </span>
+      <div>
+        <p>{t("服务")}</p>
+        <h3 id="account-service-revoke-title">{t("解除授权")}</h3>
+        <span>{t("解除后需要重新登录 {{name}} 才能继续使用。", { name: serviceName })}</span>
+      </div>
+      <div className="account-dialog__actions">
+        <button className="account-button account-button--quiet" disabled={revoking} onClick={onClose} type="button">
+          {t("取消")}
+        </button>
+        <button className="account-button account-button--danger" disabled={revoking} onClick={onConfirm} type="button">
+          {revoking ? t("正在解除") : t("确认解除")}
+        </button>
+      </div>
+    </AccountDialogShell>
   );
 }

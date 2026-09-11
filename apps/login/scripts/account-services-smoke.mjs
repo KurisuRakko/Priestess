@@ -40,6 +40,7 @@ try {
   testErrorAndNotice();
   testLegacyStructureRemoved();
   testAvailableSessionOrdering();
+  testRevokeDialog();
 
   console.log("account-services smoke passed");
 } finally {
@@ -160,17 +161,25 @@ function testRevokeActions() {
     confirmingAppId: activeService.appId,
     services: [activeService],
   });
-  assert.equal(countClass(confirmingMarkup, "account-service-card__confirm"), 1, "16. 确认态渲染内联二次确认");
-  assert.ok(confirmingMarkup.includes("确认解除"), "16. 确认态含确认按钮");
-  assert.ok(confirmingMarkup.includes("取消"), "16. 确认态含取消按钮");
-  assert.ok(!confirmingMarkup.includes("解除授权"), "16. 确认态不再显示初始按钮");
+  assert.ok(confirmingMarkup.includes("account-dialog-backdrop"), "16. 确认态弹出压暗背景的弹窗");
+  assert.ok(confirmingMarkup.includes("account-service-revoke-title"), "16. 弹窗带解除授权标题锚点");
+  assert.ok(confirmingMarkup.includes(activeService.name), "16. 卡片与弹窗都带服务名");
+  assert.ok(
+    confirmingMarkup.includes(`解除后需要重新登录 ${activeService.name}`),
+    "16. 弹窗正文写明要解除哪个服务",
+  );
+  assert.ok(confirmingMarkup.includes("确认解除"), "16. 弹窗含确认按钮");
+  assert.ok(confirmingMarkup.includes("取消"), "16. 弹窗含取消按钮");
+  assert.ok(!confirmingMarkup.includes("account-service-card__confirm"), "16. 卡片上不再有内联二次确认");
+  assert.ok(confirmingMarkup.includes("解除授权"), "16. 弹窗打开时卡片按钮仍在");
 
   const revokingMarkup = renderView({
+    confirmingAppId: activeService.appId,
     revokingAppId: activeService.appId,
     services: [activeService],
   });
   assert.ok(revokingMarkup.includes("正在解除"), "17. 提交中显示正在解除");
-  assert.equal(countClass(revokingMarkup, "account-service-card__confirm"), 0, "17. 提交中不再显示确认按钮");
+  assert.equal(revokingMarkup.split("正在解除").length - 1, 2, "17. 卡片与弹窗各有一处正在解除");
 }
 
 // E. 状态行
@@ -277,6 +286,42 @@ function testAvailableSessionOrdering() {
   assert.ok(zetaIndex >= 0 && alphaIndex >= 0, "36. 两张卡片都渲染");
   assert.ok(zetaIndex < alphaIndex, "36. 已登录卡片在 DOM 里排在未登录卡片之前");
   assert.ok(revokeIndex > zetaIndex && revokeIndex < alphaIndex, "36. 解除授权入口落在已登录卡片内");
+}
+
+// K. 解除授权弹窗的开关、提交态与按钮顺序
+function testRevokeDialog() {
+  const activeService = buildAvailableService("Alpha", { activeSession: true, lastUsedAt: new Date().toISOString() });
+
+  const idleMarkup = renderView({ confirmingAppId: "", services: [activeService] });
+  assert.ok(!idleMarkup.includes("account-dialog-backdrop"), "37. 没有确认目标时不弹窗");
+  assert.ok(!idleMarkup.includes("account-service-revoke-title"), "37. 没有确认目标时没有弹窗标题");
+
+  const staleTargetMarkup = renderView({ confirmingAppId: "app-removed", services: [activeService] });
+  assert.ok(!staleTargetMarkup.includes("account-dialog-backdrop"), "38. 确认目标已不在列表里时不弹窗");
+
+  const revokingMarkup = renderView({
+    confirmingAppId: activeService.appId,
+    revokingAppId: activeService.appId,
+    services: [activeService],
+  });
+  const dialogMarkup = revokingMarkup.slice(revokingMarkup.indexOf("account-dialog-backdrop"));
+  assert.ok(revokingMarkup.includes("account-dialog-backdrop"), "39. 提交中弹窗仍在屏上");
+  assert.match(
+    dialogMarkup,
+    /account-button--danger"[^>]*\bdisabled\b[^>]*>[^<]*正在解除/,
+    "39. 提交中弹窗的确认按钮显示正在解除且被禁用",
+  );
+  assert.match(
+    dialogMarkup,
+    /account-button--quiet"[^>]*\bdisabled\b[^>]*>[^<]*取消/,
+    "39. 提交中弹窗的取消按钮也被禁用",
+  );
+
+  const orderedMarkup = renderView({ confirmingAppId: activeService.appId, services: [activeService] });
+  const cancelIndex = orderedMarkup.indexOf("取消");
+  const confirmIndex = orderedMarkup.indexOf("确认解除");
+  assert.ok(cancelIndex >= 0 && confirmIndex >= 0, "40. 弹窗两个动作按钮都渲染");
+  assert.ok(cancelIndex < confirmIndex, "40. 取消排在确认解除之前");
 }
 
 function readCopyWithoutClassNames(markup) {
