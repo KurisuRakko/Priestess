@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { AlertCircle, CheckCircle2, Loader2, Moon, ShieldAlert, Sun, XCircle } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { AlertCircle, CheckCircle2, Loader2, Moon, Sun, XCircle } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import {
+  PRIESTESS_DEFAULT_AVATAR_URL,
   confirmQrPhoneSession,
   finalConfirmQrPhoneSession,
   getLocalSession,
@@ -15,6 +16,7 @@ import {
   type QrPhoneSession,
   type QrPhoneSessionResult,
 } from "@priestess/shared";
+import { QrSecurityOverlay } from "./QrSecurityNotice";
 import prtsBlack from "../assets/qr-mobile/prtsblack.png";
 import prtsWhite from "../assets/qr-mobile/prtswhite.png";
 import "./QrLoginConfirmPage.css";
@@ -29,6 +31,12 @@ type ErrorKind = "backend" | "login-required" | "missing-session";
 type OverlayMode = "warning" | null;
 type SubmittingAction = "agreed" | "final" | "rejected" | null;
 
+/**
+ * PC 端用 1500ms 轮询同一个会话，手机端跟着一个量级即可。
+ * 终态没有可同步的内容，进入终态后必须停止，避免手机页挂后台空转。
+ */
+const QR_CONFIRM_POLL_INTERVAL_MS = 1500;
+
 export function QrLoginConfirmPage({ onNavigateToLogin, onNotice }: QrLoginConfirmPageProps) {
   const { t } = usePriestessTranslation("login");
   const sessionId = useMemo(() => readQrSessionId(), []);
@@ -38,16 +46,26 @@ export function QrLoginConfirmPage({ onNavigateToLogin, onNotice }: QrLoginConfi
   const [isSubmitting, setIsSubmitting] = useState<SubmittingAction>(null);
   const [overlayMode, setOverlayMode] = useState<OverlayMode>(null);
   const [qrResult, setQrResult] = useState<QrPhoneSessionResult | null>(null);
+  const [securityReason, setSecurityReason] = useState("");
   const [session, setSession] = useState<LocalSession | null>(null);
   const [status, setStatus] = useState<PageStatus>("loading");
   const [warningCountdown, setWarningCountdown] = useState(0);
+  const pollInFlightRef = useRef(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const statusRef = useRef<PageStatus>("loading");
+
+  // 轮询和回前台刷新都在事件回调里读最新状态，必须走 ref，不能依赖闭包里的旧值。
+  statusRef.current = status;
 
   const qrSession = qrResult?.session ?? null;
-  const currentUser = session?.user ?? qrResult?.user ?? null;
+  // 状态接口带回的用户信息比本地会话更新，优先用它，否则头像会一直停在首次会话读到的旧值。
+  const currentUser = qrResult?.user ?? session?.user ?? null;
   const applicationName = qrSession?.appName || qrSession?.appId || "Priestess";
   const applicationLogo = readApplicationLogo(qrResult) || (isDark ? prtsBlack : prtsWhite);
   const avatarUrl = getPriestessDisplayAvatarUrl(currentUser?.avatarUrl);
   const accountLabel = currentUser?.displayName || currentUser?.username || t("Priestess 账号");
+  // 后端已经解析出回跳 origin；手机端确认前必须把它显示出来，否则用户看不到自己在授权给谁。
+  const authorizationOrigin = qrSession?.returnToOrigin || "";
   const pcLocation = formatContextLocation(qrSession?.pcContext ?? null);
   const phoneLocation = formatContextLocation(qrSession?.phoneContext ?? null);
   const pcIpAddress = qrSession?.pcContext?.ipAddress || "";
@@ -68,8 +86,14 @@ export function QrLoginConfirmPage({ onNavigateToLogin, onNotice }: QrLoginConfi
     setWarningCountdown(3);
   }, []);
 
-  const settleQrResult = useCallback((result: QrPhoneSessionResult, options: { allowPendingOverlay?: boolean } = {}) => {
+  /** 风险原因可能挂在 envelope 顶层，也可能挂在 session 里，两处都读。 */
+  const applyQrResult = useCallback((result: QrPhoneSessionResult) => {
     setQrResult(result);
+    setSecurityReason(result.securityReason || result.session?.securityReason || "");
+  }, []);
+
+  const settleQrResult = useCallback((result: QrPhoneSessionResult, options: { allowPendingOverlay?: boolean } = {}) => {
+    applyQrResult(result);
     const nextSession = result.session;
 
     if (!nextSession) {
@@ -92,18 +116,19 @@ export function QrLoginConfirmPage({ onNavigateToLogin, onNotice }: QrLoginConfi
     }
 
     setStatus("pending");
-    if (!options.allowPendingOverlay) {
-      return;
-    }
-    if (result.requiresConfirmation || result.canFinalConfirm || nextSession.status === "pre_confirmed") {
+    // 会话还停在 Level 2 二次确认阶段时，不能因为后台刷新就把浮层重开一遍：
+    // 重开会把倒计时和用户已经操作到一半的状态一起清掉。
+    const isAwaitingFinalConfirm = result.requiresConfirmation || nextSession.status === "pre_confirmed";
+    if (isAwaitingFinalConfirm && options.allowPendingOverlay) {
       openWarningOverlay();
     }
-  }, [openWarningOverlay, showError, t]);
+  }, [applyQrResult, openWarningOverlay, showError, t]);
 
   const loadQrSession = useCallback(async(signal?: AbortSignal) => {
     setStatus("loading");
     setErrorMessage("");
     setOverlayMode(null);
+    setSecurityReason("");
 
     if (!sessionId) {
       showError(t("二维码缺少 sessionId，请从电脑端重新扫码。"), "missing-session");
@@ -130,10 +155,40 @@ export function QrLoginConfirmPage({ onNavigateToLogin, onNotice }: QrLoginConfi
     }
   }, [sessionId, settleQrResult, showError, t]);
 
+  /**
+   * 后台同步只刷新状态：不切回 loading、不弹浮层，失败也不改动当前界面。
+   * 已经进入终态时直接跳过，保证终态之后不再发请求。
+   */
+  const refreshQrSessionStatus = useCallback(async() => {
+    // 首屏 hydrate 还没跑完时不要插队：状态接口会跑在本地会话读取之前，容易渲染出半截界面。
+    if (!sessionId || !isQrSessionActive(statusRef.current) || pollInFlightRef.current || !abortControllerRef.current) return;
+
+    pollInFlightRef.current = true;
+    try {
+      const result = await getQrPhoneSession(sessionId, { signal: abortControllerRef.current?.signal });
+      if (!isQrSessionActive(statusRef.current)) return;
+      settleQrResult(result);
+    } catch (error) {
+      // 后台刷新失败按网络抖动处理：保留当前界面，等下一轮或回前台再试。
+      if (!isRequestAborted(error) && statusRef.current === "loading") {
+        showError(getPriestessApiErrorMessage(error, t("无法读取扫码会话")));
+      }
+    } finally {
+      pollInFlightRef.current = false;
+    }
+  }, [sessionId, settleQrResult, showError, t]);
+
   useEffect(() => {
     const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+    // 首屏走完整流程（含本地会话校验），之后交给下面的轮询；失败时保留错误界面，不自动重试。
     void loadQrSession(abortController.signal);
-    return () => abortController.abort();
+    return () => {
+      if (abortControllerRef.current === abortController) {
+        abortControllerRef.current = null;
+      }
+      abortController.abort();
+    };
   }, [loadQrSession]);
 
   useEffect(() => {
@@ -141,6 +196,30 @@ export function QrLoginConfirmPage({ onNavigateToLogin, onNotice }: QrLoginConfi
     const timer = window.setTimeout(() => setWarningCountdown((current) => Math.max(current - 1, 0)), 1000);
     return () => window.clearTimeout(timer);
   }, [overlayMode, warningCountdown]);
+
+  /**
+   * 手机页要跟着 PC 端一起前进：PC 端确认 / 拒绝或会话过期后，这里必须能自己发现。
+   * 定时刷新和回前台刷新共用同一个 in-flight 标记，避免两条路径同时打同一个接口。
+   */
+  useEffect(() => {
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") void refreshQrSessionStatus();
+    };
+
+    const pollTimer = window.setInterval(() => {
+      if (!isQrSessionActive(statusRef.current)) return;
+      void refreshQrSessionStatus();
+    }, QR_CONFIRM_POLL_INTERVAL_MS);
+
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    window.addEventListener("focus", refreshWhenVisible);
+
+    return () => {
+      window.clearInterval(pollTimer);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+      window.removeEventListener("focus", refreshWhenVisible);
+    };
+  }, [refreshQrSessionStatus]);
 
   const confirmLogin = async() => {
     if (!sessionId || isSubmitting) return;
@@ -153,7 +232,7 @@ export function QrLoginConfirmPage({ onNavigateToLogin, onNotice }: QrLoginConfi
 
     try {
       const result = await confirmQrPhoneSession(sessionId, "confirm");
-      setQrResult(result);
+      applyQrResult(result);
       if (result.requiresConfirmation || result.session?.status === "pre_confirmed") {
         openWarningOverlay();
         onNotice(t("请核对设备和位置后完成二次确认"));
@@ -225,16 +304,21 @@ export function QrLoginConfirmPage({ onNavigateToLogin, onNotice }: QrLoginConfi
           {isDark ? <Sun size={18} strokeWidth={1.8} /> : <Moon size={18} strokeWidth={1.8} />}
         </button>
 
-        <SecurityOverlay
-          errorMessage={errorMessage}
-          isSubmitting={isSubmitting}
-          mode={overlayMode}
-          onCancel={closeOverlay}
-          onFinalConfirm={finalConfirmLogin}
-          pcLocation={pcLocation}
-          phoneLocation={phoneLocation}
-          warningCountdown={warningCountdown}
-        />
+        <AnimatePresence>
+          {overlayMode ? (
+            <QrSecurityOverlay
+              errorMessage={errorMessage}
+              isSubmitting={isSubmitting !== null}
+              onCancel={closeOverlay}
+              onFinalConfirm={finalConfirmLogin}
+              origin={authorizationOrigin}
+              pcLocation={pcLocation}
+              phoneLocation={phoneLocation}
+              reason={securityReason}
+              warningCountdown={warningCountdown}
+            />
+          ) : null}
+        </AnimatePresence>
 
         <AnimatePresence initial={false} mode="wait">
           <motion.div
@@ -261,6 +345,7 @@ export function QrLoginConfirmPage({ onNavigateToLogin, onNotice }: QrLoginConfi
                 accountLabel={accountLabel}
                 applicationLogo={applicationLogo}
                 applicationName={applicationName}
+                authorizationOrigin={authorizationOrigin}
                 avatarUrl={avatarUrl}
                 canConfirm={canConfirmSession || canFinalConfirmSession}
                 canReject={canRejectSession}
@@ -306,64 +391,6 @@ export function QrLoginConfirmPage({ onNavigateToLogin, onNotice }: QrLoginConfi
         />
       </section>
     </main>
-  );
-}
-
-function SecurityOverlay({
-  errorMessage,
-  isSubmitting,
-  mode,
-  onCancel,
-  onFinalConfirm,
-  pcLocation,
-  phoneLocation,
-  warningCountdown,
-}: {
-  errorMessage: string;
-  isSubmitting: SubmittingAction;
-  mode: OverlayMode;
-  onCancel: () => void;
-  onFinalConfirm: () => void;
-  pcLocation: string;
-  phoneLocation: string;
-  warningCountdown: number;
-}) {
-  const { t } = usePriestessTranslation("login");
-  return (
-    <AnimatePresence>
-      {mode ? (
-        <motion.div
-          animate={{ opacity: 1, y: 0 }}
-          className="qr-mobile-overlay"
-          exit={{ opacity: 0, y: 30 }}
-          initial={{ opacity: 0, y: 30 }}
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="qr-mobile-overlay-title"
-          transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-        >
-          <div className="qr-mobile-alert-icon" aria-hidden="true">
-            <ShieldAlert size={40} strokeWidth={1.5} />
-          </div>
-
-          <h2 id="qr-mobile-overlay-title">{t("请确认是你本人操作")}</h2>
-          <p>{t("电脑端和手机端环境存在差异，请核对后再授权登录。")}</p>
-
-          <div className="qr-mobile-location-card">
-            <QrLocationRow label={t("PC 位置")} value={pcLocation} />
-            <QrLocationRow label={t("手机位置")} value={phoneLocation} />
-          </div>
-
-          {errorMessage ? <strong aria-live="polite" role="status">{errorMessage}</strong> : null}
-          <button className="qr-mobile-primary qr-mobile-primary--danger" disabled={warningCountdown > 0 || isSubmitting !== null} onClick={onFinalConfirm} type="button">
-            {isSubmitting === "final" ? <Loader2 className="qr-mobile-spin" size={22} /> : warningCountdown > 0 ? t("请等待 ({{seconds}}s)", { seconds: warningCountdown }) : t("确认登录")}
-          </button>
-          <button className="qr-mobile-plain-button" disabled={isSubmitting !== null} onClick={onCancel} type="button">
-            {t("取消")}
-          </button>
-        </motion.div>
-      ) : null}
-    </AnimatePresence>
   );
 }
 
@@ -419,6 +446,7 @@ function PendingView({
   accountLabel,
   applicationLogo,
   applicationName,
+  authorizationOrigin,
   avatarUrl,
   canConfirm,
   canReject,
@@ -433,6 +461,7 @@ function PendingView({
   accountLabel: string;
   applicationLogo: string;
   applicationName: string;
+  authorizationOrigin: string;
   avatarUrl: string;
   canConfirm: boolean;
   canReject: boolean;
@@ -456,6 +485,12 @@ function PendingView({
         <img alt={applicationName} className="qr-mobile-logo" src={applicationLogo} />
         <h1>{t("{{applicationName}} 登录确认", { applicationName })}</h1>
         <p>{t("请确认是否授权电脑端登录你的 Priestess 账号。")}</p>
+        {/* 授权目标必须出现在按钮之前：用户要能先看到自己在授权给哪个站点。 */}
+        {authorizationOrigin ? (
+          <span className="qr-mobile-origin" title={authorizationOrigin}>
+            {t("授权目标：{{origin}}", { origin: authorizationOrigin })}
+          </span>
+        ) : null}
       </motion.div>
 
       <motion.div
@@ -465,7 +500,7 @@ function PendingView({
         transition={{ delay: 0.2, duration: 0.4 }}
       >
         <div className="qr-mobile-device-card">
-          <img alt={t("当前账号头像")} className="qr-mobile-avatar" src={avatarUrl} />
+          <QrMobileAvatar alt={t("当前账号头像")} className="qr-mobile-avatar" url={avatarUrl} />
           <div>
             <strong>{t("PC 设备")}</strong>
             {pcIpAddress ? <span className="qr-mobile-mono">IP: {pcIpAddress}</span> : null}
@@ -485,6 +520,32 @@ function PendingView({
         </button>
       </div>
     </div>
+  );
+}
+
+/**
+ * 头像断图兜底：沿用个人中心那套 loadFailed + URL 变化重置的写法。
+ * 默认图自身也加载失败时不再重复 setState，避免 onError 无限循环。
+ */
+function QrMobileAvatar({ alt, className, url }: { alt: string; className: string; url: string }) {
+  const [loadFailed, setLoadFailed] = useState(false);
+  const imageUrl = loadFailed ? PRIESTESS_DEFAULT_AVATAR_URL : url;
+
+  useEffect(() => {
+    setLoadFailed(false);
+  }, [url]);
+
+  return (
+    <img
+      alt={alt}
+      className={className}
+      onError={() => {
+        if (imageUrl !== PRIESTESS_DEFAULT_AVATAR_URL) {
+          setLoadFailed(true);
+        }
+      }}
+      src={imageUrl}
+    />
   );
 }
 
@@ -677,4 +738,13 @@ function readStringFromUnknown(payload: unknown, paths: string[][]) {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** confirmed / rejected / expired 都是终态：PC 端不会再改，手机端也不该继续轮询。 */
+function isQrSessionActive(value: PageStatus) {
+  return value === "loading" || value === "pending";
+}
+
+function isRequestAborted(error: unknown) {
+  return error instanceof Error && error.name === "AbortError";
 }

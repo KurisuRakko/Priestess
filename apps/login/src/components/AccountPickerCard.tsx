@@ -10,6 +10,7 @@ import {
 import { ChevronLeft, ImageUp, LockKeyhole, LogOut, MoreVertical, Pencil, Plus, RefreshCw, X } from "lucide-react";
 import { AnimatePresence, LayoutGroup, motion, useIsPresent, useReducedMotion } from "motion/react";
 import {
+  PRIESTESS_DEFAULT_AVATAR_URL,
   getPriestessDisplayAvatarUrl,
   getSafePriestessAvatarUrl,
   usePriestessTranslation,
@@ -524,6 +525,12 @@ function AccountAvatar({
   shouldReduceMotion?: boolean;
 }) {
   const avatarUrl = getPriestessDisplayAvatarUrl(account.avatarUrl);
+  const [avatarLoadFailed, setAvatarLoadFailed] = useState(false);
+  const avatarImageUrl = avatarLoadFailed ? PRIESTESS_DEFAULT_AVATAR_URL : avatarUrl;
+
+  useEffect(() => {
+    setAvatarLoadFailed(false);
+  }, [avatarUrl]);
 
   return (
     <motion.span
@@ -532,7 +539,16 @@ function AccountAvatar({
       layoutId={layoutKey ? `${layoutKey}-avatar` : undefined}
       transition={shouldReduceMotion ? { duration: 0 } : { layout: ACCOUNT_SHARED_LAYOUT_TRANSITION }}
     >
-      <img alt="" src={avatarUrl} />
+      <img
+        alt=""
+        onError={() => {
+          // 默认头像自身也加载失败时不再重复 setState，避免 onError 递归。
+          if (avatarImageUrl !== PRIESTESS_DEFAULT_AVATAR_URL) {
+            setAvatarLoadFailed(true);
+          }
+        }}
+        src={avatarImageUrl}
+      />
     </motion.span>
   );
 }

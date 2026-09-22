@@ -18,6 +18,8 @@
     "test:account-primitives": "npm run test:account-primitives -w @priestess/login",
     "test:account-devices": "npm run test:account-devices -w @priestess/login",
     "test:account-services": "npm run test:account-services -w @priestess/login",
-    "test:account-menu": "npm run test:account-menu -w @priestess/login"
+    "test:account-menu": "npm run test:account-menu -w @priestess/login",
+    "test:qr-login-security-notice": "npm run test:qr-login-security-notice -w @priestess/login",
+    "test:qr-login-confirm-browser": "npm run test:qr-login-confirm-browser -w @priestess/login"
   }
 }
