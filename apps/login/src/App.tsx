@@ -108,6 +108,7 @@ export function App() {
     isSubmitContentHidden,
     isSubmitStage: isLoginSubmitStage,
     releaseSubmitStage: releaseLoginSubmitStage,
+    releaseSubmitStageAfterOverlayExit: releaseLoginSubmitStageAfterOverlayExit,
     revealSubmitContent: revealLoginSubmitContent,
     startAccountSelectionOverlay,
     startCenteredOverlay: startCenteredLoginOverlay,
@@ -885,7 +886,9 @@ export function App() {
       // 离开登录路由会取消挂起的提交态等待，被 await 的 Promise 不再落地、finally 也不会执行，
       // 重入锁必须在这里一并释放，否则返回登录页后入口永久失效。
       loginSubmitInFlightRef.current = false;
-      releaseLoginSubmitStage();
+      // 结果层与登录卡片共用同一块矩形且没有自己的背景：它还在场时立刻释放提交态，
+      // 会让重挂载的卡片带着账号选择器从透明结果层下面透出来，改为等结果层卸载后再释放。
+      releaseLoginSubmitStageAfterOverlayExit();
     }
 
     if (route !== "login" && authMode !== "login") {
@@ -894,7 +897,7 @@ export function App() {
       setIsRegisterDrawerStage(false);
       setAuthMode("login");
     }
-  }, [authMode, route]);
+  }, [authMode, releaseLoginSubmitStageAfterOverlayExit, route]);
 
   useEffect(() => {
     setAccountActionBusyId("");
