@@ -1,6 +1,21 @@
+# 登录流程允许自家站点 rakko.cn 以 iframe 嵌入（Yohaku 前台的登录浮层），其它站点一律拒绝。
+# X-Frame-Options 不支持白名单，全局不再下发，嵌入控制交给 CSP frame-ancestors。
 /*
-  X-Frame-Options: DENY
   X-Content-Type-Options: nosniff
   Referrer-Policy: no-referrer
   Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()
+  Content-Security-Policy: frame-ancestors 'self' https://rakko.cn https://www.rakko.cn
+
+# 账号管理页没有嵌入需求，保持完全禁止嵌入。Pages 会把同名头与上面的规则用逗号合并，
+# 两条 CSP 策略同时生效，'none' 仍然拦下一切嵌入。
+/manage*
+  X-Frame-Options: DENY
+  Content-Security-Policy: frame-ancestors 'none'
+
+/Manage*
+  X-Frame-Options: DENY
+  Content-Security-Policy: frame-ancestors 'none'
+
+/auth-ui/account*
+  X-Frame-Options: DENY
   Content-Security-Policy: frame-ancestors 'none'
