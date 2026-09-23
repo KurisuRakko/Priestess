@@ -50,6 +50,17 @@ export type AuthRedirectAuthorizationOutcome =
   | { message: string; ok: false };
 
 /**
+ * 后端拒绝这个账号访问目标应用时会返回英文 message，直接透出对用户没有意义；
+ * 按错误码换成明确的中文提示，其它错误仍走通用映射。
+ */
+export function getAuthorizationFailureMessage(error: unknown, t: TranslationFn) {
+  if (getPriestessApiErrorCode(error) === "app_access_denied") {
+    return t("该账号无权访问此应用，请换一个账号");
+  }
+  return getAuthAccountChoiceErrorMessage(error, t("授权失败，请重新选择账号"));
+}
+
+/**
  * 刚完成身份验证的当前会话直接向目标应用授权：用户输入账号密码或完成注册这一步本身就是选定账号，
  * 因此不再让用户回到账号选择卡重点一次。
  * 调用方在自己的成功动画开始时并发调用它，用动画停留时间掩盖授权往返延迟，动画结束后再读结果。
@@ -58,15 +69,19 @@ export type AuthRedirectAuthorizationOutcome =
 export async function startAuthRedirectAuthorization(
   authRequest: AuthRequest,
   t: TranslationFn,
+  signal?: AbortSignal,
 ): Promise<AuthRedirectAuthorizationOutcome> {
   try {
     // 不传 choice_id：后端按当前会话授权。
-    const result = await authorizeLocalSession({ appId: authRequest.appId, returnTo: authRequest.returnTo });
+    const result = await authorizeLocalSession(
+      { appId: authRequest.appId, returnTo: authRequest.returnTo },
+      signal ? { signal } : {},
+    );
     if (!result.redirectUrl) {
       throw new Error(t("后端未返回回跳地址"));
     }
     return { ok: true, redirectUrl: result.redirectUrl };
   } catch (error) {
-    return { message: getAuthAccountChoiceErrorMessage(error, t("授权失败，请重新选择账号")), ok: false };
+    return { message: getAuthorizationFailureMessage(error, t), ok: false };
   }
 }

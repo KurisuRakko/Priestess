@@ -33,6 +33,7 @@ export const loginTextResources: PriestessI18nResources = {
       "注册完成但本地会话尚未建立": "Registration completed, but the local session was not established",
       "后端未返回回跳地址": "The backend did not return a redirect URL",
       "授权失败，请重新选择账号": "Authorization failed. Choose the account again.",
+      "该账号无权访问此应用，请换一个账号": "This account does not have access to this app. Try another account.",
       "切换账号失败，请重新选择账号": "Account switch failed. Choose the account again.",
       "请登录另一个 Priestess 账号": "Sign in with another Priestess account.",
       "正在登录...": "Signing in...",

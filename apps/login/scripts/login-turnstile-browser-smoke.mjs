@@ -40,7 +40,6 @@ try {
   const viteAddress = viteServer.httpServer?.address();
   assert.ok(viteAddress && typeof viteAddress === "object", "vite server address missing");
   const appUrl = `http://127.0.0.1:${viteAddress.port}`;
-
   const { chromium } = await importPlaywright();
   browser = await launchBrowser(chromium);
 
@@ -48,6 +47,7 @@ try {
   await testEmptyAccountListStillAuthorizes(browser, appUrl);
   await testAuthorizeFailureReturnsToAccountPicker(browser, appUrl);
   await testAuthorizationRequestRunsWithSuccessAnimation(browser, appUrl);
+  await testSlowRedirectKeepsLoginCardYielded(browser, appUrl);
   await testAccountChoiceErrorCanRetry(browser, appUrl);
   await testMultipleAccountsRemainSelectable(browser, appUrl);
   await testSavedAccountAuthorizationFailureReturnsPicker(browser, appUrl);
@@ -215,7 +215,9 @@ async function testAuthorizeFailureReturnsToAccountPicker(browserInstance, appUr
     assert.equal(await page.locator("input[autocomplete='current-password']").count(), 0, "the account picker must replace the login form");
     const inCardError = page.locator("[data-account-authorize-error='true']");
     await inCardError.waitFor({ state: "visible", timeout: 3000 });
-    assert.match(await inCardError.innerText(), /授权失败/);
+    const inCardText = await inCardError.innerText();
+    assert.match(inCardText, /该账号无权访问此应用/);
+    assert.equal(inCardText.includes("App access"), false, "the card must not leak the backend English message");
     assert.ok(
       scenario.records.accountChoices.length > initialAccountChoiceRequests,
       "authorization failure must re-read the account choices",
@@ -259,6 +261,105 @@ async function testAuthorizationRequestRunsWithSuccessAnimation(browserInstance,
       app_id: scenario.appId,
       return_to: `${appUrl}/client-callback`,
     }]);
+  }, { reducedMotion: "no-preference", viewport: { height: 900, width: 1440 } });
+}
+
+async function testSlowRedirectKeepsLoginCardYielded(browserInstance, appUrl) {
+  const scenario = createScenario("direct-authorize-slow-redirect", {
+    accountModeAfterAuth: "single",
+    authorizeRedirectToPath: "/slow-callback",
+  });
+
+  await withScenario(browserInstance, scenario, async(page) => {
+    const pendingSamples = [];
+    // 采样从文档内部推给 Node：导航提交会销毁旧文档，evaluate 通道会挂起，只有绑定回调能跨过这段窗口。
+    await page.exposeBinding("__priestessRecordRedirectWaitSample", (_source, sample) => {
+      pendingSamples.push(sample);
+    });
+
+    let redirectRequestedAt = 0;
+    // page.route 的 handler 与 Playwright 命令队列串行，handler 内不能再调用 page.*，否则会自锁。
+    page.on("request", (request) => {
+      if (request.url().includes("/slow-callback")) {
+        redirectRequestedAt = Date.now();
+      }
+    });
+    // 回跳目标故意慢 2500ms 才响应：响应没回来之前浏览器一直停在原文档上，这段就是「导航等待期间」。
+    await page.route("**/slow-callback*", async(route) => {
+      await new Promise((resolve) => setTimeout(resolve, 2500));
+      await route.fulfill({
+        body: "<!doctype html><html><body>slow callback</body></html>",
+        contentType: "text/html",
+      });
+    });
+
+    await page.goto(buildAuthUrl(appUrl, scenario.appId), { waitUntil: "domcontentloaded" });
+    await page.locator("input[autocomplete='username']").waitFor({ state: "visible" });
+    await page.evaluate(() => {
+      window.__priestessRedirectWaitProbe = setInterval(() => {
+        // 受检窗口由页面自己判定：登录请求已经发出（性能条目可见）到导航提交为止，
+        // 登录卡都不许被释放回普通表单。整段判定留在文档内部，不依赖 Node 侧的 evaluate。
+        const waitBaseline = performance.getEntriesByType("resource")
+          .some((entry) => entry.name.includes("/auth/priestess/session"))
+          ? 1
+          : null;
+        const card = document.querySelector(".login-card");
+        const passwordInput = document.querySelector("input[autocomplete='current-password']");
+        const passwordRect = passwordInput instanceof HTMLElement ? passwordInput.getBoundingClientRect() : null;
+        void window.__priestessRecordRedirectWaitSample({
+          at: Date.now(),
+          overlayCount: document.querySelectorAll(".login-success-overlay").length,
+          passwordHeight: passwordRect ? passwordRect.height : null,
+          passwordInert: passwordInput instanceof HTMLElement ? passwordInput.closest("[inert]") !== null : false,
+          pickerRows: document.querySelectorAll(".account-picker__row-main").length,
+          submitStage: card ? card.classList.contains("login-card--submit-stage") : null,
+          url: location.pathname,
+          inRedirectWait: waitBaseline !== null,
+          waitPasswordVisible: waitBaseline !== null
+            && Boolean(passwordRect && passwordRect.height > 0 && passwordInput.closest("[inert]") === null),
+          waitSubmitStageLost: waitBaseline !== null && !card?.classList.contains("login-card--submit-stage"),
+        });
+      }, 120);
+    });
+    await submitPassword(page, "slow-redirect-user");
+
+    await waitFor(() => redirectRequestedAt > 0, 10000, "the authorization redirect should be issued");
+    await delay(1400);
+    const afterRedirect = pendingSamples.filter((sample) => sample.url === "/login" && sample.inRedirectWait);
+    assert.ok(
+      afterRedirect.length >= 5,
+      `the probe must sample after the redirect was issued: ${JSON.stringify(pendingSamples.slice(-4))}`,
+    );
+    // 成功遮罩此刻仍在文档里（导航还没提交，所以它只是被 JS 从 DOM 里移除、等待导航接管）。
+    assert.ok(
+      afterRedirect.some((sample) => sample.overlayCount === 1),
+      `the success overlay must still be mounted when the redirect is issued: ${JSON.stringify(afterRedirect.slice(0, 2))}`,
+    );
+    assert.ok(
+      afterRedirect.every((sample) => sample.passwordInert),
+      `the yielded login form must stay inert while the redirect is pending: ${JSON.stringify(afterRedirect.slice(-3))}`,
+    );
+    assert.equal(
+      afterRedirect.filter((sample) => sample.waitSubmitStageLost).length,
+      0,
+      `the login card must stay in the submit stage while the redirect is pending: ${JSON.stringify(afterRedirect)}`,
+    );
+    assert.equal(
+      afterRedirect.filter((sample) => sample.waitPasswordVisible).length,
+      0,
+      `the login form must not come back while the redirect is pending: ${JSON.stringify(afterRedirect)}`,
+    );
+    assert.ok(
+      pendingSamples.every((sample) => sample.pickerRows === 0),
+      `the account picker must never appear: ${JSON.stringify(pendingSamples.slice(-4))}`,
+    );
+
+    await page.waitForURL((url) => url.pathname === "/slow-callback", { timeout: 15000 });
+    assert.equal(scenario.records.authorizations.length, 1);
+    assert.deepEqual(scenario.records.authorizations[0], {
+      app_id: scenario.appId,
+      return_to: `${appUrl}/client-callback`,
+    });
   }, { reducedMotion: "no-preference", viewport: { height: 900, width: 1440 } });
 }
 
@@ -1321,6 +1422,51 @@ async function withScenario(browserInstance, scenario, callback, options = {}) {
   }
 }
 
+// 慢回跳用例专用：逐帧记录旧文档在导航等待期间的状态，navigation 提交后逐帧数据随文档一起丢弃，
+// 所以必须在提交前把判定结果写回同一个对象，断言只读这个对象的计数。
+async function startLoginYieldProbe(page) {
+  await page.evaluate(() => {
+    const probe = {
+      accountPickerCount: 0,
+      overlayMissingCount: 0,
+      samples: [],
+      submitStageLostCount: 0,
+      visibleFormCount: 0,
+    };
+    window.__priestessSlowRedirectYieldProbe = probe;
+
+    const sample = () => {
+      const card = document.querySelector(".login-card");
+      const overlay = document.querySelectorAll(".login-success-overlay").length;
+      const passwordInput = document.querySelector("input[autocomplete='current-password']");
+      const passwordStyle = passwordInput instanceof HTMLElement ? getComputedStyle(passwordInput) : null;
+      const passwordRect = passwordInput instanceof HTMLElement ? passwordInput.getBoundingClientRect() : null;
+      const formVisible = Boolean(
+        passwordStyle
+        && passwordRect
+        && passwordRect.height > 0
+        && passwordInput.closest("[inert]") === null
+        && Number.parseFloat(passwordStyle.opacity) > 0.05,
+      );
+      probe.samples.push({ at: performance.now(), overlay, submitStage: card ? card.classList.contains("login-card--submit-stage") : null });
+      if (card && !card.classList.contains("login-card--submit-stage")) {
+        probe.submitStageLostCount += 1;
+      }
+      if (overlay === 0) {
+        probe.overlayMissingCount += 1;
+      }
+      if (formVisible) {
+        probe.visibleFormCount += 1;
+      }
+      if (document.querySelectorAll(".account-picker__row-main").length > 0) {
+        probe.accountPickerCount += 1;
+      }
+      window.requestAnimationFrame(sample);
+    };
+    window.requestAnimationFrame(sample);
+  });
+}
+
 async function assertControlCanReceivePointer(page, locator, label) {
   assert.equal(await locator.count(), 1, `${label} must be unique`);
   assert.equal(await locator.isEnabled(), true, `${label} must be enabled`);
@@ -1410,6 +1556,8 @@ function createScenario(appId, options = {}) {
     accountModeBeforeAuth: options.accountModeBeforeAuth ?? "empty",
     authorizeError: options.authorizeError ?? false,
     authorizeStatus: options.authorizeStatus ?? 409,
+    appOrigin: "",
+    authorizeRedirectToPath: options.authorizeRedirectToPath ?? "",
     browserAccountMode: options.browserAccountMode ?? "empty",
     deviceSessionsError: options.deviceSessionsError ?? false,
     deviceSessionsDelayMs: options.deviceSessionsDelayMs ?? 0,
@@ -1798,6 +1946,10 @@ async function startMockApiServer() {
     }
 
     if (req.method === "GET" && url.pathname === "/auth/priestess/account-choices") {
+      // Origin 头就是登录 app 自己的 origin（带 dev server 端口），后端的回跳地址需要它。
+      if (!scenario.appOrigin && req.headers.origin) {
+        scenario.appOrigin = req.headers.origin;
+      }
       scenario.records.accountChoices.push({
         appId: url.searchParams.get("app_id"),
         returnTo: url.searchParams.get("return_to"),
@@ -1929,13 +2081,14 @@ async function startMockApiServer() {
       scenario.records.authorizeRequestedAt = Date.now();
       scenario.records.authorizations.push(body);
       if (scenario.authorizeError) {
-        // app_access_denied 是后端拒绝授权时前端必须能看到的真实错误码。
+        // 403 用 Phainon 真实 payload：message 是英文原文，前端必须按错误码换成中文提示。
         writeJson(res, scenario.authorizeStatus, scenario.authorizeStatus === 403
-          ? { error: { code: "app_access_denied", message: "授权失败，请重新选择账号" } }
+          ? { error: { code: "app_access_denied", message: "App access is not allowed for this user" } }
           : { error: { code: "authorization_failed", message: "授权失败，请重新选择账号" } });
         return;
       }
-      const redirectUrl = new URL(body.return_to);
+      // 回跳地址仍指向登录 app，只在需要时换成故意慢响应的路由，让「导航等待期间」可被观测。
+      const redirectUrl = new URL(scenario.authorizeRedirectToPath || body.return_to, scenario.appOrigin || origin);
       redirectUrl.searchParams.set("authorized", "1");
       writeJson(res, 200, { redirect_url: redirectUrl.toString() });
       return;
