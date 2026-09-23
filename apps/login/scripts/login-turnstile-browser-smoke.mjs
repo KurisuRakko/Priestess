@@ -44,8 +44,10 @@ try {
   const { chromium } = await importPlaywright();
   browser = await launchBrowser(chromium);
 
-  await testFirstLoginDoesNotAutoAuthorize(browser, appUrl);
-  await testEmptyAccountRefreshReturnsToLogin(browser, appUrl);
+  await testFirstLoginAuthorizesDirectly(browser, appUrl);
+  await testEmptyAccountListStillAuthorizes(browser, appUrl);
+  await testAuthorizeFailureReturnsToAccountPicker(browser, appUrl);
+  await testAuthorizationRequestRunsWithSuccessAnimation(browser, appUrl);
   await testAccountChoiceErrorCanRetry(browser, appUrl);
   await testMultipleAccountsRemainSelectable(browser, appUrl);
   await testSavedAccountAuthorizationFailureReturnsPicker(browser, appUrl);
@@ -87,10 +89,10 @@ try {
     submitPassword,
     withScenario,
   });
-  await testTotpReturnsToAccountPicker(browser, appUrl);
-  await testPasskeyReturnsToAccountPicker(browser, appUrl);
+  await testTotpAuthorizesDirectly(browser, appUrl);
+  await testPasskeyAuthorizesDirectly(browser, appUrl);
   await testPhoneRegistrationProgress(browser, appUrl);
-  await testRegistrationReturnsToAccountPicker(browser, appUrl);
+  await testRegistrationAuthorizesDirectly(browser, appUrl);
 
   console.log("login auth-flow browser smoke passed");
 } finally {
@@ -99,8 +101,9 @@ try {
   if (apiServer) await closeServer(apiServer);
 }
 
-async function testFirstLoginDoesNotAutoAuthorize(browserInstance, appUrl) {
+async function testFirstLoginAuthorizesDirectly(browserInstance, appUrl) {
   const scenario = createScenario("first-login", {
+    // 账号列表在登录后变慢，用慢列表证明回跳不再依赖它。
     accountDelayAfterAuthMs: 3200,
     accountModeAfterAuth: "single",
     requireTurnstile: true,
@@ -111,36 +114,27 @@ async function testFirstLoginDoesNotAutoAuthorize(browserInstance, appUrl) {
     const usernameInput = page.locator("input[autocomplete='username']");
     await usernameInput.waitFor({ state: "visible" });
     assert.equal(await usernameInput.isEnabled(), true, "empty initial account list should expose the password form");
-    const initialAccountChoiceRequests = scenario.records.accountChoices.length;
 
     await submitPassword(page, "turnstile-user");
     await page.waitForSelector(".login-success-overlay.is-challenge", { timeout: 5000 });
     await page.locator("[data-priestess-smoke-turnstile='ready']").click();
-    await page.waitForSelector(".login-success-overlay.is-success", { timeout: 2500 });
-    await page.waitForSelector(".login-success-overlay", { state: "detached", timeout: 3500 });
+    await page.waitForSelector(".login-success-overlay", { timeout: 5000 });
 
-    // 慢账号列表仍在请求中时，成功遮罩和提交锁必须已经释放。
-    assert.equal(await page.locator(".login-card--submit-stage").count(), 0);
-    assert.equal(scenario.records.authorizations.length, 0, "single account must not be auto-authorized");
-    assert.equal(new URL(page.url()).pathname, "/login");
-
-    const accountButton = page.locator(".account-picker__row-main").first();
-    await accountButton.waitFor({ state: "visible", timeout: 7000 });
-    assert.equal(await accountButton.isEnabled(), true);
-    assert.ok(scenario.records.accountChoices.length > initialAccountChoiceRequests, "account list should refresh after the animation");
-    assert.equal(scenario.records.authorizations.length, 0);
-
-    await accountButton.click();
-    const selectedIdentity = page.locator('.login-success-overlay.is-success [data-login-identity-phase="success"]');
-    await selectedIdentity.waitFor({ state: "visible", timeout: 5000 });
-    assert.equal(await selectedIdentity.locator("[data-login-identity-name]").innerText(), `Primary ${scenario.appId}`);
-    assert.equal(new URL(page.url()).pathname, "/login", "authorization redirect must wait for the identity confirmation");
-    await page.waitForURL((url) => url.searchParams.get("authorized") === "1", { timeout: 5000 });
-    assert.deepEqual(scenario.records.authorizations, [{
+    // 首次登录成功后必须用刚建立的会话直接授权回跳，不再让用户回到账号选择卡再点一次。
+    // 直接断言最终地址：只有整段成功过场跑完才会跳转，跳转本身又把遮罩一起带走了。
+    await page.waitForURL((url) => url.searchParams.get("authorized") === "1", { timeout: 8000 });
+    assert.equal(new URL(page.url()).pathname, "/client-callback");
+    assert.equal(scenario.records.authorizations.length, 1, "first login must authorize exactly once");
+    assert.deepEqual(scenario.records.authorizations[0], {
       app_id: scenario.appId,
-      choice_id: `choice-${scenario.appId}`,
       return_to: `${appUrl}/client-callback`,
-    }]);
+    });
+    assert.equal(
+      Object.hasOwn(scenario.records.authorizations[0], "choice_id"),
+      false,
+      "current-session authorization must not send choice_id",
+    );
+    assert.equal(await page.locator(".account-picker__row-main").count(), 0, "account picker must never appear after a first login");
     assert.deepEqual(scenario.records.loginBodies, [
       { password: TEST_PASSWORD, username: "turnstile-user" },
       { password: TEST_PASSWORD, turnstile_token: TURNSTILE_TOKEN, username: "turnstile-user" },
@@ -148,23 +142,22 @@ async function testFirstLoginDoesNotAutoAuthorize(browserInstance, appUrl) {
   });
 }
 
-async function testEmptyAccountRefreshReturnsToLogin(browserInstance, appUrl) {
+async function testEmptyAccountListStillAuthorizes(browserInstance, appUrl) {
+  // 后端账号列表为空（旧后端只认当前会话）不能挡住授权：新账号登录后仍然直接回跳。
   const scenario = createScenario("empty-after-login", { accountModeAfterAuth: "empty" });
 
   await withScenario(browserInstance, scenario, async(page) => {
     await page.goto(buildAuthUrl(appUrl, scenario.appId), { waitUntil: "domcontentloaded" });
     await page.locator("input[autocomplete='username']").waitFor({ state: "visible" });
-    const initialAccountChoiceRequests = scenario.records.accountChoices.length;
 
     await submitPassword(page, "empty-user");
-    await page.waitForSelector(".login-success-overlay.is-success", { timeout: 5000 });
-    await page.waitForSelector(".login-success-overlay", { state: "detached", timeout: 5000 });
-    const usernameInput = page.locator("input[autocomplete='username']");
-    await usernameInput.waitFor({ state: "visible", timeout: 5000 });
-    assert.equal(await usernameInput.isEnabled(), true, "empty refresh result should return to an unlocked login form");
-    assert.equal(await page.locator(".login-form .primary-button[type='submit']").isEnabled(), true);
-    assert.ok(scenario.records.accountChoices.length > initialAccountChoiceRequests);
-    assert.equal(scenario.records.authorizations.length, 0);
+    await page.waitForURL((url) => url.searchParams.get("authorized") === "1", { timeout: 8000 });
+    assert.equal(new URL(page.url()).pathname, "/client-callback");
+    assert.equal(await page.locator(".account-picker__row-main").count(), 0, "an empty account list must not block the redirect");
+    assert.deepEqual(scenario.records.authorizations, [{
+      app_id: scenario.appId,
+      return_to: `${appUrl}/client-callback`,
+    }]);
   });
 }
 
@@ -197,6 +190,76 @@ async function testMultipleAccountsRemainSelectable(browserInstance, appUrl) {
     assert.equal(await accountButtons.first().isEnabled(), true);
     assert.equal(scenario.records.authorizations.length, 0);
   });
+}
+
+async function testAuthorizeFailureReturnsToAccountPicker(browserInstance, appUrl) {
+  const scenario = createScenario("authorize-denied", {
+    accountModeAfterAuth: "single",
+    authorizeError: true,
+    authorizeStatus: 403,
+  });
+
+  await withScenario(browserInstance, scenario, async(page) => {
+    await page.goto(buildAuthUrl(appUrl, scenario.appId), { waitUntil: "domcontentloaded" });
+    await page.locator("input[autocomplete='username']").waitFor({ state: "visible" });
+    const initialAccountChoiceRequests = scenario.records.accountChoices.length;
+
+    await submitPassword(page, "denied-user");
+    await page.locator(".login-success-overlay.is-success").waitFor({ state: "visible", timeout: 5000 });
+    await page.locator(".login-success-overlay").waitFor({ state: "detached", timeout: 5000 });
+
+    // 登录本身已经成功，失败的只是授权：必须留在登录页并让用户回到账号选择卡换账号。
+    assert.equal(new URL(page.url()).pathname, "/login", "authorization failure must not navigate away");
+    const accountButton = page.locator(".account-picker__row-main").first();
+    await accountButton.waitFor({ state: "visible", timeout: 7000 });
+    assert.equal(await page.locator("input[autocomplete='current-password']").count(), 0, "the account picker must replace the login form");
+    const inCardError = page.locator("[data-account-authorize-error='true']");
+    await inCardError.waitFor({ state: "visible", timeout: 3000 });
+    assert.match(await inCardError.innerText(), /授权失败/);
+    assert.ok(
+      scenario.records.accountChoices.length > initialAccountChoiceRequests,
+      "authorization failure must re-read the account choices",
+    );
+    assert.equal(await page.locator(".login-card--submit-stage").count(), 0, "the submit stage must be released for the picker");
+    assert.deepEqual(scenario.records.authorizations, [{
+      app_id: scenario.appId,
+      return_to: `${appUrl}/client-callback`,
+    }]);
+
+    // 换账号仍然可用：账号选择卡必须能重新发起带 choice_id 的授权。
+    scenario.authorizeError = false;
+    await accountButton.click();
+    await page.waitForURL((url) => url.searchParams.get("authorized") === "1", { timeout: 6000 });
+    assert.equal(scenario.records.authorizations.length, 2);
+    assert.equal(scenario.records.authorizations[1].choice_id, `choice-${scenario.appId}`);
+  }, { reducedMotion: "no-preference", viewport: { height: 900, width: 1440 } });
+}
+
+async function testAuthorizationRequestRunsWithSuccessAnimation(browserInstance, appUrl) {
+  const scenario = createScenario("direct-authorize-race", { accountModeAfterAuth: "single" });
+
+  await withScenario(browserInstance, scenario, async(page) => {
+    await page.goto(buildAuthUrl(appUrl, scenario.appId), { waitUntil: "domcontentloaded" });
+    await page.locator("input[autocomplete='username']").waitFor({ state: "visible" });
+    await submitPassword(page, "race-user");
+    await page.locator(".login-success-overlay.is-success").waitFor({ state: "visible", timeout: 5000 });
+
+    // 授权必须和成功动画并发发出，不能等动画播完才开始，否则动画的停留时间没有掩盖网络延迟。
+    await waitFor(
+      () => scenario.records.authorizations.length === 1,
+      800,
+      "authorization should start while the success animation is still on screen",
+    );
+    assert.ok(
+      scenario.records.authorizeRequestedAt >= scenario.records.loginRequestedAt,
+      "the authorization request must be issued after the login response",
+    );
+    await page.waitForURL((url) => url.searchParams.get("authorized") === "1", { timeout: 8000 });
+    assert.deepEqual(scenario.records.authorizations, [{
+      app_id: scenario.appId,
+      return_to: `${appUrl}/client-callback`,
+    }]);
+  }, { reducedMotion: "no-preference", viewport: { height: 900, width: 1440 } });
 }
 
 async function testSavedAccountAuthorizationFailureReturnsPicker(browserInstance, appUrl) {
@@ -1055,7 +1118,7 @@ async function testReducedMotionAccountSwitch(browserInstance, appUrl) {
   }, { reducedMotion: "reduce", viewport: { height: 844, width: 390 } });
 }
 
-async function testTotpReturnsToAccountPicker(browserInstance, appUrl) {
+async function testTotpAuthorizesDirectly(browserInstance, appUrl) {
   const scenario = createScenario("totp-login", { accountModeAfterAuth: "single", loginKind: "totp" });
 
   await withScenario(browserInstance, scenario, async(page) => {
@@ -1095,15 +1158,20 @@ async function testTotpReturnsToAccountPicker(browserInstance, appUrl) {
     await page.locator(".login-success-overlay").waitFor({ state: "detached", timeout: 5000 });
     await totpInput.fill("123456");
     await page.locator(".login-form .primary-button[type='submit']").click();
-    await page.locator('.login-success-overlay.is-success [data-login-identity-avatar="revealed"]').waitFor({ state: "visible", timeout: 5000 });
-    await waitForSuccessfulAccountPicker(page);
 
+    // 二步验证属于同一个登录过程，验证通过后同样用当前会话直接授权回跳；
+    // 最终地址同时证明成功过场已经跑完，且账号选择卡从未出现过。
+    await page.waitForURL((url) => url.searchParams.get("authorized") === "1", { timeout: 8000 });
+    assert.equal(await page.locator(".account-picker__row-main").count(), 0, "account picker must never appear after a TOTP login");
     assert.deepEqual(scenario.records.totpBodies, [{ challenge_id: "totp-challenge", code: "123456" }]);
-    assert.equal(scenario.records.authorizations.length, 0);
+    assert.deepEqual(scenario.records.authorizations, [{
+      app_id: scenario.appId,
+      return_to: `${appUrl}/client-callback`,
+    }]);
   }, { reducedMotion: "no-preference", viewport: { height: 900, width: 1440 } });
 }
 
-async function testPasskeyReturnsToAccountPicker(browserInstance, appUrl) {
+async function testPasskeyAuthorizesDirectly(browserInstance, appUrl) {
   const scenario = createScenario("passkey-login", { accountModeAfterAuth: "single" });
 
   await withScenario(browserInstance, scenario, async(page) => {
@@ -1111,13 +1179,17 @@ async function testPasskeyReturnsToAccountPicker(browserInstance, appUrl) {
     const passkeyButton = page.getByRole("button", { name: /使用 Passkey 登录/ });
     await passkeyButton.waitFor({ state: "visible" });
     await passkeyButton.click();
-    await page.locator('.login-success-overlay.is-success [data-login-identity-avatar="revealed"]').waitFor({ state: "visible", timeout: 5000 });
-    await waitForSuccessfulAccountPicker(page);
 
+    // Passkey 登录与密码登录共用 finishAuthenticatedLogin，因此同样直接授权回跳。
+    await page.waitForURL((url) => url.searchParams.get("authorized") === "1", { timeout: 8000 });
+    assert.equal(await page.locator(".account-picker__row-main").count(), 0, "account picker must never appear after a Passkey login");
     assert.equal(scenario.records.passkeyOptions, 1);
     assert.equal(scenario.records.passkeyVerifications.length, 1);
     assert.equal(scenario.records.passkeyVerifications[0].challenge_id, "passkey-challenge");
-    assert.equal(scenario.records.authorizations.length, 0);
+    assert.deepEqual(scenario.records.authorizations, [{
+      app_id: scenario.appId,
+      return_to: `${appUrl}/client-callback`,
+    }]);
   });
 }
 
@@ -1137,7 +1209,7 @@ async function testPhoneRegistrationProgress(browserInstance, appUrl) {
   });
 }
 
-async function testRegistrationReturnsToAccountPicker(browserInstance, appUrl) {
+async function testRegistrationAuthorizesDirectly(browserInstance, appUrl) {
   const scenario = createScenario("registration", { accountModeAfterAuth: "single" });
 
   await withScenario(browserInstance, scenario, async(page) => {
@@ -1178,8 +1250,22 @@ async function testRegistrationReturnsToAccountPicker(browserInstance, appUrl) {
     await displayNameInput.fill("First Login User");
     await page.locator("input[autocomplete='username']").fill("firstloginuser");
     await page.locator(".login-form .primary-button[type='submit']").click();
-    await page.getByText("正在进入 Priestess").waitFor({ state: "visible", timeout: 5000 });
-    await page.locator(".account-picker__row-main").first().waitFor({ state: "visible", timeout: 7000 });
+
+    // 注册成功后与登录成功一致：走同一个过场（不再先停在「注册成功」提示上），
+    // 然后直接用刚建立的会话授权回跳，因此直接等最终地址。
+    await page.waitForURL((url) => url.searchParams.get("authorized") === "1", { timeout: 10000 });
+    assert.equal(new URL(page.url()).pathname, "/client-callback");
+    assert.equal(scenario.records.authorizations.length, 1, "registration must authorize exactly once");
+    assert.deepEqual(scenario.records.authorizations[0], {
+      app_id: scenario.appId,
+      return_to: `${appUrl}/client-callback`,
+    });
+    assert.equal(
+      Object.hasOwn(scenario.records.authorizations[0], "choice_id"),
+      false,
+      "current-session authorization must not send choice_id",
+    );
+    assert.equal(await page.locator(".account-picker__row-main").count(), 0, "account picker must never appear after a registration");
 
     assert.deepEqual(scenario.records.registrationInviteChecks, [{
       identity: "first-login@example.com",
@@ -1215,7 +1301,6 @@ async function testRegistrationReturnsToAccountPicker(browserInstance, appUrl) {
       verification_challenge: "registration-verification-challenge",
     });
     assert.equal(await page.locator(".login-success-overlay.is-challenge").count(), 0);
-    assert.equal(scenario.records.authorizations.length, 0);
   });
 }
 
@@ -1324,6 +1409,7 @@ function createScenario(appId, options = {}) {
     accountModeAfterAuth: options.accountModeAfterAuth ?? "empty",
     accountModeBeforeAuth: options.accountModeBeforeAuth ?? "empty",
     authorizeError: options.authorizeError ?? false,
+    authorizeStatus: options.authorizeStatus ?? 409,
     browserAccountMode: options.browserAccountMode ?? "empty",
     deviceSessionsError: options.deviceSessionsError ?? false,
     deviceSessionsDelayMs: options.deviceSessionsDelayMs ?? 0,
@@ -1335,6 +1421,7 @@ function createScenario(appId, options = {}) {
     records: {
       accountChoices: [],
       activations: [],
+      authorizeRequestedAt: 0,
       authorizations: [],
       browserAccounts: 0,
       deviceSessions: 0,
@@ -1839,9 +1926,13 @@ async function startMockApiServer() {
 
     if (req.method === "POST" && url.pathname === "/auth/priestess/authorize") {
       const body = await readJsonBody(req);
+      scenario.records.authorizeRequestedAt = Date.now();
       scenario.records.authorizations.push(body);
       if (scenario.authorizeError) {
-        writeJson(res, 409, { error: { code: "authorization_failed", message: "授权失败，请重新选择账号" } });
+        // app_access_denied 是后端拒绝授权时前端必须能看到的真实错误码。
+        writeJson(res, scenario.authorizeStatus, scenario.authorizeStatus === 403
+          ? { error: { code: "app_access_denied", message: "授权失败，请重新选择账号" } }
+          : { error: { code: "authorization_failed", message: "授权失败，请重新选择账号" } });
         return;
       }
       const redirectUrl = new URL(body.return_to);

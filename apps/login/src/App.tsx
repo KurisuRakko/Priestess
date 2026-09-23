@@ -25,7 +25,7 @@ import { NotFoundPage } from "./components/NotFoundPage";
 import { useLoginOverlayStage } from "./components/useLoginOverlayStage";
 import { useQrLoginCompletion } from "./components/useQrLoginCompletion";
 import { getAuthAccountAuthorizeBlocker, shouldShowAuthAccountPicker } from "./lib/accountAuthorization";
-import { completeAccountSelection, getAuthAccountActivationErrorMessage } from "./lib/accountSelection";
+import { completeAccountSelection, getAuthAccountActivationErrorMessage, startAuthRedirectAuthorization } from "./lib/accountSelection";
 import type { LoginIdentityMotionSource } from "./components/loginIdentityMotion";
 import { isAccountEditableInBrowser, resolveAccountManagementActionTarget } from "./lib/accountManagementAction";
 import { getAuthRequestKey, readAuthRequest, type AuthRequest } from "./lib/authRequest";
@@ -87,21 +87,21 @@ export function App() {
   const authModeLayoutTimeoutRef = useRef<number | null>(null);
   const authModeTransitionTimeoutRef = useRef<number | null>(null);
   const [notice, setNotice] = useState("");
-  const [accountActionBusyId, setAccountActionBusyId] = useState("");
   const [accountAuthorizeError, setAccountAuthorizeError] = useState("");
-  const [authorizingAccountId, setAuthorizingAccountId] = useState("");
   const [authMode, setAuthMode] = useState<AuthMode>("login");
-  const [directAuthorizeBusy, setDirectAuthorizeBusy] = useState(false);
   const [forgotPasswordIdentity, setForgotPasswordIdentity] = useState("");
   const [isAuthModeTransitioning, setIsAuthModeTransitioning] = useState(false);
   const [isLoginIntroStage, setIsLoginIntroStage] = useState(() => getCurrentRoute() === "login");
-  const [isRegisterDrawerStage, setIsRegisterDrawerStage] = useState(false);
   const [route, setRoute] = useState<AppRoute>(() => getCurrentRoute());
-  const [localLoginCooldownUntil, setLocalLoginCooldownUntil] = useState(readLocalLoginCooldownUntil);
   const [localLoginFailureCount, setLocalLoginFailureCount] = useState(0);
-  const [removingAccountId, setRemovingAccountId] = useState("");
   const [showLoginFormForAccountPicker, setShowLoginFormForAccountPicker] = useState(false);
   const [totpChallenge, setTotpChallenge] = useState<TotpChallenge | null>(null);
+  const [accountActionBusyId, setAccountActionBusyId] = useState("");
+  const [authorizingAccountId, setAuthorizingAccountId] = useState("");
+  const [directAuthorizeBusy, setDirectAuthorizeBusy] = useState(false);
+  const [isRegisterDrawerStage, setIsRegisterDrawerStage] = useState(false);
+  const [localLoginCooldownUntil, setLocalLoginCooldownUntil] = useState(readLocalLoginCooldownUntil);
+  const [removingAccountId, setRemovingAccountId] = useState("");
   const {
     cancelSubmitStageWait: cancelLoginSubmitStageWait,
     isAccountSelectionStage,
@@ -111,15 +111,11 @@ export function App() {
     revealSubmitContent: revealLoginSubmitContent,
     startAccountSelectionOverlay,
     startCenteredOverlay: startCenteredLoginOverlay,
-  } = useLoginOverlayStage({
-    loginCardRef,
-    loginTransitionOverlayRef,
-    setLoginIntroStage: setIsLoginIntroStage,
-  });
+  } = useLoginOverlayStage({ loginCardRef, loginTransitionOverlayRef, setLoginIntroStage: setIsLoginIntroStage });
   const authRequest = route === "login" ? readAuthRequest() : null;
   const authRequestKey = getAuthRequestKey(authRequest);
-  const hasQrRequest = authRequest !== null;
   const isLocalLoginCooldownActive = route === "login" && authMode === "login" && localLoginCooldownUntil > Date.now();
+  const hasQrRequest = authRequest !== null;
   const accountChoices = useAuthAccountChoices({
     active: route === "login" && authMode === "login",
     authRequest,
@@ -134,6 +130,7 @@ export function App() {
   });
   const isRegisterMode = authMode === "register";
   const isForgotPasswordMode = authMode === "forgot-password";
+  const successHoldMs = shouldReduceMotion ? LOGIN_SUCCESS_HOLD_REDUCED_MS : LOGIN_SUCCESS_HOLD_MS;
   const hasTotpChallenge = Boolean(totpChallenge);
   const shouldShowAccountPicker = shouldShowAuthAccountPicker({
     authMode,
@@ -143,11 +140,11 @@ export function App() {
     standalone: !hasQrRequest,
     status: accountChoices.status,
   });
-  const isAccountChoiceInitialDataReady = ["empty", "error", "ready"].includes(accountChoices.status);
+  // 账号选择项就绪、没有二步验证挑战、未被冷却或手机端接管时，二维码会话才提前准备。
   const shouldPrepareQr = route === "login"
     && authMode === "login"
     && hasQrRequest
-    && isAccountChoiceInitialDataReady
+    && ["empty", "error", "ready"].includes(accountChoices.status)
     && !hasTotpChallenge
     && !isLocalLoginCooldownActive
     && !isLoginSubmitStage
@@ -263,6 +260,68 @@ export function App() {
     setLocalLoginCooldownUntil(cooldownUntil);
   };
 
+  // 登录/注册的授权失败共用同一份回退动作：输入账号密码本身就是选定账号，授权失败才需要
+  // 重新拉账号列表让用户换账号；注册页的账号选择面板属于登录模式，不先切回去它不会出现。
+  const returnToAuthAccountPickerAfterAuthorizeFailure = (message: string, switchModeToLogin: boolean) => {
+    setShowLoginFormForAccountPicker(false);
+    setAccountAuthorizeError(message);
+    accountChoices.refresh();
+    releaseLoginSubmitStage();
+    if (switchModeToLogin) switchAuthMode("login");
+    showNotice(message);
+    return false;
+  };
+
+  // 密码 / Passkey / 2FA 登录与注册成功后共用同一条收尾路径：成功动画与授权请求并发跑，
+  // 结束后按结果决定直接授权回跳，还是把当前会话交接给账号页。
+  const runAuthenticatedSessionSuccess = async(params: {
+    controller: LoginTransitionOverlayController;
+    finishNotice: string;
+    handoff: ReturnType<typeof accountRouteHandoff.beginForSession> | null;
+    signal?: AbortSignal;
+    switchToLoginModeOnAuthorizeFailure?: boolean;
+    user: { avatarUrl: string; name: string };
+  }) => {
+    const request = readAuthRequest();
+    const authorization = request ? startAuthRedirectAuthorization(request, t) : null;
+    let destinationPrepared = false, destinationCommitted = false;
+    const prepareDestination = async() => {
+      if (destinationPrepared || params.signal?.aborted) return destinationCommitted;
+      destinationPrepared = true;
+      if (authorization) {
+        // 授权请求已和成功动画并发发出；这里只读结果，动画停留本来就要走完。
+        const result = await authorization;
+        if (!result.ok) {
+          const switchMode = Boolean(params.switchToLoginModeOnAuthorizeFailure);
+          return returnToAuthAccountPickerAfterAuthorizeFailure(result.message, switchMode);
+        }
+        showNotice(t("正在返回应用"));
+        window.location.assign(result.redirectUrl);
+        return true;
+      }
+      destinationCommitted = await params.handoff?.complete() ?? false;
+      if (destinationCommitted) showNotice(t(params.finishNotice));
+      return destinationCommitted;
+    };
+
+    await params.controller.succeed({
+      avatarUrl: params.user.avatarUrl,
+      continuationAfterHold: !request,
+      // 停留缩到 400ms，中途换文案只会抖动；留空回落成 titleText，保持同一句标题。
+      continuationTitle: "",
+      durationMs: LOGIN_RESULT_ANIMATION_MS,
+      onVisualComplete: prepareDestination,
+      postAnimationDelayMs: successHoldMs,
+      title: t("已成功登录"),
+      username: params.user.name,
+    });
+
+    // 已中止就直接收尾：不跳转、不回退账号选择，也不释放提交态。
+    if (params.signal?.aborted) return;
+    // 授权与交接分支都靠自己的回调收尾；只有两者都没接管时才需要释放提交态等待。
+    if (!await prepareDestination()) releaseLoginSubmitStage();
+  };
+
   const finishAuthenticatedLogin = async(params: {
     controller: LoginTransitionOverlayController;
     fallbackUsername: string;
@@ -273,55 +332,19 @@ export function App() {
       throw new Error(t("本地账号登录尚未完成"));
     }
 
-    const displayName = params.session.user?.displayName || params.session.user?.username || params.fallbackUsername;
     const request = readAuthRequest();
-    let destinationPrepared = false;
-    let destinationCommitted = false;
-    const standaloneHandoff = request
-      ? null
-      : accountRouteHandoff.beginForSession(params.session, readLoginNext());
     attachDesktopSessionReference(params.controller);
-    const prepareDestination = async() => {
-      if (destinationPrepared || params.signal.aborted) return;
-      destinationPrepared = true;
-      if (request) {
-        // 身份揭示完成后立刻在遮罩后刷新账号列表，把 1.6 秒确认停留用于准备下一屏。
-        setShowLoginFormForAccountPicker(false);
-        setAccountAuthorizeError("");
-        accountChoices.refresh();
-        return;
-      }
-      destinationCommitted = await standaloneHandoff?.complete() ?? false;
-      if (destinationCommitted) {
-        showNotice(t("登录成功"));
-      }
-      return destinationCommitted;
-    };
-
-    await params.controller.succeed({
-      avatarUrl: params.session.user?.avatarUrl || "",
-      continuationAfterHold: !request,
-      // 不再在 continuation 时切换文案：hold 缩到 400ms 后，新文案淡入 260ms 就跟着整块内容淡出，
-      // 从未达到不透明就开始消失只剩抖动；空串会让文案回落成 titleText，保持同一句标题。
-      continuationTitle: "",
-      durationMs: LOGIN_RESULT_ANIMATION_MS,
-      onVisualComplete: prepareDestination,
-      postAnimationDelayMs: shouldReduceMotion ? LOGIN_SUCCESS_HOLD_REDUCED_MS : LOGIN_SUCCESS_HOLD_MS,
-      title: t("已成功登录"),
-      username: displayName,
+    const user = params.session.user;
+    await runAuthenticatedSessionSuccess({
+      controller: params.controller,
+      finishNotice: "登录成功",
+      handoff: request ? null : accountRouteHandoff.beginForSession(params.session, readLoginNext()),
+      signal: params.signal,
+      user: {
+        avatarUrl: user?.avatarUrl || "",
+        name: user?.displayName || user?.username || params.fallbackUsername,
+      },
     });
-
-    if (params.signal.aborted) {
-      return;
-    }
-    prepareDestination();
-
-    if (request) {
-      releaseLoginSubmitStage();
-      showNotice(t("已添加账号，请选择要继续使用的账号"));
-    } else if (!destinationCommitted) {
-      releaseLoginSubmitStage();
-    }
   };
 
   const finishRegisteredSession = async(session: LocalSession, fallbackIdentity: string) => {
@@ -330,45 +353,22 @@ export function App() {
     }
 
     const request = readAuthRequest();
-    if (request) {
-      // 注册成功页结束后统一刷新账号列表；唯一账号也必须由用户明确选择后再授权。
-      setShowLoginFormForAccountPicker(false);
-      setAccountAuthorizeError("");
-      accountChoices.refresh();
-      switchAuthMode("login");
-      showNotice(t("注册成功，请选择要继续使用的账号"));
-      return;
-    }
-
-    const handoff = accountRouteHandoff.beginForSession(session, readLoginNext());
     const controller = await startCenteredLoginOverlay({
       identityReveal: true,
       loadingTitle: t("正在准备你的账号…"),
       primaryColor: "#c65f72",
     });
     attachDesktopSessionReference(controller);
-    let destinationCommitted = false;
-    await controller.succeed({
-      avatarUrl: session.user?.avatarUrl || "",
-      continuationAfterHold: true,
-      // 与密码登录一致：hold 缩到 400ms 后，新文案淡入 260ms 就跟着整块内容淡出，
-      // 从未达到不透明就开始消失只会抖动；留空回落成 titleText，保持同一句标题。
-      continuationTitle: "",
-      durationMs: LOGIN_RESULT_ANIMATION_MS,
-      onVisualComplete: async() => {
-        destinationCommitted = await handoff?.complete() ?? false;
-        // 交接已提交目标路由并由账号页接管退场，回传 true 让 overlay 跳过空转的 fadeOut。
-        return destinationCommitted;
+    await runAuthenticatedSessionSuccess({
+      controller,
+      finishNotice: "注册成功",
+      handoff: request ? null : accountRouteHandoff.beginForSession(session, readLoginNext()),
+      switchToLoginModeOnAuthorizeFailure: true,
+      user: {
+        avatarUrl: session.user?.avatarUrl || "",
+        name: session.user?.displayName || session.user?.username || fallbackIdentity,
       },
-      postAnimationDelayMs: shouldReduceMotion ? LOGIN_SUCCESS_HOLD_REDUCED_MS : LOGIN_SUCCESS_HOLD_MS,
-      title: t("已成功登录"),
-      username: session.user?.displayName || session.user?.username || fallbackIdentity,
     });
-    if (destinationCommitted) {
-      showNotice(t("注册成功"));
-    } else {
-      releaseLoginSubmitStage();
-    }
   };
 
   const runLoginFailureTransition = async(controller: LoginTransitionOverlayController, message: string) => {
@@ -397,9 +397,8 @@ export function App() {
     }
     const blocker = getAuthAccountAuthorizeBlocker(account);
     if (blocker) {
-      const message = blocker;
-      setAccountAuthorizeError(message);
-      showNotice(message);
+      setAccountAuthorizeError(blocker);
+      showNotice(blocker);
       return;
     }
 
@@ -457,7 +456,7 @@ export function App() {
         continuationTitle: "",
         durationMs: LOGIN_RESULT_ANIMATION_MS,
         onVisualComplete: prepareDestination,
-        postAnimationDelayMs: shouldReduceMotion ? LOGIN_SUCCESS_HOLD_REDUCED_MS : LOGIN_SUCCESS_HOLD_MS,
+        postAnimationDelayMs: successHoldMs,
         title: t("已成功登录"),
         username: displayName,
       });
@@ -575,7 +574,7 @@ export function App() {
           // 目标页已接管退场，回传 true 让 overlay 跳过空转的 fadeOut。
           return destinationCommitted;
         },
-        postAnimationDelayMs: shouldReduceMotion ? LOGIN_SUCCESS_HOLD_REDUCED_MS : LOGIN_SUCCESS_HOLD_MS,
+        postAnimationDelayMs: successHoldMs,
         title: t("已成功登录"),
         username: session.user?.displayName || session.user?.username || account.displayName || account.username,
       });

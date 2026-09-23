@@ -89,6 +89,8 @@ export function AccountPickerCard({
   const isStandalone = mode === "standalone";
   const isLoading = status === "loading";
   const isError = status === "error";
+  // 授权失败不是列表读取失败：卡片内容照常可用，只在列表上方补一条回退说明，让用户换账号重试。
+  const isAuthorizeError = Boolean(error) && !isError;
   const isBusy = Boolean(busyAccountId || removingAccountId);
   const actionAccountKey = actionAccount ? getAccountKey(actionAccount) : "";
   const currentActionAccount = actionAccount
@@ -220,6 +222,11 @@ export function AccountPickerCard({
               </div>
 
               <div className="account-picker" aria-busy={isLoading}>
+                {isAuthorizeError ? (
+                  <div className="account-picker__notice" data-account-authorize-error="true" role="status">
+                    <span>{error}</span>
+                  </div>
+                ) : null}
                 {isLoading ? (
                   <AccountPickerLoadingRows ariaLabel={t("正在读取账号")} />
                 ) : isError ? (

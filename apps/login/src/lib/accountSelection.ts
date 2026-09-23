@@ -7,7 +7,7 @@ import {
 } from "@priestess/shared";
 import { buildAuthAccountAuthorizeParams } from "./accountAuthorization";
 import type { AuthRequest } from "./authRequest";
-import type { AuthAccountChoice } from "./useAuthAccountChoices";
+import { getAuthAccountChoiceErrorMessage, type AuthAccountChoice } from "./useAuthAccountChoices";
 
 type TranslationFn = (key: string) => string;
 
@@ -42,4 +42,31 @@ export function getAuthAccountActivationErrorMessage(error: unknown, t: Translat
     return t("当前账号状态已变化，请重新选择账号");
   }
   return getPriestessApiErrorMessage(error, t("当前账号状态已变化，请重新选择账号"));
+}
+
+/** 成功时按后端签发的回跳地址离开登录页；失败时由调用方按自己所在的页面退回账号选择卡。 */
+export type AuthRedirectAuthorizationOutcome =
+  | { ok: true; redirectUrl: string }
+  | { message: string; ok: false };
+
+/**
+ * 刚完成身份验证的当前会话直接向目标应用授权：用户输入账号密码或完成注册这一步本身就是选定账号，
+ * 因此不再让用户回到账号选择卡重点一次。
+ * 调用方在自己的成功动画开始时并发调用它，用动画停留时间掩盖授权往返延迟，动画结束后再读结果。
+ * 授权失败只回退到账号选择卡，不升级成登录失败——登录本身已经成功。
+ */
+export async function startAuthRedirectAuthorization(
+  authRequest: AuthRequest,
+  t: TranslationFn,
+): Promise<AuthRedirectAuthorizationOutcome> {
+  try {
+    // 不传 choice_id：后端按当前会话授权。
+    const result = await authorizeLocalSession({ appId: authRequest.appId, returnTo: authRequest.returnTo });
+    if (!result.redirectUrl) {
+      throw new Error(t("后端未返回回跳地址"));
+    }
+    return { ok: true, redirectUrl: result.redirectUrl };
+  } catch (error) {
+    return { message: getAuthAccountChoiceErrorMessage(error, t("授权失败，请重新选择账号")), ok: false };
+  }
 }

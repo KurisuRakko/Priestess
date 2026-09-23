@@ -2,7 +2,7 @@
 
 ## 目标
 
-当第三方应用通过 Priestess 发起登录请求，也就是 `/login?app_id=...&return_to=...` 这类带授权上下文的入口时，如果当前浏览器里已经存在一个或多个可用 Priestess 本地账号，会话卡片不再先展示用户名、密码和 Passkey 登录表单，而是优先展示“选择账号继续”的界面。用户点选账号后再完成授权回跳；即使只有一个已登录账号，也必须由用户明确点击继续。只有没有可用账号，或者用户主动选择“使用其他账号”时，才回到现有登录表单。
+当第三方应用通过 Priestess 发起登录请求，也就是 `/login?app_id=...&return_to=...` 这类带授权上下文的入口时，如果当前浏览器里已经存在一个或多个可用 Priestess 本地账号，会话卡片不再先展示用户名、密码和 Passkey 登录表单，而是优先展示“选择账号继续”的界面。用户点选账号后再完成授权回跳；即使只有一个已登录账号，也必须由用户明确点击继续。只有没有可用账号，或者用户主动选择“使用其他账号”时，才回到现有登录表单。用户在这个入口里当场输入账号密码或完成注册时，这一步本身就已经选定账号，因此登录/注册成功后直接用当前会话授权回跳，不再要求用户回到账号选择卡再点一次；账号选择卡只在登录前（浏览器容器里已有会话）和授权失败回退时出现。
 
 这个计划只设计 Priestess 仓库内的前端和共享 API 契约，不在本次直接修改 Phainon 源码。需要后端配合的部分会写成兼容契约，后续实现生产能力时再按 Phainon Worker/Hono/D1 结构落地。
 
@@ -11,6 +11,7 @@
 更新时间：2026-05-24。
 
 - 已完成 Priestess 仓库内的前端第一版：应用授权入口会优先读取账号选择，展示“选择账号”，不再对已登录会话做无感自动授权跳转。
+- 已改为带授权请求时登录/注册成功即用当前会话直接授权回跳（`authorizeLocalSession({ appId, returnTo })`，不带 `choice_id`），授权失败才回退到账号选择卡并在卡内报错；账号选择卡只在登录前和授权失败回退时出现。
 - 已完成共享 API client 契约：`listLocalAccountChoices(params)`、`authorizeLocalSession({ choiceId })`、账号选择类型和 snake_case / camelCase normalizer。
 - 已拆出 `authRequest` 纯函数、`useAuthAccountChoices` hook、`AccountPickerCard` 和独立 CSS，`App.tsx` 没有继续膨胀超过 1000 行。
 - 已同步 `docs/phainon-qr-login-design.md`，记录 Phainon 后续需要实现的账号选择接口与授权扩展。
@@ -34,7 +35,8 @@
 | 3. 新增 `useAuthAccountChoices` | 已完成 | `apps/login/src/lib/useAuthAccountChoices.ts` | `npm run test:account-picker` 覆盖 404 / 501 fallback、未登录 empty、缺 `choice_id` 契约错误、500 不误降级；Browser live fallback 验证未登录显示原表单 |
 | 3.5. 拆出授权辅助逻辑 | 已完成 | `apps/login/src/lib/accountAuthorization.ts` | `npm run test:account-picker` 覆盖 `choice_id` 缺失拦截、旧 session fallback 不传 `choice_id`、新账号选择传 `choice_id`、loading / ready / error 可见、empty / idle / TOTP / 使用其他账号不可见 |
 | 4. 新增 `AccountPickerCard` 与独立 CSS | 已完成 | `apps/login/src/components/AccountPickerCard.tsx`、`AccountPickerCard.css` | `npm run test:account-picker` 覆盖 loading、empty、error、单账号、多账号、授权中状态、账号行 `aria-label` / `aria-busy`、头像 URL 过滤和长文本渲染；Browser 验证移动端无横向溢出 |
-| 5. 调整 `App.tsx` 渲染和授权分支 | 已完成 | `apps/login/src/App.tsx` | Browser smoke 覆盖普通 `/login`、授权入口账号选择、使用其他账号、选择账号后后端回跳 |
+| 5. 调整 `App.tsx` 渲染和授权分支 | 已完成 | `apps/login/src/App.tsx` | Browser smoke 覆盖普通 `/login`、授权入口账号选择、使用其他账号、选择账号后后端回跳，以及带授权请求时首次登录/注册成功后直接回跳、授权失败回退账号选择 |
+| 5.5. 抽出当前会话直接授权辅助 | 已完成 | `apps/login/src/lib/accountSelection.ts` | `startAuthRedirectAuthorization` 统一登录与注册的「当前会话授权 → 回跳 / 失败回退」，Browser smoke 断言 authorize 恰好一次且不带 `choice_id` |
 | 6. 同步 Phainon 契约文档 | 已完成 | `docs/phainon-qr-login-design.md` | 文档已记录 account-choices 接口和 `choice_id` 授权扩展 |
 | 7. 补充最小测试 | 已完成 | `apps/login/scripts/account-picker-smoke.mjs` | `npm run test:account-picker` 覆盖 UI、共享 API、hook fallback 和敏感错误文案脱敏 |
 | 8. 构建登录前端 | 已完成 | 登录 app workspace | `npm run build:login` 通过，仅有 Vite 大 chunk 提示 |
@@ -52,11 +54,11 @@
 
 1. 普通访问 `/login` 时保持现有登录表单、注册入口、忘记密码、Passkey 和 QR 抽屉行为。
 2. 应用访问 `/login?app_id=xxx&return_to=yyy` 时先检查当前浏览器是否有可用 Priestess 账号。
-3. 如果没有可用账号，继续展示现有登录表单；登录成功后刷新账号选择列表，让用户明确选择账号后再授权回跳。
+3. 如果没有可用账号，继续展示现有登录表单；密码、Passkey 或二步验证登录成功后直接用当前会话授权回跳，不再刷新账号选择列表让用户重点一次。
 4. 如果有一个可用账号，登录卡片展示这个账号、目标应用信息、继续按钮和“使用其他账号”入口，不再自动无感跳转。
 5. 如果有多个可用账号，登录卡片展示账号列表；用户选择其中一个账号后完成授权。
-6. “使用其他账号”切回现有登录表单，用户可以密码登录、Passkey 登录或注册新账号；成功后保留原有账号，把新登录账号加入可选账号列表，再让用户明确选择账号继续授权。
-7. 授权失败、账号过期、后端不可用时只显示清晰错误态，不把用户送进空白页或循环跳转。
+6. “使用其他账号”切回现有登录表单，用户可以密码登录、Passkey 登录或注册新账号；成功后保留原有账号，并用刚建立的会话直接授权回跳，新账号不进入账号选择列表。
+7. 授权失败（含 `403 app_access_denied`）、账号过期、后端不可用时只显示清晰错误态，不把用户送进空白页或循环跳转；登录/注册后授权失败只回退到账号选择卡并在卡内报错，让用户换一个账号。
 8. 移动端保持单卡片布局；桌面端优先沿用当前登录卡片和 QR 抽屉结构，避免重做首屏架构。
 9. 应用信息第一版只显示 `app_id` 和 `return_to` 的域名，不要求后端返回应用 logo 或应用展示名。
 10. 账号选择后不额外强制 TOTP 或 Passkey step-up；如果未来需要高风险验证，应由后端风险策略显式返回 challenge 后再接入。
@@ -185,8 +187,9 @@ POST /auth/priestess/authorize
 - 账号选择状态为 `loading` 时，在同一个卡片内显示轻量 skeleton 或等待态。
 - 账号选择状态为 `empty` 时继续显示现有 `LoginForm`。
 - 用户点选账号时调用扩展后的 `authorizeLocalSession({ appId, returnTo, choiceId })`。
-- 用户点“使用其他账号”时把账号选择面板临时收起，显示现有 `LoginForm`；登录成功后刷新账号选择列表，而不是直接回跳，也不清掉原有账号。
-- 新账号登录成功后的文案应该提示“已添加账号，请选择要继续使用的账号”，避免用户误以为已经完成授权。
+- 用户点“使用其他账号”时把账号选择面板临时收起，显示现有 `LoginForm`；密码、Passkey 或二步验证登录成功后用刚建立的当前会话调用 `authorizeLocalSession({ appId, returnTo })`（不带 `choice_id`）并直接回跳，原有账号仍保留在账号选择卡里。
+- 注册成功走与登录成功相同的过场，成功后同样直接授权回跳；账号选择卡此时不出现。
+- 授权请求在成功动画开始时并发发出，动画停留时间用来掩盖网络延迟；失败时回退到账号选择卡、在卡内显示错误并重新刷新账号列表。
 - 保留当前 QR session 刷新、轮询、登录成功 overlay、reduced motion、注册和忘记密码逻辑。
 
 ## UI 设计计划
@@ -216,15 +219,15 @@ flowchart TD
   E -->|无| C
   E -->|有| F["显示账号选择卡片"]
   F --> G{"用户动作"}
-  G -->|选择账号| H["POST /auth/priestess/authorize"]
+  G -->|选择账号| H["POST /auth/priestess/authorize（带 choice_id）"]
   G -->|使用其他账号| C
   H --> I{"授权结果"}
   I -->|redirect_url| J["跳回应用"]
   I -->|需要验证| K["后端显式要求时复用 TOTP 或登录路径"]
   I -->|失败| L["留在账号选择卡片并显示错误"]
-  C --> M["登录成功"]
-  M --> N["刷新账号选择列表"]
-  N --> F
+  C --> M["登录 / 注册成功"]
+  M --> O["POST /auth/priestess/authorize（当前会话，不带 choice_id）"]
+  O --> I
 ```
 
 ## 安全与隐私
@@ -251,9 +254,11 @@ flowchart TD
    - 有授权请求且已登录时显示账号选择，不自动跳转。
    - 只有一个账号时仍需要用户点击继续。
    - 多个账号时可以选择不同账号发起授权。
-   - “使用其他账号”登录成功后刷新账号列表，并保留原有账号。
+   - 有授权请求时首次登录成功后只调用一次 `authorize`，请求体不带 `choice_id`，并跳到后端返回的 `redirect_url`，账号选择卡全程不出现。
+   - TOTP、Passkey 与注册成功后同样直接授权回跳。
+   - 授权失败（403 `app_access_denied`）时留在 `/login`、账号选择卡可见、卡内显示错误并重新拉取账号列表，用户换账号后仍能发起授权。
+   - “使用其他账号”仍能回到现有登录表单；原有账号仍保留在账号选择卡里。
    - 点击账号后调用 authorize 并使用返回的 `redirectUrl`。
-   - 点击“使用其他账号”回到现有登录表单。
 8. 运行 `npm run build:login`。
 9. 启动 `npm run dev:login`，用浏览器验证桌面和移动宽度：
    - `/login`
@@ -265,7 +270,8 @@ flowchart TD
 - 已登录用户进入应用授权登录页时，不再看到默认用户名密码登录表单，也不会被无感自动跳走。
 - 用户必须明确选择一个账号或选择“使用其他账号”。
 - 只有一个已登录账号时也必须显式点击继续。
-- “使用其他账号”登录成功后，原账号仍保留，新账号进入账号选择列表。
+- 有授权请求时，当场登录或注册成功即视为选定账号，直接授权回跳；账号选择卡只在登录前（已有会话）和授权失败回退时出现。
+- 授权失败时刚建立的本地会话仍然有效，用户可以换一个账号继续授权，不需要重新登录。
 - 第一版应用信息只依赖 `app_id` 和 `return_to` 域名即可完整展示。
 - 选择账号后仍由后端签发回跳地址，前端不自行拼接 `login_code`。
 - 没有可用账号时，现有登录、注册、忘记密码、Passkey、TOTP 流程不回退。
