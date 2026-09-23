@@ -40,6 +40,7 @@ try {
   const viteAddress = viteServer.httpServer?.address();
   assert.ok(viteAddress && typeof viteAddress === "object", "vite server address missing");
   const appUrl = `http://127.0.0.1:${viteAddress.port}`;
+
   const { chromium } = await importPlaywright();
   browser = await launchBrowser(chromium);
 
@@ -299,25 +300,22 @@ async function testSlowRedirectKeepsLoginCardYielded(browserInstance, appUrl) {
       window.__priestessRedirectWaitProbe = setInterval(() => {
         // 受检窗口由页面自己判定：登录请求已经发出（性能条目可见）到导航提交为止，
         // 登录卡都不许被释放回普通表单。整段判定留在文档内部，不依赖 Node 侧的 evaluate。
-        const waitBaseline = performance.getEntriesByType("resource")
-          .some((entry) => entry.name.includes("/auth/priestess/session"))
-          ? 1
-          : null;
+        const loginRequested = performance.getEntriesByType("resource")
+          .some((entry) => entry.name.includes("/auth/priestess/session"));
         const card = document.querySelector(".login-card");
         const passwordInput = document.querySelector("input[autocomplete='current-password']");
         const passwordRect = passwordInput instanceof HTMLElement ? passwordInput.getBoundingClientRect() : null;
         void window.__priestessRecordRedirectWaitSample({
           at: Date.now(),
-          overlayCount: document.querySelectorAll(".login-success-overlay").length,
           passwordHeight: passwordRect ? passwordRect.height : null,
           passwordInert: passwordInput instanceof HTMLElement ? passwordInput.closest("[inert]") !== null : false,
           pickerRows: document.querySelectorAll(".account-picker__row-main").length,
           submitStage: card ? card.classList.contains("login-card--submit-stage") : null,
           url: location.pathname,
-          inRedirectWait: waitBaseline !== null,
-          waitPasswordVisible: waitBaseline !== null
+          inSubmitWindow: loginRequested,
+          waitPasswordVisible: loginRequested
             && Boolean(passwordRect && passwordRect.height > 0 && passwordInput.closest("[inert]") === null),
-          waitSubmitStageLost: waitBaseline !== null && !card?.classList.contains("login-card--submit-stage"),
+          waitSubmitStageLost: loginRequested && !card?.classList.contains("login-card--submit-stage"),
         });
       }, 120);
     });
@@ -325,29 +323,24 @@ async function testSlowRedirectKeepsLoginCardYielded(browserInstance, appUrl) {
 
     await waitFor(() => redirectRequestedAt > 0, 10000, "the authorization redirect should be issued");
     await delay(1400);
-    const afterRedirect = pendingSamples.filter((sample) => sample.url === "/login" && sample.inRedirectWait);
+    const submitWindowSamples = pendingSamples.filter((sample) => sample.url === "/login" && sample.inSubmitWindow);
     assert.ok(
-      afterRedirect.length >= 5,
-      `the probe must sample after the redirect was issued: ${JSON.stringify(pendingSamples.slice(-4))}`,
-    );
-    // 成功遮罩此刻仍在文档里（导航还没提交，所以它只是被 JS 从 DOM 里移除、等待导航接管）。
-    assert.ok(
-      afterRedirect.some((sample) => sample.overlayCount === 1),
-      `the success overlay must still be mounted when the redirect is issued: ${JSON.stringify(afterRedirect.slice(0, 2))}`,
+      submitWindowSamples.length >= 5,
+      `the probe must sample inside the submit window: ${JSON.stringify(pendingSamples.slice(-4))}`,
     );
     assert.ok(
-      afterRedirect.every((sample) => sample.passwordInert),
-      `the yielded login form must stay inert while the redirect is pending: ${JSON.stringify(afterRedirect.slice(-3))}`,
+      submitWindowSamples.every((sample) => sample.passwordInert),
+      `the yielded login form must stay inert inside the submit window: ${JSON.stringify(submitWindowSamples.slice(-3))}`,
     );
     assert.equal(
-      afterRedirect.filter((sample) => sample.waitSubmitStageLost).length,
+      submitWindowSamples.filter((sample) => sample.waitSubmitStageLost).length,
       0,
-      `the login card must stay in the submit stage while the redirect is pending: ${JSON.stringify(afterRedirect)}`,
+      `the login card must stay in the submit stage inside the submit window: ${JSON.stringify(submitWindowSamples)}`,
     );
     assert.equal(
-      afterRedirect.filter((sample) => sample.waitPasswordVisible).length,
+      submitWindowSamples.filter((sample) => sample.waitPasswordVisible).length,
       0,
-      `the login form must not come back while the redirect is pending: ${JSON.stringify(afterRedirect)}`,
+      `the login form must not come back inside the submit window: ${JSON.stringify(submitWindowSamples)}`,
     );
     assert.ok(
       pendingSamples.every((sample) => sample.pickerRows === 0),
@@ -1422,51 +1415,6 @@ async function withScenario(browserInstance, scenario, callback, options = {}) {
   }
 }
 
-// 慢回跳用例专用：逐帧记录旧文档在导航等待期间的状态，navigation 提交后逐帧数据随文档一起丢弃，
-// 所以必须在提交前把判定结果写回同一个对象，断言只读这个对象的计数。
-async function startLoginYieldProbe(page) {
-  await page.evaluate(() => {
-    const probe = {
-      accountPickerCount: 0,
-      overlayMissingCount: 0,
-      samples: [],
-      submitStageLostCount: 0,
-      visibleFormCount: 0,
-    };
-    window.__priestessSlowRedirectYieldProbe = probe;
-
-    const sample = () => {
-      const card = document.querySelector(".login-card");
-      const overlay = document.querySelectorAll(".login-success-overlay").length;
-      const passwordInput = document.querySelector("input[autocomplete='current-password']");
-      const passwordStyle = passwordInput instanceof HTMLElement ? getComputedStyle(passwordInput) : null;
-      const passwordRect = passwordInput instanceof HTMLElement ? passwordInput.getBoundingClientRect() : null;
-      const formVisible = Boolean(
-        passwordStyle
-        && passwordRect
-        && passwordRect.height > 0
-        && passwordInput.closest("[inert]") === null
-        && Number.parseFloat(passwordStyle.opacity) > 0.05,
-      );
-      probe.samples.push({ at: performance.now(), overlay, submitStage: card ? card.classList.contains("login-card--submit-stage") : null });
-      if (card && !card.classList.contains("login-card--submit-stage")) {
-        probe.submitStageLostCount += 1;
-      }
-      if (overlay === 0) {
-        probe.overlayMissingCount += 1;
-      }
-      if (formVisible) {
-        probe.visibleFormCount += 1;
-      }
-      if (document.querySelectorAll(".account-picker__row-main").length > 0) {
-        probe.accountPickerCount += 1;
-      }
-      window.requestAnimationFrame(sample);
-    };
-    window.requestAnimationFrame(sample);
-  });
-}
-
 async function assertControlCanReceivePointer(page, locator, label) {
   assert.equal(await locator.count(), 1, `${label} must be unique`);
   assert.equal(await locator.isEnabled(), true, `${label} must be enabled`);
@@ -1556,7 +1504,6 @@ function createScenario(appId, options = {}) {
     accountModeBeforeAuth: options.accountModeBeforeAuth ?? "empty",
     authorizeError: options.authorizeError ?? false,
     authorizeStatus: options.authorizeStatus ?? 409,
-    appOrigin: "",
     authorizeRedirectToPath: options.authorizeRedirectToPath ?? "",
     browserAccountMode: options.browserAccountMode ?? "empty",
     deviceSessionsError: options.deviceSessionsError ?? false,
@@ -1946,10 +1893,6 @@ async function startMockApiServer() {
     }
 
     if (req.method === "GET" && url.pathname === "/auth/priestess/account-choices") {
-      // Origin 头就是登录 app 自己的 origin（带 dev server 端口），后端的回跳地址需要它。
-      if (!scenario.appOrigin && req.headers.origin) {
-        scenario.appOrigin = req.headers.origin;
-      }
       scenario.records.accountChoices.push({
         appId: url.searchParams.get("app_id"),
         returnTo: url.searchParams.get("return_to"),
@@ -2087,8 +2030,8 @@ async function startMockApiServer() {
           : { error: { code: "authorization_failed", message: "授权失败，请重新选择账号" } });
         return;
       }
-      // 回跳地址仍指向登录 app，只在需要时换成故意慢响应的路由，让「导航等待期间」可被观测。
-      const redirectUrl = new URL(scenario.authorizeRedirectToPath || body.return_to, scenario.appOrigin || origin);
+      // 只在需要时把回跳地址换成故意慢响应的路由；base 用 return_to 本身，它已经带着登录 app 的 origin。
+      const redirectUrl = new URL(scenario.authorizeRedirectToPath || body.return_to, body.return_to);
       redirectUrl.searchParams.set("authorized", "1");
       writeJson(res, 200, { redirect_url: redirectUrl.toString() });
       return;

@@ -269,11 +269,11 @@ export function App() {
     controller: LoginTransitionOverlayController;
     finishNotice: string;
     handoff: ReturnType<typeof accountRouteHandoff.beginForSession> | null;
-    signal?: AbortSignal;
+    request: AuthRequest | null; signal?: AbortSignal;
     switchToLoginModeOnAuthorizeFailure?: boolean;
     user: { avatarUrl: string; name: string };
   }) => {
-    const request = readAuthRequest();
+    const { request } = params;
     const authorization = request ? startAuthRedirectAuthorization(request, t, params.signal) : null;
     let destinationPrepared = false;
     let destinationCommitted = false;
@@ -313,7 +313,7 @@ export function App() {
       }
       setShowLoginFormForAccountPicker(false);
       setAccountAuthorizeError(result.message);
-      // 授权失败说明当前账号没有该应用权限：必须重新拉一次账号选择项，让用户换账号或重新登录。
+      // 授权失败（无权访问、网络或后端错误）时重新拉取账号选择项，让用户换账号或重试。
       accountChoices.refresh();
       releaseLoginSubmitStage();
       // 注册页的账号选择面板属于登录模式，不先切回登录模式它不会出现。
@@ -344,6 +344,7 @@ export function App() {
       controller: params.controller,
       finishNotice: "登录成功",
       handoff: request ? null : accountRouteHandoff.beginForSession(params.session, readLoginNext()),
+      request,
       signal: params.signal,
       user: { avatarUrl: user?.avatarUrl || "", name: user?.displayName || user?.username || params.fallbackUsername },
     });
@@ -365,6 +366,7 @@ export function App() {
       controller,
       finishNotice: "注册成功",
       handoff: request ? null : accountRouteHandoff.beginForSession(session, readLoginNext()),
+      request,
       switchToLoginModeOnAuthorizeFailure: true,
       user: { avatarUrl: session.user?.avatarUrl || "", name: session.user?.displayName || session.user?.username || fallbackIdentity },
     });
