@@ -14,7 +14,9 @@
     "test:account-primitives": "node scripts/account-primitives-smoke.mjs",
     "test:account-devices": "node scripts/account-devices-smoke.mjs",
     "test:account-services": "node scripts/account-services-smoke.mjs",
-    "test:account-menu": "node scripts/account-menu-smoke.mjs"
+    "test:account-menu": "node scripts/account-menu-smoke.mjs",
+    "test:qr-login-security-notice": "node scripts/qr-login-security-notice-smoke.mjs",
+    "test:qr-login-confirm-browser": "npx --yes --package playwright node scripts/qr-login-confirm-browser-smoke.mjs"
   },
   "dependencies": {
     "@priestess/shared": "0.1.0",

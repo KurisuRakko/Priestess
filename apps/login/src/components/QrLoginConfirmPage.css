@@ -157,6 +157,16 @@
   max-width: 285px;
 }
 
+/* 授权目标贴着应用名展示，字号和颜色都沿用现有的次级文字层级。 */
+.qr-mobile-origin {
+  max-width: min(285px, 78vw);
+  margin-top: 10px;
+  color: var(--qr-mobile-faint);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 .qr-mobile-device-wrap {
   display: flex;
   flex: 1;
@@ -365,6 +375,14 @@
 .qr-mobile-overlay p {
   max-width: 290px;
   margin-bottom: 24px;
+}
+
+.qr-mobile-overlay-origin {
+  max-width: 290px;
+  margin-top: -12px;
+  color: var(--qr-mobile-faint);
+  font-size: 13px;
+  overflow-wrap: anywhere;
 }
 
 .qr-mobile-location-card {
