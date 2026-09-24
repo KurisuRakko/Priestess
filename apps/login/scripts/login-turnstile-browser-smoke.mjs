@@ -15,9 +15,6 @@ const appRoot = resolve(__dirname, "..");
 const TURNSTILE_SITE_KEY = "1x00000000000000000000AA";
 const TURNSTILE_TOKEN = "browser-turnstile-token";
 const TEST_PASSWORD = "smoke-password-123";
-// 只跑指定场景（逗号分隔 scenario id）：整套用例里存在与本次改动无关的失败时，
-// 用它把证据收敛到单个场景；不设置时行为不变，仍然跑全量。
-const ONLY_SCENARIO_IDS = (process.env.SMOKE_SCENARIO || "").split(",").map((value) => value.trim()).filter(Boolean);
 
 let activeScenario = null;
 let browser;
@@ -1412,9 +1409,6 @@ async function testRegistrationAuthorizesDirectly(browserInstance, appUrl) {
 }
 
 async function withScenario(browserInstance, scenario, callback, options = {}) {
-  if (ONLY_SCENARIO_IDS.length > 0 && !ONLY_SCENARIO_IDS.includes(scenario.appId)) {
-    return;
-  }
   activeScenario = scenario;
   const context = await browserInstance.newContext({
     locale: options.locale ?? "zh-CN",
