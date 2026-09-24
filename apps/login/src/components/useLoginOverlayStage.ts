@@ -26,6 +26,8 @@ export function useLoginOverlayStage({
   setLoginIntroStage,
 }: LoginOverlayStageOptions) {
   const submitStageWaitRef = useRef<LoginCardOriginWait | null>(null);
+  // 结果层在场期间的释放请求先挂起，等它真正卸载后再落地。
+  const pendingSubmitStageReleaseRef = useRef(false);
   const [isAccountSelectionStage, setIsAccountSelectionStage] = useState(false);
   const [isSubmitStage, setIsSubmitStage] = useState(false);
   const [isSubmitContentHidden, setIsSubmitContentHidden] = useState(false);
@@ -54,11 +56,27 @@ export function useLoginOverlayStage({
       originRect,
       onClose: () => {
         loginTransitionOverlayRef.current = null;
+        // 路由切走时被挂起的释放必须落在结果层卸载之后：此刻卡片才真正需要恢复内容。
+        if (pendingSubmitStageReleaseRef.current) {
+          pendingSubmitStageReleaseRef.current = false;
+          releaseSubmitStage();
+        }
       },
     });
     loginTransitionOverlayRef.current = controller;
     return controller;
-  }, [loginTransitionOverlayRef]);
+  }, [loginTransitionOverlayRef, releaseSubmitStage]);
+
+  // 结果层与登录卡片共用同一块矩形且没有自己的背景，白底由底层提交态卡片顶着。
+  // 结果层还在 DOM 里时释放提交态，会让重挂载的卡片带着账号选择器从透明结果层下面透出来，
+  // 所以这种释放挂到结果层卸载之后再落地；它保证卡片不会永久停在留白态。
+  const releaseSubmitStageAfterOverlayExit = useCallback(() => {
+    if (loginTransitionOverlayRef.current !== null) {
+      pendingSubmitStageReleaseRef.current = true;
+      return;
+    }
+    releaseSubmitStage();
+  }, [loginTransitionOverlayRef, releaseSubmitStage]);
 
   const startCenteredOverlay = useCallback(async(params: OverlayParams) => {
     cancelSubmitStageWait();
@@ -109,6 +127,7 @@ export function useLoginOverlayStage({
     isSubmitContentHidden,
     isSubmitStage,
     releaseSubmitStage,
+    releaseSubmitStageAfterOverlayExit,
     revealSubmitContent,
     startAccountSelectionOverlay,
     startCenteredOverlay,
