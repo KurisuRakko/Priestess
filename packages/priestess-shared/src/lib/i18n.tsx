@@ -37,6 +37,7 @@ const sharedResources: Record<PriestessLocale, ResourceLanguage> = {
     errors: {
       accountServiceUnavailable: "账户服务暂时不可用，请稍后再试或联系管理员",
       apiRequestFailed: "后端请求失败 ({{status}})",
+      authorizationSecurityInvalid: "应用发起的登录请求缺少或带错了安全参数，请回到应用重新发起登录。",
       cancelled: "请求已取消",
       forbidden: "当前会话没有管理权限",
       jsonParseFailed: "后端 JSON 响应解析失败",
@@ -96,6 +97,7 @@ const sharedResources: Record<PriestessLocale, ResourceLanguage> = {
     errors: {
       accountServiceUnavailable: "The account service is temporarily unavailable. Please try again later or contact an administrator.",
       apiRequestFailed: "Backend request failed ({{status}}).",
+      authorizationSecurityInvalid: "The sign-in request from the app has missing or invalid security parameters. Go back to the app and start signing in again.",
       cancelled: "The request was cancelled.",
       forbidden: "This session does not have admin permission.",
       jsonParseFailed: "Failed to parse the backend JSON response.",

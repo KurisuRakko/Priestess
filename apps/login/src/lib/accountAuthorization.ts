@@ -1,4 +1,4 @@
-import { translatePriestess } from "@priestess/shared";
+import { translatePriestess, type PriestessAuthorizationSecurity } from "@priestess/shared";
 import type { AuthRequest } from "./authRequest";
 import type { AuthAccountChoice, AuthAccountChoicesStatus } from "./useAuthAccountChoices";
 
@@ -6,6 +6,7 @@ export type AuthAccountAuthorizeParams = {
   appId: string;
   choiceId?: string;
   returnTo: string;
+  security?: PriestessAuthorizationSecurity;
 };
 
 export function getAuthAccountAuthorizeBlocker(account: AuthAccountChoice) {
@@ -20,6 +21,7 @@ export function buildAuthAccountAuthorizeParams(authRequest: AuthRequest, accoun
     appId: authRequest.appId,
     ...(account.authorizeChoiceId ? { choiceId: account.authorizeChoiceId } : {}),
     returnTo: authRequest.returnTo,
+    ...(authRequest.security ? { security: authRequest.security } : {}),
   };
 }
 

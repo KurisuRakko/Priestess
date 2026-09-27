@@ -98,6 +98,8 @@ export function resolveErrorMessage(payload: unknown, status: number) {
   if (apiError?.code === "totp_code_invalid" || apiError?.code === "invalid_totp_code") return translatePriestess("errors:invalidTotpCode");
   if (apiError?.code === "totp_challenge_invalid") return translatePriestess("errors:totpChallengeInvalid");
   if (apiError?.code === "return_url_not_allowed") return translatePriestess("errors:returnUrlNotAllowed");
+  // 应用发起的 state/PKCE 三件套缺失或格式错误：这四个码只会在 /authorize 与 /qr/sessions 出现，统一提示回应用重新发起登录。
+  if (["incomplete_authorization_security", "invalid_state", "invalid_code_challenge", "invalid_code_challenge_method"].includes(apiError?.code ?? "")) return translatePriestess("errors:authorizationSecurityInvalid");
   if (status >= 500) return translatePriestess("errors:accountServiceUnavailable");
   if (apiError?.message) return apiError.message;
 

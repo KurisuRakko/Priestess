@@ -1,8 +1,9 @@
-import { translatePriestess } from "@priestess/shared";
+import { translatePriestess, type PriestessAuthorizationSecurity } from "@priestess/shared";
 
 export type AuthRequest = {
   appId: string;
   returnTo: string;
+  security?: PriestessAuthorizationSecurity;
 };
 
 export function readAuthRequest(location: Pick<Location, "search"> | null = getBrowserLocation()): AuthRequest | null {
@@ -17,11 +18,35 @@ export function readAuthRequest(location: Pick<Location, "search"> | null = getB
     return null;
   }
 
-  return { appId, returnTo };
+  const security = readAuthorizationSecurity(params);
+  return security ? { appId, returnTo, security } : { appId, returnTo };
+}
+
+/** 读取规则对齐 Phainon web/src/features/oidc/nativeSecurity.ts：三个参数都缺失才判定为无 security，
+ * 否则缺的那个补空串、不 trim、不修正，完整性和格式校验统一交给后端。 */
+function readAuthorizationSecurity(params: URLSearchParams): PriestessAuthorizationSecurity | undefined {
+  const state = params.get("state");
+  const codeChallenge = params.get("code_challenge");
+  const codeChallengeMethod = params.get("code_challenge_method");
+  if (!state && !codeChallenge && !codeChallengeMethod) {
+    return undefined;
+  }
+
+  return {
+    codeChallenge: codeChallenge ?? "",
+    codeChallengeMethod: codeChallengeMethod ?? "",
+    state: state ?? "",
+  };
 }
 
 export function getAuthRequestKey(authRequest: AuthRequest | null) {
-  return authRequest ? `${authRequest.appId}\n${authRequest.returnTo}` : "";
+  if (!authRequest) {
+    return "";
+  }
+
+  const { security } = authRequest;
+  const securitySuffix = security ? `\n${security.state}\n${security.codeChallenge}\n${security.codeChallengeMethod}` : "";
+  return `${authRequest.appId}\n${authRequest.returnTo}${securitySuffix}`;
 }
 
 export function getAuthRequestReturnToOrigin(returnTo: string) {

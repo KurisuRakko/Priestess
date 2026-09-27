@@ -72,8 +72,12 @@ export async function startAuthRedirectAuthorization(
   signal?: AbortSignal,
 ): Promise<AuthRedirectAuthorizationOutcome> {
   try {
-    // 不传 choice_id：后端按当前会话授权。
-    const result = await authorizeLocalSession({ appId: authRequest.appId, returnTo: authRequest.returnTo }, { signal });
+    // 不传 choice_id：后端按当前会话授权。security 原样转发，缺失时不写这个键。
+    const result = await authorizeLocalSession({
+      appId: authRequest.appId,
+      returnTo: authRequest.returnTo,
+      ...(authRequest.security ? { security: authRequest.security } : {}),
+    }, { signal });
     if (!result.redirectUrl) {
       throw new Error(t("后端未返回回跳地址"));
     }

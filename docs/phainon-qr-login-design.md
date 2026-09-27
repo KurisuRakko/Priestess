@@ -50,6 +50,7 @@ Priestess v1 实现 OIDC 扫码登录、本地用户会话、账号资料、头�
 
 - `POST /auth/priestess/qr/sessions`
   - 输入：`app_id`、`return_to`
+  - 可选输入：`state`、`code_challenge`、`code_challenge_method`。Priestess 登录页从 `/login` 的同名 URL 参数原样转发：三个都没有时不写；只要带了其中任意一个，就把三个键一起写上（缺的写空串），由后端报 400 `incomplete_authorization_security`；后端把它们绑定在 QR session 上，供后续 `login_code` 兑换时校验，前端不做补造或格式修正。
   - 行为：校验 Phainon 现有 OIDC app 和 return URL，创建 QR session。
   - 输出：`session_id`、`qr_url`、`expires_in`、`expires_at`
 
@@ -121,6 +122,7 @@ Priestess v1 实现 OIDC 扫码登录、本地用户会话、账号资料、头�
 - `POST /auth/priestess/authorize`
   - 现有输入 `{ "app_id": string, "return_to": string }` 保持“当前本地会话授权”的语义。
   - 新增可选输入 `{ "choice_id": string }`。传入时后端必须校验该选择项属于同一 `app_id` / `return_to` 授权请求、同一浏览器信任上下文且仍未过期。
+  - 新增可选输入 `{ "state": string, "code_challenge": string, "code_challenge_method": string }`：Priestess 登录页从 `/login` 的同名 URL 参数原样转发：三个都没有时不写；只要带了其中任意一个，就把三个键一起写上（缺的写空串），由后端校验完整性和格式并在不完整时报 400 `incomplete_authorization_security`，前端不修正。
   - 账号选择本身不额外强制 TOTP 或 Passkey step-up；如果后端风险策略需要重新验证，应返回明确错误码或 challenge，再由前端复用现有 TOTP/登录路径。
   - 输出继续兼容 `redirect_url` / `redirectUrl`，由后端签发最终回跳地址；前端不得自行拼接 `login_code` 或信任未校验的 `return_to`。
 
@@ -415,6 +417,7 @@ registration challenge 绑定当前本地用户；authentication challenge 不�
 - `/login`
   - 展示二维码、倒计时、刷新按钮和状态。
   - 带 `app_id` / `return_to` 时进入应用授权入口，成功后仍由后端返回的 `redirect_url` 完成应用回跳。
+  - 同时带 `state` / `code_challenge` / `code_challenge_method` 时原样转发给 `POST /auth/priestess/authorize` 与 `POST /auth/priestess/qr/sessions`，登录页不展示、不修正这三个参数，完整性和格式校验统一交给 Phainon 后端。
   - 不带应用授权参数时作为 Priestess 本地登录入口，已登录浏览器直接进入 `/manage`，登录成功后跳转到安全 `next`，没有 `next` 时默认进入 `/manage`。
   - `next` 只接受 Priestess 前端本地个人中心相对路径，例如 `/manage#devices`；它不替代 OIDC `return_to`，也不能携带外部 URL。
 
