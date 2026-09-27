@@ -78,58 +78,6 @@
   text-align: center;
 }
 
-.register-phone-field {
-  min-width: 0;
-}
-
-.register-phone-field select {
-  width: 136px;
-  max-width: 42%;
-  height: 52px;
-  flex: 0 0 136px;
-  border: 0;
-  border-right: 1px solid rgba(36, 35, 31, 0.12);
-  color: var(--color-text);
-  background: transparent;
-  padding: 0 10px;
-  outline: 0;
-}
-
-.register-phone-field input {
-  padding-left: 12px;
-}
-
-.register-identity-switch {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: -6px;
-}
-
-.register-identity-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border: 0;
-  color: var(--color-accent-deep);
-  background: transparent;
-  cursor: pointer;
-  font: inherit;
-  font-size: 13px;
-  line-height: 1.4;
-  padding: 0;
-}
-
-.register-identity-toggle:disabled {
-  cursor: not-allowed;
-  opacity: 0.52;
-}
-
-.register-identity-toggle:not(:disabled):hover {
-  color: var(--color-accent);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-
 .register-terms-consent {
   position: relative;
   display: grid;
@@ -194,13 +142,6 @@
 
   .register-progress__label {
     display: none;
-  }
-
-  .register-phone-field select {
-    width: 118px;
-    flex-basis: 118px;
-    font-size: 13px;
-    padding: 0 8px;
   }
 }
 

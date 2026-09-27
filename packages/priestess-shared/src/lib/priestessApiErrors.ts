@@ -81,8 +81,8 @@ export function resolveErrorMessage(payload: unknown, status: number) {
   if (["registration_verification_challenge_required", "registration_verification_challenge_invalid"].includes(apiError?.code ?? "")) return translatePriestess("errors:registrationCodeInvalid");
   if (["registration_turnstile_failed", "turnstile_invalid", "turnstile_required"].includes(apiError?.code ?? "")) return translatePriestess("errors:turnstileFailed");
   if (apiError?.code === "registration_turnstile_not_configured") return translatePriestess("errors:registrationTurnstileMissing");
-  if (["registration_email_not_configured", "registration_sms_not_configured", "sms_provider_not_configured", "sms_signature_required", "sms_webhook_not_configured"].includes(apiError?.code ?? "")) return translatePriestess("errors:registrationChannelMissing");
-  if (["registration_email_failed", "sms_webhook_failed"].includes(apiError?.code ?? "")) return translatePriestess("errors:registrationChannelFailed");
+  if (apiError?.code === "registration_email_not_configured") return translatePriestess("errors:registrationChannelMissing");
+  if (apiError?.code === "registration_email_failed") return translatePriestess("errors:registrationChannelFailed");
   if (["auth_origin_not_allowed", "auth_origin_required", "origin_not_allowed"].includes(apiError?.code ?? "")) return translatePriestess("errors:originNotAllowed");
   if (apiError?.code === "invalid_email") return translatePriestess("errors:invalidEmail");
   if (apiError?.code === "invalid_login_identifier") return translatePriestess("errors:invalidLoginIdentifier");

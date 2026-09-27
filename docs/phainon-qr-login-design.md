@@ -24,7 +24,7 @@ Priestess v1 实现 OIDC 扫码登录、本地用户会话、账号资料、头�
 - `login-risk.ts`：本地密码登录软锁策略、风险 bucket hash 和脱敏上下文。
 - `profile.ts`：本地用户资料更新、PNG 头像上传到 R2、上传日志和审计。
 - `passkeys.ts`：Passkey options、verification、credential 管理和审计。
-- `registration.ts`：邮箱/手机号五步注册路由、邀请码与验证码 challenge，以及 Turnstile/验证码发送编排。
+- `registration.ts`：邮箱五步注册路由、邀请码与验证码 challenge，以及 Turnstile/验证码发送编排（手机号注册已下线，手机号仅作为登录标识和资料字段保留）。
 - `registration-repository.ts`：注册验证码请求 repository 接口和 D1 实现。
 - `routes.ts`：公开登录接口、二维码接口和管理员用户管理接口。
 
@@ -143,23 +143,23 @@ Priestess v1 实现 OIDC 扫码登录、本地用户会话、账号资料、头�
 ### 本地用户注册
 
 - `POST /auth/priestess/register/invite-check`
-  - 输入：`identity`、`identity_type=email|phone`、`invite_code`、`turnstile_token`。
+  - 输入：`identity`、`identity_type=email`、`invite_code`、`turnstile_token`（手机号注册已下线，其它 `identity_type` 值一律拒绝）。
   - 行为：只在邀请步骤校验一次 Turnstile，成功后返回绑定身份的邀请码 challenge。
 
 - `POST /auth/priestess/register/verification-requests`
-  - 输入：`identity`、`identity_type=email|phone`、`invite_code`、`invite_challenge`。
-  - 行为：邀请码 challenge 有效时发送邮箱或手机验证码，不再次请求 Turnstile；滚动发布期间后端仍兼容旧 `turnstile_token` 请求格式。
+  - 输入：`identity`、`identity_type=email`、`invite_code`、`invite_challenge`。
+  - 行为：邀请码 challenge 有效时发送邮箱验证码，不再次请求 Turnstile；滚动发布期间后端仍兼容旧 `turnstile_token` 请求格式。
 
 - `POST /auth/priestess/register/verification-check`
   - 输入：身份、邀请码 challenge、`verification_code` 和 `verification_request_id`。
   - 行为：立即消费验证码并返回不含明文验证码的短期 `verification_challenge`。
 
 - `POST /auth/priestess/register/confirm`
-  - 输入：`identity`、`identity_type`、`password`、`invite_code`、`invite_challenge`、`verification_challenge`、`display_name`、`username`。
-  - 行为：服务端重新验证两个 challenge 后创建本地用户；`username` 继续检查格式、唯一性和保留名，邮箱注册写入 `email`，手机号注册写入规范化 `phone`。
+  - 输入：`identity`、`identity_type=email`、`password`、`invite_code`、`invite_challenge`、`verification_challenge`、`display_name`、`username`。
+  - 行为：服务端重新验证两个 challenge 后创建本地用户；`username` 继续检查格式、唯一性和保留名，注册写入 `email`。
   - 成功后复用本地登录 session 逻辑写入 `phainon_priestess_session` HttpOnly cookie，并返回 `LocalSession` 兼容 payload。
 
-邀请码必须通过 1Password CLI / Wrangler secret 注入，不进入仓库、前端配置、URL、日志或本地存储。注册验证码请求只保存 `identity_hash`、`identity_mask`、`code_hash` 和发送状态，不保存明文验证码、Turnstile token、密码或完整手机号。前端应把身份、邀请码 challenge、验证码和 verification challenge 错误映射回五步中的对应页面；前端校验只能改善体验，服务端校验始终是最终事实。
+邀请码必须通过 1Password CLI / Wrangler secret 注入，不进入仓库、前端配置、URL、日志或本地存储。注册验证码请求只保存 `identity_hash`、`identity_mask`、`code_hash` 和发送状态，不保存明文验证码、Turnstile token 或密码。前端应把身份、邀请码 challenge、验证码和 verification challenge 错误映射回五步中的对应页面；前端校验只能改善体验，服务端校验始终是最终事实。
 
 密码保存策略：
 

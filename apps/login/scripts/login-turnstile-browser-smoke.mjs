@@ -102,7 +102,6 @@ try {
   });
   await testTotpAuthorizesDirectly(browser, appUrl);
   await testPasskeyAuthorizesDirectly(browser, appUrl);
-  await testPhoneRegistrationProgress(browser, appUrl);
   await testRegistrationAuthorizesDirectly(browser, appUrl);
 
   console.log("login auth-flow browser smoke passed");
@@ -1294,22 +1293,6 @@ async function testPasskeyAuthorizesDirectly(browserInstance, appUrl) {
       app_id: scenario.appId,
       return_to: `${appUrl}/client-callback`,
     }]);
-  });
-}
-
-async function testPhoneRegistrationProgress(browserInstance, appUrl) {
-  const scenario = createScenario("registration-phone-progress");
-
-  await withScenario(browserInstance, scenario, async(page) => {
-    await page.goto(buildAuthUrl(appUrl, scenario.appId), { waitUntil: "domcontentloaded" });
-    await page.getByRole("button", { name: "创建账号" }).click();
-    await page.getByRole("button", { name: "使用手机号注册" }).click();
-    await page.locator("input[autocomplete='tel-national']").waitFor({ state: "visible" });
-
-    assert.deepEqual(
-      await page.locator(".register-progress__label").allTextContents(),
-      ["手机号", "验证", "密码", "资料"],
-    );
   });
 }
 
