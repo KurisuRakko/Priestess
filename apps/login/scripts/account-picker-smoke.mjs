@@ -22,6 +22,7 @@ try {
   const accountPickerModule = await server.ssrLoadModule("/src/components/AccountPickerCard.tsx");
   const accountManagementActionModule = await server.ssrLoadModule("/src/lib/accountManagementAction.ts");
   const accountAuthorizationModule = await server.ssrLoadModule("/src/lib/accountAuthorization.ts");
+  const accountSelectionModule = await server.ssrLoadModule("/src/lib/accountSelection.ts");
   const authRequestModule = await server.ssrLoadModule("/src/lib/authRequest.ts");
   const authAccountChoicesModule = await server.ssrLoadModule("/src/lib/useAuthAccountChoices.ts");
   const loginFormModule = await server.ssrLoadModule("/src/components/LoginForm.tsx");
@@ -39,7 +40,8 @@ try {
   const { AccountPickerActionsView, AccountPickerCard, getAccountKey, getAccountMoreActionsLabel, getAccountRemoveDescription, getAccountRemoveLabel, getAccountSelectLabel, getSafeAvatarUrl } = accountPickerModule;
   const { buildAccountManagementActionPath, getAccountManagementActionSection, readAccountManagementAction, removeAccountManagementActionFromSearch, resolveAccountManagementActionTarget } = accountManagementActionModule;
   const { buildAuthAccountAuthorizeParams, getAuthAccountAuthorizeBlocker, shouldShowAuthAccountPicker } = accountAuthorizationModule;
-  const { getAuthRequestAppLabel, getAuthRequestReturnToOrigin, readAuthRequest } = authRequestModule;
+  const { startAuthRedirectAuthorization } = accountSelectionModule;
+  const { getAuthRequestAppLabel, getAuthRequestKey, getAuthRequestReturnToOrigin, readAuthRequest } = authRequestModule;
   const { getAuthAccountChoiceErrorMessage, readAuthAccountChoicesForRequest, readStandaloneBrowserAccounts, redactSensitiveAuthText, resolveAccountChoicesFreshUntil } = authAccountChoicesModule;
   const { LoginForm } = loginFormModule;
   const { normalizeUsernameInput } = registerFirstStepModule;
@@ -50,9 +52,9 @@ try {
   ({ loginI18nResources } = loginI18nModule);
   const { resolveLoginLayoutState } = loginLayoutStateModule;
   ({ PriestessI18nProvider } = sharedI18nModule);
-  const { activateLocalAccountChoice, authorizeLocalSession, checkRegisterInvite, checkRegisterVerification, confirmLocalRegistration, getPriestessApiErrorMessage, listLocalAccountChoices, listLocalBrowserAccounts, loginLocalSession, removeLocalAccountChoice, requestRegisterVerification, PriestessApiError } = sharedApiModule;
+  const { activateLocalAccountChoice, authorizeLocalSession, checkRegisterInvite, checkRegisterVerification, confirmLocalRegistration, createQrSession, getPriestessApiErrorMessage, listLocalAccountChoices, listLocalBrowserAccounts, loginLocalSession, removeLocalAccountChoice, requestRegisterVerification, PriestessApiError } = sharedApiModule;
 
-  testAuthRequestHelpers({ getAuthRequestAppLabel, getAuthRequestReturnToOrigin, readAuthRequest });
+  testAuthRequestHelpers({ getAuthRequestAppLabel, getAuthRequestKey, getAuthRequestReturnToOrigin, readAuthRequest });
   testAccountAuthorizationHelpers({ buildAuthAccountAuthorizeParams, getAuthAccountAuthorizeBlocker, shouldShowAuthAccountPicker });
   testAccountChoiceFreshness({ resolveAccountChoicesFreshUntil });
   testAccountManagementActionHelpers({ buildAccountManagementActionPath, getAccountManagementActionSection, normalizePriestessNextPath, readAccountManagementAction, removeAccountManagementActionFromSearch, resolveAccountManagementActionTarget });
@@ -61,7 +63,8 @@ try {
   testMobileLoginRevealState({ MOBILE_LOGIN_BREAKPOINT_PX, MOBILE_LOGIN_REVEAL_TIMEOUT_MS, isMobileLoginDataReady, resolveMobileLoginRevealStep, shouldAnimateMobileLoginReveal });
   testAccountPickerMarkup({ AccountPickerActionsView, AccountPickerCard, getAccountKey, getAccountMoreActionsLabel, getAccountRemoveDescription, getAccountRemoveLabel, getAccountSelectLabel, getSafeAvatarUrl });
   testLoginFormBackButton({ LoginForm });
-  await testSharedApiContract({ activateLocalAccountChoice, authorizeLocalSession, checkRegisterInvite, checkRegisterVerification, confirmLocalRegistration, listLocalAccountChoices, listLocalBrowserAccounts, loginLocalSession, removeLocalAccountChoice, requestRegisterVerification });
+  await testSharedApiContract({ activateLocalAccountChoice, authorizeLocalSession, checkRegisterInvite, checkRegisterVerification, confirmLocalRegistration, createQrSession, listLocalAccountChoices, listLocalBrowserAccounts, loginLocalSession, removeLocalAccountChoice, requestRegisterVerification });
+  await testAuthRedirectAuthorizationSecurity({ startAuthRedirectAuthorization });
   await testLocalLoginTurnstileRetry({ loginLocalSessionWithTurnstileRetry, PriestessApiError });
   testAccountChoiceErrorRedaction({ getAuthAccountChoiceErrorMessage, getPriestessApiErrorMessage, redactSensitiveAuthText });
   await testAccountChoiceFallback({ readAuthAccountChoicesForRequest, readStandaloneBrowserAccounts });
@@ -132,6 +135,18 @@ function testAccountAuthorizationHelpers({ buildAuthAccountAuthorizeParams, getA
   assert.deepEqual(buildAuthAccountAuthorizeParams(authRequest, currentSessionAccount), {
     appId: "canvas",
     returnTo: "https://example.com/callback",
+  });
+
+  // security 只在 authRequest 携带时透传，键名与 authorizeLocalSession 的请求参数一致。
+  const authRequestWithSecurity = {
+    ...authRequest,
+    security: { codeChallenge: "challenge-1", codeChallengeMethod: "S256", state: "state-1" },
+  };
+  assert.deepEqual(buildAuthAccountAuthorizeParams(authRequestWithSecurity, selectedAccount), {
+    appId: "canvas",
+    choiceId: "choice-rakko",
+    returnTo: "https://example.com/callback",
+    security: { codeChallenge: "challenge-1", codeChallengeMethod: "S256", state: "state-1" },
   });
 
   const basePickerState = {
@@ -317,13 +332,41 @@ function testMobileLoginRevealState({
   assert.equal(shouldAnimateMobileLoginReveal(true), false);
 }
 
-function testAuthRequestHelpers({ getAuthRequestAppLabel, getAuthRequestReturnToOrigin, readAuthRequest }) {
+function testAuthRequestHelpers({ getAuthRequestAppLabel, getAuthRequestKey, getAuthRequestReturnToOrigin, readAuthRequest }) {
   assert.equal(readAuthRequest({ search: "" }), null);
   assert.equal(readAuthRequest({ search: "?app_id=canvas" }), null);
-  assert.deepEqual(readAuthRequest({ search: "?app_id=canvas&return_to=https%3A%2F%2Fexample.com%2Fcallback" }), {
+  const bareRequest = readAuthRequest({ search: "?app_id=canvas&return_to=https%3A%2F%2Fexample.com%2Fcallback" });
+  assert.deepEqual(bareRequest, {
     appId: "canvas",
     returnTo: "https://example.com/callback",
   });
+
+  // 三件套齐全时挂到 security 上；只带部分时缺项补空串、不 trim、不修正；都不带时不出现 security 键（deepEqual 依赖这一点）。
+  const fullSecurityRequest = readAuthRequest({
+    search: "?app_id=canvas&return_to=https%3A%2F%2Fexample.com%2Fcallback&state=state-1&code_challenge=challenge-1&code_challenge_method=S256",
+  });
+  assert.deepEqual(fullSecurityRequest, {
+    appId: "canvas",
+    returnTo: "https://example.com/callback",
+    security: { codeChallenge: "challenge-1", codeChallengeMethod: "S256", state: "state-1" },
+  });
+
+  const partialSecurityRequest = readAuthRequest({
+    search: "?app_id=canvas&return_to=https%3A%2F%2Fexample.com%2Fcallback&state=state-1",
+  });
+  assert.deepEqual(partialSecurityRequest, {
+    appId: "canvas",
+    returnTo: "https://example.com/callback",
+    security: { codeChallenge: "", codeChallengeMethod: "", state: "state-1" },
+  });
+
+  // getAuthRequestKey：security 不同产出不同 key，无 security 时与旧 key 完全相同。
+  assert.equal(getAuthRequestKey(bareRequest), "canvas\nhttps://example.com/callback");
+  assert.equal(getAuthRequestKey(fullSecurityRequest), "canvas\nhttps://example.com/callback\nstate-1\nchallenge-1\nS256");
+  assert.notEqual(getAuthRequestKey(fullSecurityRequest), getAuthRequestKey(bareRequest));
+  assert.notEqual(getAuthRequestKey(partialSecurityRequest), getAuthRequestKey(fullSecurityRequest));
+  assert.equal(getAuthRequestKey(null), "");
+
   assert.equal(getAuthRequestReturnToOrigin("https://example.com/callback?login_code=secret"), "https://example.com");
   assert.equal(getAuthRequestReturnToOrigin("http://example.test/callback?token=secret"), "http://example.test");
   assert.equal(getAuthRequestReturnToOrigin("javascript:alert(1)"), "");
@@ -591,7 +634,7 @@ function testLoginFormBackButton({ LoginForm }) {
   assert.match(totpHtml, /返回密码登录/);
 }
 
-async function testSharedApiContract({ activateLocalAccountChoice, authorizeLocalSession, checkRegisterInvite, checkRegisterVerification, confirmLocalRegistration, listLocalAccountChoices, listLocalBrowserAccounts, loginLocalSession, removeLocalAccountChoice, requestRegisterVerification }) {
+async function testSharedApiContract({ activateLocalAccountChoice, authorizeLocalSession, checkRegisterInvite, checkRegisterVerification, confirmLocalRegistration, createQrSession, listLocalAccountChoices, listLocalBrowserAccounts, loginLocalSession, removeLocalAccountChoice, requestRegisterVerification }) {
   const originalFetch = globalThis.fetch;
   const calls = [];
   const responses = [
@@ -665,6 +708,10 @@ async function testSharedApiContract({ activateLocalAccountChoice, authorizeLoca
     { accepted: true, delivery: "email", expires_at: 1_779_600_300, request_id: "prv_test_request" },
     { accepted: true, expires_at: 1_779_600_600, verification_challenge: "verification.challenge" },
     { authenticated: true, expires_at: "2026-05-24T13:00:00.000Z", user: { user_id: "user-register", username: "register-user" } },
+    // 以下三条追加在末尾，避免打乱上面按下标断言的既有调用序号（见文件头注释纪律）。
+    { redirect_url: "https://example.com/security-callback?login_code=mock-security", expires_in: 60, expires_at: 1_779_600_100 },
+    { session_id: "qr-session-plain", qr_url: "https://example.com/qr/plain", expires_in: 120, expires_at: 1_779_600_200 },
+    { session_id: "qr-session-secure", qr_url: "https://example.com/qr/secure", expires_in: 120, expires_at: 1_779_600_300 },
   ];
 
   globalThis.fetch = async(url, init = {}) => {
@@ -859,9 +906,86 @@ async function testSharedApiContract({ activateLocalAccountChoice, authorizeLoca
       username: "register-user",
       verification_challenge: "verification.challenge",
     });
+
+    // authorizeLocalSession 带 security 时请求体多出三个键；不带时（上面 calls[3]/calls[4]）与现在逐字节一致。
+    const authorizeWithSecurity = await authorizeLocalSession({
+      appId: "canvas",
+      returnTo: "https://example.com/security-callback",
+      security: { codeChallenge: "challenge-1", codeChallengeMethod: "S256", state: "state-1" },
+    });
+    assert.equal(authorizeWithSecurity.redirectUrl, "https://example.com/security-callback?login_code=mock-security");
+    assert.deepEqual(calls[12].body, {
+      app_id: "canvas",
+      return_to: "https://example.com/security-callback",
+      code_challenge: "challenge-1",
+      code_challenge_method: "S256",
+      state: "state-1",
+    });
+
+    // createQrSession 此前没有用例：分别覆盖带/不带 security 两种请求体。
+    const qrSessionWithoutSecurity = await createQrSession({
+      appId: "canvas",
+      returnTo: "https://example.com/callback",
+    });
+    assert.equal(qrSessionWithoutSecurity.sessionId, "qr-session-plain");
+    assert.deepEqual(calls[13].body, {
+      app_id: "canvas",
+      return_to: "https://example.com/callback",
+    });
+
+    const qrSessionWithSecurity = await createQrSession({
+      appId: "canvas",
+      returnTo: "https://example.com/callback",
+      security: { codeChallenge: "challenge-1", codeChallengeMethod: "S256", state: "state-1" },
+    });
+    assert.equal(qrSessionWithSecurity.sessionId, "qr-session-secure");
+    assert.deepEqual(calls[14].body, {
+      app_id: "canvas",
+      return_to: "https://example.com/callback",
+      code_challenge: "challenge-1",
+      code_challenge_method: "S256",
+      state: "state-1",
+    });
   } finally {
     globalThis.fetch = originalFetch;
   }
+}
+
+async function testAuthRedirectAuthorizationSecurity({ startAuthRedirectAuthorization }) {
+  // startAuthRedirectAuthorization 内部直接调 authorizeLocalSession，这里只验证它把 authRequest.security 转发进了请求体。
+  const authRequestWithSecurity = {
+    appId: "canvas",
+    returnTo: "https://example.com/callback",
+    security: { codeChallenge: "challenge-1", codeChallengeMethod: "S256", state: "state-1" },
+  };
+  await withMockFetch([
+    jsonResponse({ redirect_url: "https://example.com/callback?login_code=mock" }),
+  ], async(calls) => {
+    const outcome = await startAuthRedirectAuthorization(authRequestWithSecurity, (key) => key);
+    assert.equal(outcome.ok, true);
+    assert.deepEqual(calls[0].body, {
+      app_id: "canvas",
+      return_to: "https://example.com/callback",
+      code_challenge: "challenge-1",
+      code_challenge_method: "S256",
+      state: "state-1",
+    });
+  });
+
+  const authRequestWithoutSecurity = {
+    appId: "canvas",
+    returnTo: "https://example.com/callback",
+  };
+  await withMockFetch([
+    jsonResponse({ redirect_url: "https://example.com/callback?login_code=mock" }),
+  ], async(calls) => {
+    const outcome = await startAuthRedirectAuthorization(authRequestWithoutSecurity, (key) => key);
+    assert.equal(outcome.ok, true);
+    assert.deepEqual(calls[0].body, {
+      app_id: "canvas",
+      return_to: "https://example.com/callback",
+    });
+  });
 }
 
 async function testLocalLoginTurnstileRetry({ loginLocalSessionWithTurnstileRetry, PriestessApiError }) {

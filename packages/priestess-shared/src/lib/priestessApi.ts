@@ -33,6 +33,24 @@ type JsonRecord = Record<string, unknown>;
 const PRIESTESS_AUTH_BASE = "/auth/priestess";
 const PRIESTESS_QR_BASE = `${PRIESTESS_AUTH_BASE}/qr`;
 
+/** 应用发起登录时随 URL 转交的 state/PKCE 三件套，登录页原样转发给后端，不在浏览器侧补造或修正。 */
+export type PriestessAuthorizationSecurity = {
+  codeChallenge: string;
+  codeChallengeMethod: string;
+  state: string;
+};
+
+/** 仿 Phainon web/src/api/priestessAuth.ts 的同名 helper：只在有 security 时才把三个键写进请求体。 */
+function withAuthorizationSecurity<T extends JsonRecord>(body: T, security?: PriestessAuthorizationSecurity): T {
+  if (!security) return body;
+  return {
+    ...body,
+    code_challenge: security.codeChallenge,
+    code_challenge_method: security.codeChallengeMethod,
+    state: security.state,
+  };
+}
+
 export async function getLocalSession(options: Pick<RequestOptions, "signal"> = {}) {
   try {
     const payload = await requestJson(`${PRIESTESS_AUTH_BASE}/session`, { signal: options.signal });
@@ -116,13 +134,13 @@ export async function verifyLocalTotpLogin(params: { challengeId: string; code: 
   return normalizeLocalSession(payload);
 }
 
-export async function authorizeLocalSession(params: { appId: string; returnTo: string; choiceId?: string }, options: Pick<RequestOptions, "signal"> = {}) {
+export async function authorizeLocalSession(params: { appId: string; returnTo: string; choiceId?: string; security?: PriestessAuthorizationSecurity }, options: Pick<RequestOptions, "signal"> = {}) {
   const payload = await requestJson(`${PRIESTESS_AUTH_BASE}/authorize`, {
-    body: {
+    body: withAuthorizationSecurity({
       app_id: params.appId,
       ...(params.choiceId ? { choice_id: params.choiceId } : {}),
       return_to: params.returnTo,
-    },
+    }, params.security),
     method: "POST",
     signal: options.signal,
   });
@@ -130,12 +148,12 @@ export async function authorizeLocalSession(params: { appId: string; returnTo: s
   return normalizeLocalAuthorizeResult(payload);
 }
 
-export async function createQrSession(params: { appId: string; returnTo: string }, options: Pick<RequestOptions, "signal"> = {}) {
+export async function createQrSession(params: { appId: string; returnTo: string; security?: PriestessAuthorizationSecurity }, options: Pick<RequestOptions, "signal"> = {}) {
   const payload = await requestJson(`${PRIESTESS_QR_BASE}/sessions`, {
-    body: {
+    body: withAuthorizationSecurity({
       app_id: params.appId,
       return_to: params.returnTo,
-    },
+    }, params.security),
     method: "POST",
     signal: options.signal,
   });

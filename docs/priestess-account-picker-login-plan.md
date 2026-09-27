@@ -23,6 +23,7 @@
 - 已继续补强无障碍语义：账号行带有明确 `aria-label`，授权中的账号行会暴露 `aria-busy`，读屏器能识别正在使用哪个账号继续访问哪个应用。
 - 已继续补强共享 API envelope 回归：账号选择响应支持顶层 `accounts`，也支持 Phainon 常见的 `{ data: { account_choices, client } }` 和嵌套 `user` 形状。
 - 已通过 `npm run build:login`、`git diff --check` 和本地浏览器桌面/移动 smoke。
+- 已支持 PKCE 转发：`/login` 的 `state`、`code_challenge`、`code_challenge_method` 三个 URL 参数由 `authRequest.ts` 一起读出，原样带进 `authorizeLocalSession` 和 `createQrSession` 的请求体（三个参数都缺才不写这个键，前端不补造、不修正）；账号选择、直接授权回跳和二维码创建三条签码路径都会转发，详见 `docs/phainon-qr-login-design.md` 的 `POST /auth/priestess/authorize` 与 `POST /auth/priestess/qr/sessions`。
 - 已验证当前 live backend 兼容降级：`GET /auth/priestess/account-choices` 暂未上线时返回 404，前端会继续读取 `GET /auth/priestess/session`；未登录状态下授权入口显示现有登录表单，不会空白或循环跳转。
 - 尚未修改 Phainon 源码；正式多账号生产能力仍需要 Phainon 后端实现 `GET /auth/priestess/account-choices` 和带 `choice_id` 的授权校验。
 
