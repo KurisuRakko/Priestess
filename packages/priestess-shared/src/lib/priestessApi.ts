@@ -18,7 +18,6 @@ import type {
   PriestessUserRole,
   QrSession,
   QrSessionPollStatus,
-  RegisterIdentityType,
   RegisterInviteCheckResult,
   RegisterVerificationCheckResult,
   RegisterVerificationRequestResult,
@@ -228,16 +227,18 @@ export async function visitPasswordResetLink(params: { requestId: string; token:
   return normalizePasswordResetLinkVisitResult(payload);
 }
 
+// 注册身份统一为邮箱；identity_type 固定为 "email"，后端仍要求这个字段用于挑战签名校验。
+const REGISTER_IDENTITY_TYPE = "email";
+
 export async function requestRegisterVerification(params: {
   identity: string;
-  identityType: RegisterIdentityType;
   inviteChallenge: string;
   inviteCode: string;
 }, options: Pick<RequestOptions, "signal"> = {}) {
   const payload = await requestJson(`${PRIESTESS_AUTH_BASE}/register/verification-requests`, {
     body: {
       identity: params.identity,
-      identity_type: params.identityType,
+      identity_type: REGISTER_IDENTITY_TYPE,
       invite_challenge: params.inviteChallenge,
       invite_code: params.inviteCode,
     },
@@ -247,11 +248,11 @@ export async function requestRegisterVerification(params: {
   return normalizeRegisterVerificationRequestResult(payload);
 }
 
-export async function checkRegisterInvite(params: { identity: string; identityType: RegisterIdentityType; inviteCode: string; turnstileToken: string }, options: Pick<RequestOptions, "signal"> = {}) {
+export async function checkRegisterInvite(params: { identity: string; inviteCode: string; turnstileToken: string }, options: Pick<RequestOptions, "signal"> = {}) {
   const payload = await requestJson(`${PRIESTESS_AUTH_BASE}/register/invite-check`, {
     body: {
       identity: params.identity,
-      identity_type: params.identityType,
+      identity_type: REGISTER_IDENTITY_TYPE,
       invite_code: params.inviteCode,
       turnstile_token: params.turnstileToken,
     },
@@ -263,7 +264,6 @@ export async function checkRegisterInvite(params: { identity: string; identityTy
 
 export async function checkRegisterVerification(params: {
   identity: string;
-  identityType: RegisterIdentityType;
   inviteChallenge: string;
   inviteCode: string;
   verificationCode: string;
@@ -272,7 +272,7 @@ export async function checkRegisterVerification(params: {
   const payload = await requestJson(`${PRIESTESS_AUTH_BASE}/register/verification-check`, {
     body: {
       identity: params.identity,
-      identity_type: params.identityType,
+      identity_type: REGISTER_IDENTITY_TYPE,
       invite_challenge: params.inviteChallenge,
       invite_code: params.inviteCode,
       verification_code: params.verificationCode,
@@ -287,7 +287,6 @@ export async function checkRegisterVerification(params: {
 export async function confirmLocalRegistration(params: {
   displayName: string;
   identity: string;
-  identityType: RegisterIdentityType;
   inviteChallenge: string;
   inviteCode: string;
   password: string;
@@ -298,7 +297,7 @@ export async function confirmLocalRegistration(params: {
     body: {
       display_name: params.displayName,
       identity: params.identity,
-      identity_type: params.identityType,
+      identity_type: REGISTER_IDENTITY_TYPE,
       invite_challenge: params.inviteChallenge,
       invite_code: params.inviteCode,
       password: params.password,

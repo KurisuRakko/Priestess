@@ -1,5 +1,5 @@
 import { type CSSProperties, FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, AtSign, CheckCircle2, Mail, Phone, UserRound } from "lucide-react";
+import { ArrowLeft, ArrowRight, AtSign, CheckCircle2, Mail, UserRound } from "lucide-react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { pinyin } from "pinyin-pro";
 import {
@@ -13,16 +13,8 @@ import {
   translatePriestess,
   usePriestessTranslation,
   type LocalSession,
-  type RegisterIdentityType,
 } from "@priestess/shared";
-import {
-  DEFAULT_REGISTER_PHONE_REGION_ID,
-  getRegisterPhoneRegion,
-  normalizeEmailIdentity,
-  normalizePhoneIdentity,
-  normalizePhoneLocalInput,
-  REGISTER_PHONE_REGIONS,
-} from "./registerIdentityOptions";
+import { normalizeEmailIdentity } from "./registerIdentityOptions";
 import {
   getProgressStepLabel,
   getRegisterProgressStep,
@@ -98,12 +90,8 @@ function isStrongPassword(value: string) {
   return value.length >= 12;
 }
 
-function getIdentityKey(identityType: RegisterIdentityType, value: string) {
-  return `${identityType}:${value}`;
-}
-
-function isRegistrationVerificationActive(challenge: string, expiresAt: number, identityKey: string, committedIdentityKey: string) {
-  return Boolean(challenge && expiresAt > Math.floor(Date.now() / 1000) && identityKey === committedIdentityKey);
+function isRegistrationVerificationActive(challenge: string, expiresAt: number, verificationIdentity: string, committedIdentity: string) {
+  return Boolean(challenge && expiresAt > Math.floor(Date.now() / 1000) && verificationIdentity === committedIdentity);
 }
 
 export function RegisterFirstStepForm({
@@ -121,18 +109,13 @@ export function RegisterFirstStepForm({
   const [step, setStep] = useState<RegisterStep>("identity");
   const [stepDirection, setStepDirection] = useState(1);
   const [emailIdentity, setEmailIdentity] = useState("");
-  const [identityMode, setIdentityMode] = useState<RegisterIdentityType>("email");
-  const [identityType, setIdentityType] = useState<RegisterIdentityType>("email");
-  const [phoneLocalNumber, setPhoneLocalNumber] = useState("");
-  const [phoneRegionId, setPhoneRegionId] = useState(DEFAULT_REGISTER_PHONE_REGION_ID);
   const [committedIdentity, setCommittedIdentity] = useState("");
-  const [committedIdentityKey, setCommittedIdentityKey] = useState("");
   const [inviteCode, setInviteCode] = useState("");
   const [inviteChallenge, setInviteChallenge] = useState("");
   const [verificationCode, setVerificationCode] = useState("");
   const [verificationChallenge, setVerificationChallenge] = useState("");
   const [verificationChallengeExpiresAt, setVerificationChallengeExpiresAt] = useState(0);
-  const [verificationIdentityKey, setVerificationIdentityKey] = useState("");
+  const [verificationIdentity, setVerificationIdentity] = useState("");
   const [verificationRequestId, setVerificationRequestId] = useState("");
   const [resendCooldownSeconds, setResendCooldownSeconds] = useState(0);
   const [password, setPassword] = useState("");
@@ -149,24 +132,20 @@ export function RegisterFirstStepForm({
   const [panelElement, setPanelElement] = useState<HTMLDivElement | null>(null);
   const [panelHeight, setPanelHeight] = useState<number | null>(null);
 
-  const selectedPhoneRegion = useMemo(() => getRegisterPhoneRegion(phoneRegionId), [phoneRegionId]);
-  const normalizedIdentity = useMemo(() => {
-    if (identityMode === "phone") return normalizePhoneIdentity(phoneRegionId, phoneLocalNumber);
-    return normalizeEmailIdentity(emailIdentity);
-  }, [emailIdentity, identityMode, phoneLocalNumber, phoneRegionId]);
+  const normalizedIdentity = useMemo(() => normalizeEmailIdentity(emailIdentity), [emailIdentity]);
   const turnstileSiteKey = useMemo(() => readTurnstileSiteKey(), []);
-  const copy = getStepCopy(step, step === "identity" ? identityMode : identityType);
+  const copy = getStepCopy(step);
   const progressStep = getRegisterProgressStep(step);
   const progressStepIndex = REGISTER_PROGRESS_STEPS.indexOf(progressStep);
   const progressFill = progressStepIndex <= 0 ? 0 : progressStepIndex / (REGISTER_PROGRESS_STEPS.length - 1);
   const progressStyle = { "--register-progress-fill": `${progressFill * 100}%` } as CSSProperties;
   const isFormLocked = disabled || submitBusy || verificationBusy || step === "success";
-  const isVerificationReady = Boolean(verificationRequestId && verificationIdentityKey === committedIdentityKey);
+  const isVerificationReady = Boolean(verificationRequestId && verificationIdentity === committedIdentity);
   const isVerificationConfirmed = isRegistrationVerificationActive(
     verificationChallenge,
     verificationChallengeExpiresAt,
-    verificationIdentityKey,
-    committedIdentityKey,
+    verificationIdentity,
+    committedIdentity,
   );
   const canCheckInvite = Boolean(inviteCode.trim() && turnstileSiteKey && turnstileToken && !isFormLocked);
   const termsLinkSeparator = i18n.language.toLowerCase().startsWith("en") ? t("协议链接分隔符") : "";
@@ -231,7 +210,7 @@ export function RegisterFirstStepForm({
     setVerificationCode("");
     setVerificationChallenge("");
     setVerificationChallengeExpiresAt(0);
-    setVerificationIdentityKey("");
+    setVerificationIdentity("");
     setVerificationRequestId("");
     setResendCooldownSeconds(0);
   };
@@ -253,37 +232,25 @@ export function RegisterFirstStepForm({
     resetInviteState();
   };
 
-  const switchIdentityMode = () => {
-    if (isFormLocked) return;
-    setIdentityMode((current) => current === "email" ? "phone" : "email");
-    setCommittedIdentity("");
-    setCommittedIdentityKey("");
-    resetCredentialState();
-    setErrors((current) => ({ ...current, identity: undefined, inviteCode: undefined, turnstile: undefined, verificationCode: undefined }));
-  };
-
   const submitIdentity = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (isFormLocked) return;
 
     const nextIdentity = normalizedIdentity;
     const nextErrors: FieldErrors = {};
-    if (!nextIdentity) nextErrors.identity = identityMode === "phone" ? t("请输入有效手机号") : t("请输入有效邮箱");
+    if (!nextIdentity) nextErrors.identity = t("请输入有效邮箱");
     if (!acceptedTerms) nextErrors.terms = t("请先同意用户协议、隐私政策及相关服务规则");
     if (!nextIdentity || !acceptedTerms) {
       setErrors((current) => ({ ...current, ...nextErrors }));
       return;
     }
 
-    const nextIdentityKey = getIdentityKey(nextIdentity.type, nextIdentity.value);
-    if (committedIdentityKey && committedIdentityKey !== nextIdentityKey) {
+    if (committedIdentity && committedIdentity !== nextIdentity) {
       // 账号标识变化后，旧密码、旧邀请码和昵称都不能继续沿用到新的注册主体。
       resetCredentialState();
     }
 
-    setCommittedIdentityKey(nextIdentityKey);
-    setCommittedIdentity(nextIdentity.value);
-    setIdentityType(nextIdentity.type);
+    setCommittedIdentity(nextIdentity);
     setErrors({});
     moveToStep("invitation", 1);
   };
@@ -308,7 +275,6 @@ export function RegisterFirstStepForm({
   }) => {
     const result = await requestRegisterVerification({
       identity: committedIdentity,
-      identityType,
       inviteChallenge: params.inviteChallengeValue,
       inviteCode: params.inviteCodeValue,
     }, { signal: params.signal });
@@ -317,7 +283,7 @@ export function RegisterFirstStepForm({
     }
     setVerificationChallenge("");
     setVerificationChallengeExpiresAt(0);
-    setVerificationIdentityKey(committedIdentityKey);
+    setVerificationIdentity(committedIdentity);
     setVerificationRequestId(result.requestId);
     setResendCooldownSeconds(result.cooldownSeconds ?? DEFAULT_RESEND_COOLDOWN_SECONDS);
     if (result.devVerificationCode) {
@@ -336,7 +302,7 @@ export function RegisterFirstStepForm({
       setErrors({ inviteCode: t("请先校验邀请码") });
       return;
     }
-    if (!committedIdentity || !committedIdentityKey) {
+    if (!committedIdentity) {
       moveToStep("identity", -1);
       setErrors({ identity: t("账号信息已变化，请重新填写") });
       return;
@@ -364,7 +330,7 @@ export function RegisterFirstStepForm({
         return;
       }
       setVerificationRequestId("");
-      setVerificationIdentityKey("");
+      setVerificationIdentity("");
       setErrors((current) => ({ ...current, verificationCode: getPriestessApiErrorMessage(error, t("验证码发送失败")) }));
     } finally {
       if (verificationAbortRef.current === abortController) {
@@ -401,7 +367,6 @@ export function RegisterFirstStepForm({
     try {
       const result = await checkRegisterInvite({
         identity: committedIdentity,
-        identityType,
         inviteCode: normalizedInviteCode,
         turnstileToken,
       }, { signal: abortController.signal });
@@ -457,8 +422,8 @@ export function RegisterFirstStepForm({
     const hasActiveVerificationChallenge = isRegistrationVerificationActive(
       verificationChallenge,
       verificationChallengeExpiresAt,
-      verificationIdentityKey,
-      committedIdentityKey,
+      verificationIdentity,
+      committedIdentity,
     );
     if (hasActiveVerificationChallenge) {
       setErrors((current) => ({ ...current, verificationCode: undefined }));
@@ -492,7 +457,6 @@ export function RegisterFirstStepForm({
     try {
       const result = await checkRegisterVerification({
         identity: committedIdentity,
-        identityType,
         inviteChallenge,
         inviteCode,
         verificationCode: normalizedVerificationCode,
@@ -504,7 +468,7 @@ export function RegisterFirstStepForm({
       setVerificationCode(normalizedVerificationCode);
       setVerificationChallenge(result.verificationChallenge);
       setVerificationChallengeExpiresAt(result.expiresAt);
-      setVerificationIdentityKey(committedIdentityKey);
+      setVerificationIdentity(committedIdentity);
       setErrors((current) => ({ ...current, verificationCode: undefined }));
       onNotice(t("账号验证码已确认"));
       moveToStep("password", 1);
@@ -556,8 +520,8 @@ export function RegisterFirstStepForm({
     const hasActiveVerificationChallenge = isRegistrationVerificationActive(
       verificationChallenge,
       verificationChallengeExpiresAt,
-      verificationIdentityKey,
-      committedIdentityKey,
+      verificationIdentity,
+      committedIdentity,
     );
     if (!hasActiveVerificationChallenge) {
       setVerificationChallenge("");
@@ -577,7 +541,6 @@ export function RegisterFirstStepForm({
       const session = await confirmLocalRegistration({
         displayName: normalizedDisplayName,
         identity: committedIdentity,
-        identityType,
         inviteChallenge,
         inviteCode,
         password,
@@ -693,7 +656,7 @@ export function RegisterFirstStepForm({
                 return (
                   <li className={`register-progress__item register-progress__item--${state}`} key={item} aria-current={state === "current" ? "step" : undefined}>
                     <span className="register-progress__dot">{index + 1}</span>
-                    <span className="register-progress__label">{t(getProgressStepLabel(item, step === "identity" ? identityMode : identityType))}</span>
+                    <span className="register-progress__label">{t(getProgressStepLabel(item))}</span>
                   </li>
                 );
               })}
@@ -703,70 +666,28 @@ export function RegisterFirstStepForm({
           {step === "identity" ? (
             <form className="login-form" noValidate onSubmit={submitIdentity}>
           <label className="field-group">
-            <span className="field-group__label">{identityMode === "phone" ? t("手机号") : t("邮箱")}</span>
-            {identityMode === "phone" ? (
-              <span className={`text-field register-phone-field ${errors.identity ? "text-field--error" : ""}`}>
-                <Phone aria-hidden="true" size={20} strokeWidth={1.8} />
-                <select
-                  aria-label={t("手机号区号")}
-                  disabled={isFormLocked}
-                  onChange={(event) => {
-                    const nextRegion = getRegisterPhoneRegion(event.target.value);
-                    setPhoneRegionId(nextRegion.id);
-                    setPhoneLocalNumber((current) => normalizePhoneLocalInput(current, nextRegion));
-                    if (errors.identity) clearError("identity");
-                  }}
-                  value={phoneRegionId}
-                >
-                  {REGISTER_PHONE_REGIONS.map((region) => (
-                    <option key={region.id} value={region.id}>{t(region.label)} {region.callingCode}</option>
-                  ))}
-                </select>
-                <input
-                  aria-invalid={Boolean(errors.identity)}
-                  aria-describedby={errors.identity ? "register-identity-error" : undefined}
-                  autoComplete="tel-national"
-                  disabled={isFormLocked}
-                  inputMode="tel"
-                  onChange={(event) => {
-                    setPhoneLocalNumber(normalizePhoneLocalInput(event.target.value, selectedPhoneRegion));
-                    if (errors.identity) clearError("identity");
-                  }}
-                  placeholder={selectedPhoneRegion.example}
-                  type="tel"
-                  value={phoneLocalNumber}
-                />
-              </span>
-            ) : (
-              <span className={`text-field ${errors.identity ? "text-field--error" : ""}`}>
-                <Mail aria-hidden="true" size={20} strokeWidth={1.8} />
-                <input
-                  aria-invalid={Boolean(errors.identity)}
-                  aria-describedby={errors.identity ? "register-identity-error" : undefined}
-                  autoCapitalize="none"
-                  autoComplete="email"
-                  disabled={isFormLocked}
-                  inputMode="email"
-                  onChange={(event) => {
-                    // IME 全角 @ 是真实误输入场景，先转半角再统一小写。
-                    setEmailIdentity(toHalfWidth(event.target.value).toLowerCase());
-                    if (errors.identity) clearError("identity");
-                  }}
-                  placeholder="mikael@example.com"
-                  type="email"
-                  value={emailIdentity}
-                />
-              </span>
-            )}
+            <span className="field-group__label">{t("邮箱")}</span>
+            <span className={`text-field ${errors.identity ? "text-field--error" : ""}`}>
+              <Mail aria-hidden="true" size={20} strokeWidth={1.8} />
+              <input
+                aria-invalid={Boolean(errors.identity)}
+                aria-describedby={errors.identity ? "register-identity-error" : undefined}
+                autoCapitalize="none"
+                autoComplete="email"
+                disabled={isFormLocked}
+                inputMode="email"
+                onChange={(event) => {
+                  // IME 全角 @ 是真实误输入场景，先转半角再统一小写。
+                  setEmailIdentity(toHalfWidth(event.target.value).toLowerCase());
+                  if (errors.identity) clearError("identity");
+                }}
+                placeholder="mikael@example.com"
+                type="email"
+                value={emailIdentity}
+              />
+            </span>
             {errors.identity && <span className="field-error" id="register-identity-error">{errors.identity}</span>}
           </label>
-
-          <div className="register-identity-switch">
-            <button className="register-identity-toggle" disabled={isFormLocked} onClick={switchIdentityMode} type="button">
-              {identityMode === "phone" ? <Mail aria-hidden="true" size={15} strokeWidth={1.9} /> : <Phone aria-hidden="true" size={15} strokeWidth={1.9} />}
-              <span>{identityMode === "phone" ? t("使用邮箱注册") : t("使用手机号注册")}</span>
-            </button>
-          </div>
 
           <div className={`register-terms-consent ${isFormLocked ? "register-terms-consent--disabled" : ""}`}>
             <input
@@ -907,7 +828,6 @@ export function RegisterFirstStepForm({
               code={verificationCode}
               codeError={errors.verificationCode}
               disabled={isFormLocked}
-              identityType={identityType}
               onCodeChange={(value) => {
                 setVerificationCode(value);
                 setVerificationChallenge("");

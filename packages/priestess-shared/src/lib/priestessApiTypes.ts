@@ -146,8 +146,6 @@ export type PasswordResetLinkVisitResult = {
   valid: boolean;
 };
 
-export type RegisterIdentityType = "email" | "phone";
-
 export type RegisterInviteCheckResult = {
   accepted: boolean;
   expiresAt: number;

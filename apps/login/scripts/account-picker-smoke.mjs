@@ -829,7 +829,6 @@ async function testSharedApiContract({ activateLocalAccountChoice, authorizeLoca
 
     const inviteCheck = await checkRegisterInvite({
       identity: "register@example.com",
-      identityType: "email",
       inviteCode: "INVITE-2026",
       turnstileToken: "turnstile-register",
     });
@@ -846,7 +845,6 @@ async function testSharedApiContract({ activateLocalAccountChoice, authorizeLoca
 
     const verificationRequest = await requestRegisterVerification({
       identity: "register@example.com",
-      identityType: "email",
       inviteChallenge: "invite.challenge",
       inviteCode: "INVITE-2026",
     });
@@ -864,7 +862,6 @@ async function testSharedApiContract({ activateLocalAccountChoice, authorizeLoca
 
     const verificationCheck = await checkRegisterVerification({
       identity: "register@example.com",
-      identityType: "email",
       inviteChallenge: "invite.challenge",
       inviteCode: "INVITE-2026",
       verificationCode: "482913",
@@ -886,7 +883,6 @@ async function testSharedApiContract({ activateLocalAccountChoice, authorizeLoca
     const registration = await confirmLocalRegistration({
       displayName: "Register User",
       identity: "register@example.com",
-      identityType: "email",
       inviteChallenge: "invite.challenge",
       inviteCode: "INVITE-2026",
       password: "secret-register-password",
@@ -1213,7 +1209,6 @@ async function testRegistrationInputNormalization({ confirmLocalRegistration, no
     const registration = await confirmLocalRegistration({
       displayName: "Kurisu Test",
       identity: "register@example.com",
-      identityType: "email",
       inviteChallenge: "invite.challenge",
       inviteCode: "INVITE-2026",
       password: toHalfWidth("ｐａｓｓｗｏｒｄ１２３４５６"),

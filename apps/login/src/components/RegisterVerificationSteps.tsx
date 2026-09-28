@@ -82,7 +82,6 @@ type VerificationStepProps = {
   code: string;
   codeError?: string;
   disabled: boolean;
-  identityType: "email" | "phone";
   onCodeChange: (value: string) => void;
   onSend: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
@@ -96,7 +95,6 @@ export function RegisterVerificationStep({
   code,
   codeError,
   disabled,
-  identityType,
   onCodeChange,
   onSend,
   onSubmit,
@@ -123,7 +121,7 @@ export function RegisterVerificationStep({
       ) : (
         <>
           <label className="field-group">
-            <span className="field-group__label">{identityType === "email" ? t("邮箱验证码") : t("手机验证码")}</span>
+            <span className="field-group__label">{t("邮箱验证码")}</span>
             <span className={`text-field ${codeError ? "text-field--error" : ""}`}>
               <AtSign aria-hidden="true" size={20} strokeWidth={1.8} />
               <input
